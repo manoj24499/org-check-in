@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 
 const QrScanner = dynamic(() => import("@/components/QrScanner"), { ssr: false });
 
@@ -16,6 +17,14 @@ export default function KioskPage() {
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Result>({ status: "idle" });
+  const [currentTime, setCurrentTime] = useState<Date | null>(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    setCurrentTime(new Date());
+    const interval = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const submit = useCallback(async (body: Record<string, string>) => {
     setBusy(true);
@@ -28,23 +37,22 @@ export default function KioskPage() {
       const data = await res.json();
       if (!res.ok) {
         setResult({ status: "error", message: data.error ?? "Something went wrong." });
+        setBusy(false);
+        setEmployeeCode("");
+        setPin("");
+        setTimeout(() => setResult({ status: "idle" }), 4000);
       } else {
-        setResult({
-          status: "success",
-          name: data.name,
-          type: data.type,
-          timestamp: data.timestamp,
-        });
+        // Redirect to the success status page
+        router.push(`/kiosk/status/${data.id}`);
       }
     } catch {
       setResult({ status: "error", message: "Network error. Please try again." });
-    } finally {
       setBusy(false);
       setEmployeeCode("");
       setPin("");
       setTimeout(() => setResult({ status: "idle" }), 4000);
     }
-  }, []);
+  }, [router]);
 
   const handleQrScan = useCallback(
     (decodedText: string) => {
@@ -61,8 +69,15 @@ export default function KioskPage() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center p-6 gap-6">
-      <h1 className="text-2xl font-bold">Employee Check-In / Check-Out</h1>
+    <main className="min-h-screen flex flex-col items-center justify-center p-6 gap-6 bg-slate-50">
+      <div className="text-center mb-4">
+        <h1 className="text-3xl font-bold text-slate-900">Employee Kiosk</h1>
+        {currentTime && (
+          <p className="text-xl text-slate-500 font-medium mt-2">
+            {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </p>
+        )}
+      </div>
 
       <div className="flex rounded-lg bg-slate-100 p-1">
         <button
@@ -121,19 +136,6 @@ export default function KioskPage() {
       </div>
 
       <div className="h-20 flex items-center">
-        {result.status === "success" && (
-          <div
-            className={`rounded-xl px-6 py-4 text-center font-medium ${
-              result.type === "CHECK_IN"
-                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                : "bg-amber-50 text-amber-700 border border-amber-200"
-            }`}
-          >
-            {result.name} —{" "}
-            {result.type === "CHECK_IN" ? "Checked in" : "Checked out"} at{" "}
-            {new Date(result.timestamp).toLocaleTimeString()}
-          </div>
-        )}
         {result.status === "error" && (
           <div className="rounded-xl px-6 py-4 text-center font-medium bg-red-50 text-red-700 border border-red-200">
             {result.message}

@@ -88,6 +88,7 @@ export async function POST(req: NextRequest) {
   });
 
   return NextResponse.json({
+    id: record.id,
     name: user.name,
     employeeCode: user.employeeCode,
     type: record.type,
