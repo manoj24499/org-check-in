@@ -1,0 +1,56 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  EMPLOYEE
+}
+
+enum AttendanceType {
+  CHECK_IN
+  CHECK_OUT
+}
+
+enum AttendanceMethod {
+  QR
+  PIN
+}
+
+model User {
+  id           String @id @default(cuid())
+  employeeCode String @unique // human-friendly ID, e.g. EMP001 / ADM001
+  name         String
+  email        String @unique
+  role         Role   @default(EMPLOYEE)
+
+  // Admin auth (only set for ADMIN role)
+  passwordHash String?
+
+  // Employee kiosk auth (only set for EMPLOYEE role)
+  pinHash String?
+  qrToken String? @unique // random secret embedded in the QR code
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attendances Attendance[]
+
+  @@index([role])
+}
+
+model Attendance {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      AttendanceType
+  method    AttendanceMethod
+  timestamp DateTime         @default(now())
+
+  @@index([userId, timestamp])
+}
