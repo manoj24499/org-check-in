@@ -1,9 +1,18 @@
 import Link from "next/link";
-import { User, ShieldCheck } from "lucide-react";
+import { User, ShieldCheck, ArrowLeft } from "lucide-react";
 
 export default function LoginSelectionPage() {
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center gap-8 p-6 text-center">
+    <main className="min-h-screen flex flex-col items-center justify-center gap-8 p-6 text-center relative">
+      <div className="absolute top-6 left-6">
+        <Link
+          href="/"
+          className="flex items-center gap-2 text-slate-500 hover:text-slate-900 transition-colors font-medium px-4 py-2 rounded-lg hover:bg-slate-100"
+        >
+          <ArrowLeft className="w-5 h-5" />
+          <span>Back to Start</span>
+        </Link>
+      </div>
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Select Login Type</h1>
         <p className="text-slate-500 mt-2">Choose your account type to continue</p>

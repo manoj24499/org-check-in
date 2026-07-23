@@ -4,7 +4,9 @@ export default function HomePage() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center gap-8 p-6 text-center">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Employee Check-In System</h1>
+        <h1 className="text-3xl font-bold tracking-tight">
+          Employee Check-In System
+        </h1>
         <p className="text-slate-500 mt-2">Internal use only</p>
       </div>
 
@@ -13,7 +15,7 @@ export default function HomePage() {
           href="/kiosk"
           className="rounded-xl bg-slate-900 text-white px-8 py-4 font-medium hover:bg-slate-700 transition"
         >
-          Open Kiosk (Check In / Out)
+          Check In / Out
         </Link>
         <Link
           href="/login"

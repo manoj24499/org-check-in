@@ -3,12 +3,21 @@
 import { useCallback, useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 
-const QrScanner = dynamic(() => import("@/components/QrScanner"), { ssr: false });
+const QrScanner = dynamic(() => import("@/components/QrScanner"), {
+  ssr: false,
+});
 
 type Result =
   | { status: "idle" }
-  | { status: "success"; name: string; type: "CHECK_IN" | "CHECK_OUT"; timestamp: string }
+  | {
+      status: "success";
+      name: string;
+      type: "CHECK_IN" | "CHECK_OUT";
+      timestamp: string;
+    }
   | { status: "error"; message: string };
 
 export default function KioskPage() {
@@ -26,40 +35,49 @@ export default function KioskPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const submit = useCallback(async (body: Record<string, string>) => {
-    setBusy(true);
-    try {
-      const res = await fetch("/api/kiosk/scan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setResult({ status: "error", message: data.error ?? "Something went wrong." });
+  const submit = useCallback(
+    async (body: Record<string, string>) => {
+      setBusy(true);
+      try {
+        const res = await fetch("/api/kiosk/scan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setResult({
+            status: "error",
+            message: data.error ?? "Something went wrong.",
+          });
+          setBusy(false);
+          setEmployeeCode("");
+          setPin("");
+          setTimeout(() => setResult({ status: "idle" }), 4000);
+        } else {
+          // Redirect to the success status page
+          router.push(`/kiosk/status/${data.id}`);
+        }
+      } catch {
+        setResult({
+          status: "error",
+          message: "Network error. Please try again.",
+        });
         setBusy(false);
         setEmployeeCode("");
         setPin("");
         setTimeout(() => setResult({ status: "idle" }), 4000);
-      } else {
-        // Redirect to the success status page
-        router.push(`/kiosk/status/${data.id}`);
       }
-    } catch {
-      setResult({ status: "error", message: "Network error. Please try again." });
-      setBusy(false);
-      setEmployeeCode("");
-      setPin("");
-      setTimeout(() => setResult({ status: "idle" }), 4000);
-    }
-  }, [router]);
+    },
+    [router],
+  );
 
   const handleQrScan = useCallback(
     (decodedText: string) => {
       if (busy) return;
       submit({ mode: "qr", qrToken: decodedText });
     },
-    [busy, submit]
+    [busy, submit],
   );
 
   function handlePinSubmit(e: React.FormEvent) {
@@ -69,12 +87,26 @@ export default function KioskPage() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center p-6 gap-6 bg-slate-50">
+    <main className="min-h-screen flex flex-col items-center justify-center p-6 gap-6 bg-slate-50 relative">
+      <div className="absolute top-6 left-6">
+        <Link
+          href="/"
+          className="flex items-center gap-2 text-slate-500 hover:text-slate-900 transition-colors font-medium px-4 py-2 rounded-lg hover:bg-slate-200 bg-slate-100/50"
+        >
+          <ArrowLeft className="w-5 h-5" />
+          <span>Back to Start</span>
+        </Link>
+      </div>
       <div className="text-center mb-4">
-        <h1 className="text-3xl font-bold text-slate-900">Employee Kiosk</h1>
+        <h1 className="text-3xl font-bold text-slate-900">
+          Employee Check-In System
+        </h1>
         {currentTime && (
           <p className="text-xl text-slate-500 font-medium mt-2">
-            {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {currentTime.toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
           </p>
         )}
       </div>
