@@ -25,6 +25,7 @@ export default function EmployeeLoginPage() {
     if (res?.error) {
       setError("Invalid employee ID or PIN.");
     } else {
+      sessionStorage.setItem("tab_auth", "true");
       router.push("/my-page");
       router.refresh();
     }

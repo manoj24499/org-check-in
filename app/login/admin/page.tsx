@@ -25,6 +25,7 @@ export default function AdminLoginPage() {
     if (res?.error) {
       setError("Invalid email or password.");
     } else {
+      sessionStorage.setItem("tab_auth", "true");
       router.push("/admin/dashboard");
       router.refresh();
     }

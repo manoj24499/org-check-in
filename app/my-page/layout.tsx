@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import Providers from "@/components/Providers";
 import SignOutButton from "@/components/SignOutButton";
+import TabSecurity from "@/components/TabSecurity";
 
 export default async function MyPageLayout({
   children,
@@ -11,6 +12,7 @@ export default async function MyPageLayout({
 
   return (
     <Providers>
+      <TabSecurity />
       <div className="min-h-screen">
         <header className="border-b border-slate-200 bg-white">
           <div className="max-w-3xl mx-auto flex items-center justify-between px-6 py-4">
