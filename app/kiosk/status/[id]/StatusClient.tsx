@@ -92,9 +92,9 @@ export default function StatusClient({ name, type, timestamp, workHours, checkIn
           </div>
         )}
 
-        <button 
+        <button
           onClick={() => router.push("/kiosk")}
-          className="w-full py-4 rounded-xl bg-slate-900 text-white font-semibold hover:bg-slate-800 transition-colors shadow-md hover:shadow-lg flex items-center justify-center gap-2"
+          className="w-full py-4 rounded-xl bg-primary text-white font-semibold hover:bg-primary-dark transition-colors shadow-md shadow-primary/20 hover:shadow-lg flex items-center justify-center gap-2"
         >
           <Clock size={20} />
           Return to Kiosk ({timeLeft}s)

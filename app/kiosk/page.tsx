@@ -103,6 +103,12 @@ export default function KioskPage() {
         </h1>
         {currentTime && (
           <p className="text-xl text-slate-500 font-medium mt-2">
+            {currentTime.toLocaleDateString([], {
+              weekday: "long",
+              month: "short",
+              day: "numeric",
+            })}{" "}
+            &middot;{" "}
             {currentTime.toLocaleTimeString([], {
               hour: "2-digit",
               minute: "2-digit",
@@ -115,7 +121,7 @@ export default function KioskPage() {
         <button
           onClick={() => setMode("qr")}
           className={`px-6 py-2 rounded-md text-sm font-medium transition ${
-            mode === "qr" ? "bg-white shadow-sm" : "text-slate-500"
+            mode === "qr" ? "bg-white text-primary shadow-sm" : "text-slate-500"
           }`}
         >
           Scan QR
@@ -123,7 +129,7 @@ export default function KioskPage() {
         <button
           onClick={() => setMode("pin")}
           className={`px-6 py-2 rounded-md text-sm font-medium transition ${
-            mode === "pin" ? "bg-white shadow-sm" : "text-slate-500"
+            mode === "pin" ? "bg-white text-primary shadow-sm" : "text-slate-500"
           }`}
         >
           Enter PIN
@@ -159,7 +165,7 @@ export default function KioskPage() {
             </div>
             <button
               disabled={busy}
-              className="rounded-lg bg-slate-900 text-white py-3 font-medium hover:bg-slate-700 transition disabled:opacity-50"
+              className="rounded-lg bg-primary text-white py-3 font-medium hover:bg-primary-dark transition disabled:opacity-50"
             >
               {busy ? "Processing…" : "Submit"}
             </button>

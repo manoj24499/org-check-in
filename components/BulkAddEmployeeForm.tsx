@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Upload } from "lucide-react";
 
 export default function BulkAddEmployeeForm() {
   const router = useRouter();
@@ -65,8 +66,9 @@ export default function BulkAddEmployeeForm() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="rounded-lg border-2 border-primary text-primary px-4 py-2 text-sm font-medium hover:bg-primary/5 transition"
+        className="inline-flex items-center gap-1.5 rounded-lg border-2 border-primary text-primary px-4 py-2 text-sm font-medium hover:bg-primary/5 transition"
       >
+        <Upload className="w-4 h-4" />
         Bulk Add
       </button>
 
