@@ -110,6 +110,7 @@ export default async function MyPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50/80 text-secondary text-left border-b border-slate-200/60">
               <tr>
+                <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">Photo</th>
                 <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">Date</th>
                 <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">Time</th>
                 <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">Event</th>
@@ -119,13 +120,25 @@ export default async function MyPage() {
             <tbody className="divide-y divide-slate-100/80">
               {records.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-6 py-12 text-center text-secondary">
+                  <td colSpan={5} className="px-6 py-12 text-center text-secondary">
                     No records yet. Use the kiosk to check in.
                   </td>
                 </tr>
               )}
               {records.map((r) => (
                 <tr key={r.id} className="hover:bg-primary/5 transition-colors duration-200">
+                  <td className="px-6 py-4">
+                    {r.hasPhoto ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={`/api/attendance/${r.id}/photo`}
+                        alt="Check-in photo"
+                        className="w-10 h-10 rounded-lg object-cover border border-slate-200"
+                      />
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    )}
+                  </td>
                   <td className="px-6 py-4 font-medium text-slate-700">
                     {new Date(r.timestamp).toLocaleDateString()}
                   </td>

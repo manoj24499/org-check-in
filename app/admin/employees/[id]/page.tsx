@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import EmployeeActions from "@/components/EmployeeActions";
-import { ArrowLeft, LogIn, LogOut } from "lucide-react";
+import AttendanceCalendar from "@/components/AttendanceCalendar";
+import { ArrowLeft } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -30,12 +31,20 @@ export default async function EmployeeDetailPage({
     include: {
       attendances: {
         orderBy: { timestamp: "desc" },
-        take: 50,
+        take: 2000,
       },
     },
   });
 
   if (!employee || employee.role !== "EMPLOYEE") notFound();
+
+  const attendances = employee.attendances.map((r) => ({
+    id: r.id,
+    type: r.type,
+    method: r.method,
+    timestamp: r.timestamp.toISOString(),
+    hasPhoto: r.hasPhoto,
+  }));
 
   return (
     <div className="flex flex-col gap-8">
@@ -78,57 +87,9 @@ export default async function EmployeeDetailPage({
           <EmployeeActions employeeId={employee.id} active={employee.active} />
         </div>
 
-        <div className="rounded-2xl border border-slate-200/60 bg-white/60 backdrop-blur-md shadow-xl shadow-slate-200/20 overflow-hidden">
-          <h2 className="text-lg font-bold text-slate-800 p-6 pb-0">Recent Activity</h2>
-          <table className="w-full text-sm mt-4">
-            <thead className="bg-slate-50/80 text-secondary text-left border-b border-slate-200/60">
-              <tr>
-                <th className="px-6 py-3 font-semibold uppercase tracking-wider text-xs">Time</th>
-                <th className="px-6 py-3 font-semibold uppercase tracking-wider text-xs">Event</th>
-                <th className="px-6 py-3 font-semibold uppercase tracking-wider text-xs">Method</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100/80">
-              {employee.attendances.length === 0 && (
-                <tr>
-                  <td colSpan={3} className="px-6 py-12 text-center text-secondary">
-                    No records yet.
-                  </td>
-                </tr>
-              )}
-              {employee.attendances.map((r) => (
-                <tr key={r.id} className="hover:bg-primary/5 transition-colors duration-200">
-                  <td className="px-6 py-3.5 font-medium text-slate-700">
-                    {new Date(r.timestamp).toLocaleString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </td>
-                  <td className="px-6 py-3.5">
-                    <span
-                      className={`inline-flex items-center gap-1.5 font-bold ${
-                        r.type === "CHECK_IN" ? "text-primary" : "text-slate-500"
-                      }`}
-                    >
-                      {r.type === "CHECK_IN" ? (
-                        <LogIn className="w-4 h-4" />
-                      ) : (
-                        <LogOut className="w-4 h-4" />
-                      )}
-                      {r.type === "CHECK_IN" ? "Check In" : "Check Out"}
-                    </span>
-                  </td>
-                  <td className="px-6 py-3.5">
-                    <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 border border-slate-200">
-                      {r.method}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="rounded-2xl border border-slate-200/60 bg-white/60 backdrop-blur-md shadow-xl shadow-slate-200/20 p-6">
+          <h2 className="text-lg font-bold text-slate-800 mb-4">Attendance Calendar</h2>
+          <AttendanceCalendar attendances={attendances} />
         </div>
       </div>
     </div>

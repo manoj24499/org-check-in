@@ -52,5 +52,13 @@ model Attendance {
   method    AttendanceMethod
   timestamp DateTime         @default(now())
 
+  // Presence photo captured at check-in. `hasPhoto` is a cheap flag so list/
+  // calendar views can decide whether to render a thumbnail without ever
+  // pulling the (much larger) photo bytes into those queries. Photos older
+  // than 45 days are opportunistically cleared (see scan route) — `hasPhoto`
+  // is unset in lockstep so no page ever links to an expired image.
+  photo    Bytes?
+  hasPhoto Boolean @default(false)
+
   @@index([userId, timestamp])
 }

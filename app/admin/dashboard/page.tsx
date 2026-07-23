@@ -1,12 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import { Prisma } from "@prisma/client"; // 1. Import Prisma
+import DashboardWorkspace from "@/components/DashboardWorkspace";
 
 export const dynamic = "force-dynamic";
-
-// 2. Define the payload type matching your include query
-type EmployeeWithAttendance = Prisma.UserGetPayload<{
-  include: { attendances: true };
-}>;
 
 function startOfToday() {
   const d = new Date();
@@ -15,7 +10,7 @@ function startOfToday() {
 }
 
 export default async function AdminDashboard() {
-  const employees = await prisma.user.findMany({
+  const employeesRaw = await prisma.user.findMany({
     where: { role: "EMPLOYEE", active: true },
     orderBy: { name: "asc" },
     include: {
@@ -26,16 +21,34 @@ export default async function AdminDashboard() {
     },
   });
 
-  const todaysRecords = await prisma.attendance.findMany({
+  const todaysRecordsRaw = await prisma.attendance.findMany({
     where: { timestamp: { gte: startOfToday() } },
     orderBy: { timestamp: "desc" },
     include: { user: true },
   });
 
-  // 3. Annotate parameter 'e' with EmployeeWithAttendance
-  const currentlyIn = employees.filter(
-    (e: EmployeeWithAttendance) => e.attendances[0]?.type === "CHECK_IN",
+  const currentlyIn = employeesRaw.filter(
+    (e) => e.attendances[0]?.type === "CHECK_IN",
   ).length;
+
+  const employees = employeesRaw.map((e) => ({
+    id: e.id,
+    employeeCode: e.employeeCode,
+    name: e.name,
+    lastEvent: e.attendances[0]
+      ? { type: e.attendances[0].type, timestamp: e.attendances[0].timestamp.toISOString() }
+      : null,
+  }));
+
+  const todaysRecords = todaysRecordsRaw.map((r) => ({
+    id: r.id,
+    timestamp: r.timestamp.toISOString(),
+    type: r.type,
+    method: r.method,
+    userName: r.user.name,
+    employeeCode: r.user.employeeCode,
+  }));
+
   return (
     <div className="flex flex-col gap-8">
       <div>
@@ -66,7 +79,7 @@ export default async function AdminDashboard() {
             </div>
           </div>
           <p className="text-4xl font-black mt-4 text-slate-800">
-            {employees.length}
+            {employeesRaw.length}
           </p>
         </div>
         <div className="rounded-2xl border border-primary/20 bg-primary/5 backdrop-blur-md p-6 shadow-xl shadow-primary/10 hover:-translate-y-1 hover:shadow-2xl transition-all duration-300">
@@ -108,223 +121,12 @@ export default async function AdminDashboard() {
             </div>
           </div>
           <p className="text-4xl font-black mt-4 text-slate-800">
-            {todaysRecords.length}
+            {todaysRecordsRaw.length}
           </p>
         </div>
       </div>
 
-      <div className="flex flex-col gap-4">
-        <h2 className="text-xl font-bold text-slate-800">Current Status</h2>
-        <div className="rounded-2xl border border-slate-200/60 bg-white/60 backdrop-blur-md shadow-xl shadow-slate-200/20 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50/80 text-secondary text-left border-b border-slate-200/60">
-              <tr>
-                <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">
-                  Employee ID
-                </th>
-                <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">
-                  Name
-                </th>
-                <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">
-                  Status
-                </th>
-                <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">
-                  Since
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100/80">
-              {employees.map((emp) => {
-                const last = emp.attendances[0];
-                const isIn = last?.type === "CHECK_IN";
-                return (
-                  <tr
-                    key={emp.id}
-                    className="hover:bg-primary/5 transition-colors duration-200"
-                  >
-                    <td className="px-6 py-4 font-medium text-slate-700">
-                      {emp.employeeCode}
-                    </td>
-                    <td className="px-6 py-4 text-slate-800 font-semibold">
-                      {emp.name}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold tracking-wide border ${
-                          isIn
-                            ? "bg-primary/10 text-primary border-primary/20"
-                            : "bg-slate-100 text-secondary border-slate-200"
-                        }`}
-                      >
-                        <span
-                          className={`w-2 h-2 rounded-full ${
-                            isIn ? "bg-primary animate-pulse" : "bg-slate-400"
-                          }`}
-                        />
-                        {isIn ? "Checked In" : "Checked Out"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-secondary font-medium">
-                      {last
-                        ? new Date(last.timestamp).toLocaleString(undefined, {
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
-                        : "—"}
-                    </td>
-                  </tr>
-                );
-              })}
-              {employees.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={4}
-                    className="px-6 py-12 text-center text-secondary"
-                  >
-                    No active employees found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-slate-800">
-            Today&apos;s Activity
-          </h2>
-          <a
-            href="/api/admin/attendance/export"
-            className="inline-flex items-center justify-center rounded-lg bg-white border border-slate-200 px-4 py-2 text-sm font-semibold text-primary shadow-sm hover:bg-primary hover:text-white hover:border-primary transition-all duration-200"
-          >
-            <svg
-              className="w-4 h-4 mr-2"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={2}
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
-              />
-            </svg>
-            Export CSV
-          </a>
-        </div>
-        <div className="rounded-2xl border border-slate-200/60 bg-white/60 backdrop-blur-md shadow-xl shadow-slate-200/20 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50/80 text-secondary text-left border-b border-slate-200/60">
-              <tr>
-                <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">
-                  Time
-                </th>
-                <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">
-                  Employee
-                </th>
-                <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">
-                  Event
-                </th>
-                <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">
-                  Method
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100/80">
-              {todaysRecords.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={4}
-                    className="px-6 py-12 text-center text-secondary"
-                  >
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <svg
-                        className="w-8 h-8 text-slate-300"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        strokeWidth={1.5}
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                      No activity yet today.
-                    </div>
-                  </td>
-                </tr>
-              )}
-              {todaysRecords.map((r) => (
-                <tr
-                  key={r.id}
-                  className="hover:bg-primary/5 transition-colors duration-200"
-                >
-                  <td className="px-6 py-4 font-medium text-slate-700">
-                    {new Date(r.timestamp).toLocaleTimeString(undefined, {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </td>
-                  <td className="px-6 py-4 font-semibold text-slate-800">
-                    {r.user.name}{" "}
-                    <span className="text-secondary font-medium ml-1">
-                      ({r.user.employeeCode})
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={`inline-flex items-center gap-1.5 font-bold ${r.type === "CHECK_IN" ? "text-primary" : "text-slate-500"}`}
-                    >
-                      {r.type === "CHECK_IN" ? (
-                        <svg
-                          className="w-4 h-4"
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 20 20"
-                          fill="currentColor"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      ) : (
-                        <svg
-                          className="w-4 h-4"
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 20 20"
-                          fill="currentColor"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      )}
-                      {r.type === "CHECK_IN" ? "Check In" : "Check Out"}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 border border-slate-200">
-                      {r.method}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <DashboardWorkspace employees={employees} todaysRecords={todaysRecords} />
     </div>
   );
 }
