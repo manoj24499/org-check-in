@@ -85,14 +85,31 @@ export default function KioskPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ mode: "pin", employeeCode, pin, action, photo }),
         });
-        const data = await res.json();
+
+        // A server error (e.g. a 500) may not come back as JSON at all — don't
+        // let that masquerade as a "network" problem, which it isn't.
+        let data: { id?: string; error?: string } = {};
+        try {
+          data = await res.json();
+        } catch {
+          // fall through with an empty `data`
+        }
+
         if (!res.ok) {
-          setResult({ status: "error", message: data.error ?? "Something went wrong." });
+          setResult({
+            status: "error",
+            message: data.error ?? `Something went wrong (error ${res.status}). Please try again.`,
+          });
           setBusy(false);
           setPin("");
           setTimeout(() => setResult({ status: "idle" }), 4000);
-        } else {
+        } else if (data.id) {
           router.push(`/kiosk/status/${data.id}`);
+        } else {
+          setResult({ status: "error", message: "Unexpected response. Please try again." });
+          setBusy(false);
+          setPin("");
+          setTimeout(() => setResult({ status: "idle" }), 4000);
         }
       } catch {
         setResult({ status: "error", message: "Network error. Please try again." });
