@@ -30,45 +30,62 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const session = await requireAdmin();
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const json = await req.json().catch(() => null);
-  const parsed = createSchema.safeParse(json);
-  if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid input." }, { status: 400 });
+    const json = await req.json().catch(() => null);
+    const parsed = createSchema.safeParse(json);
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Invalid input." }, { status: 400 });
+    }
+
+    const existing = await prisma.user.findUnique({ where: { email: parsed.data.email } });
+    if (existing) {
+      return NextResponse.json({ error: "Email already in use." }, { status: 409 });
+    }
+
+    // Find the highest existing employee code number to avoid collisions
+    // when employees have been deleted (count would be lower than max code).
+    const lastEmployee = await prisma.user.findFirst({
+      where: { role: "EMPLOYEE" },
+      orderBy: { employeeCode: "desc" },
+      select: { employeeCode: true },
+    });
+    const currentMax = lastEmployee
+      ? parseInt(lastEmployee.employeeCode.replace("EMP", ""), 10)
+      : 0;
+    const employeeCode = nextEmployeeCode("EMP", currentMax);
+
+    const pin = generatePin();
+    const qrToken = generateQrToken();
+    const pinHash = await hash(pin);
+
+    const user = await prisma.user.create({
+      data: {
+        name: parsed.data.name,
+        email: parsed.data.email,
+        role: "EMPLOYEE",
+        employeeCode,
+        pinHash,
+        qrToken,
+      },
+    });
+
+    // Return the plaintext PIN once, at creation time, so the admin can hand it
+    // to the employee. It is never retrievable again after this response.
+    return NextResponse.json({
+      id: user.id,
+      employeeCode: user.employeeCode,
+      name: user.name,
+      email: user.email,
+      pin,
+    });
+  } catch (err) {
+    console.error("[POST /api/admin/employees] Unhandled error:", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Internal server error." },
+      { status: 500 },
+    );
   }
-
-  const existing = await prisma.user.findUnique({ where: { email: parsed.data.email } });
-  if (existing) {
-    return NextResponse.json({ error: "Email already in use." }, { status: 409 });
-  }
-
-  const employeeCount = await prisma.user.count({ where: { role: "EMPLOYEE" } });
-  const employeeCode = nextEmployeeCode("EMP", employeeCount);
-
-  const pin = generatePin();
-  const qrToken = generateQrToken();
-  const pinHash = await hash(pin);
-
-  const user = await prisma.user.create({
-    data: {
-      name: parsed.data.name,
-      email: parsed.data.email,
-      role: "EMPLOYEE",
-      employeeCode,
-      pinHash,
-      qrToken,
-    },
-  });
-
-  // Return the plaintext PIN once, at creation time, so the admin can hand it
-  // to the employee. It is never retrievable again after this response.
-  return NextResponse.json({
-    id: user.id,
-    employeeCode: user.employeeCode,
-    name: user.name,
-    email: user.email,
-    pin,
-  });
 }

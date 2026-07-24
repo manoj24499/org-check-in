@@ -30,7 +30,7 @@ export default function AddEmployeeForm() {
         email: form.get("email"),
       }),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({ error: "Unexpected server response." }));
     setLoading(false);
 
     if (!res.ok) {

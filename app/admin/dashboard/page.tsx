@@ -15,39 +15,29 @@ export default async function AdminDashboard() {
     orderBy: { name: "asc" },
     include: {
       attendances: {
-        orderBy: { timestamp: "desc" },
-        take: 1,
+        where: { timestamp: { gte: startOfToday() } },
+        orderBy: { timestamp: "asc" },
       },
     },
   });
 
-  const todaysRecordsRaw = await prisma.attendance.findMany({
+  const todaysEventCount = await prisma.attendance.count({
     where: { timestamp: { gte: startOfToday() } },
-    orderBy: { timestamp: "desc" },
-    include: { user: true },
   });
 
-  const currentlyIn = employeesRaw.filter(
-    (e) => e.attendances[0]?.type === "CHECK_IN",
-  ).length;
+  const employees = employeesRaw.map((e) => {
+    const checkIn = e.attendances.find((a) => a.type === "CHECK_IN");
+    const checkOut = e.attendances.find((a) => a.type === "CHECK_OUT");
+    return {
+      id: e.id,
+      employeeCode: e.employeeCode,
+      name: e.name,
+      checkInAt: checkIn ? checkIn.timestamp.toISOString() : null,
+      checkOutAt: checkOut ? checkOut.timestamp.toISOString() : null,
+    };
+  });
 
-  const employees = employeesRaw.map((e) => ({
-    id: e.id,
-    employeeCode: e.employeeCode,
-    name: e.name,
-    lastEvent: e.attendances[0]
-      ? { type: e.attendances[0].type, timestamp: e.attendances[0].timestamp.toISOString() }
-      : null,
-  }));
-
-  const todaysRecords = todaysRecordsRaw.map((r) => ({
-    id: r.id,
-    timestamp: r.timestamp.toISOString(),
-    type: r.type,
-    method: r.method,
-    userName: r.user.name,
-    employeeCode: r.user.employeeCode,
-  }));
+  const currentlyIn = employees.filter((e) => e.checkInAt && !e.checkOutAt).length;
 
   return (
     <div className="flex flex-col gap-8">
@@ -121,12 +111,12 @@ export default async function AdminDashboard() {
             </div>
           </div>
           <p className="text-4xl font-black mt-4 text-slate-800">
-            {todaysRecordsRaw.length}
+            {todaysEventCount}
           </p>
         </div>
       </div>
 
-      <DashboardWorkspace employees={employees} todaysRecords={todaysRecords} />
+      <DashboardWorkspace employees={employees} />
     </div>
   );
 }

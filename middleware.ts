@@ -9,6 +9,11 @@ export default auth((req) => {
   const session = req.auth;
   const role = session?.user?.role;
 
+  // Skip API routes — they handle auth themselves and return JSON errors
+  if (nextUrl.pathname.startsWith("/api/")) {
+    return NextResponse.next();
+  }
+
   const isAdminRoute = nextUrl.pathname.startsWith("/admin");
   const isEmployeeRoute = nextUrl.pathname.startsWith("/my-page");
 

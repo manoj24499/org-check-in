@@ -1,35 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  Users,
-  ListChecks,
-  CalendarDays,
-  Search,
-  X,
-  Loader2,
-  Download,
-  LogIn,
-  LogOut,
-} from "lucide-react";
+import { Users, CalendarDays, Search, X, Loader2, Download } from "lucide-react";
 import AttendanceCalendar from "./AttendanceCalendar";
-
-type LastEvent = { type: "CHECK_IN" | "CHECK_OUT"; timestamp: string } | null;
 
 type EmployeeSummary = {
   id: string;
   employeeCode: string;
   name: string;
-  lastEvent: LastEvent;
-};
-
-type TodayRecord = {
-  id: string;
-  timestamp: string;
-  type: "CHECK_IN" | "CHECK_OUT";
-  method: string;
-  userName: string;
-  employeeCode: string;
+  checkInAt: string | null;
+  checkOutAt: string | null;
 };
 
 type AttendanceRecord = {
@@ -42,7 +22,6 @@ type AttendanceRecord = {
 
 const TABS = [
   { key: "status", label: "Current Status", icon: Users },
-  { key: "activity", label: "Today's Activity", icon: ListChecks },
   { key: "calendar", label: "Calendar", icon: CalendarDays },
 ] as const;
 
@@ -50,10 +29,8 @@ type TabKey = (typeof TABS)[number]["key"];
 
 export default function DashboardWorkspace({
   employees,
-  todaysRecords,
 }: {
   employees: EmployeeSummary[];
-  todaysRecords: TodayRecord[];
 }) {
   const [tab, setTab] = useState<TabKey>("status");
 
@@ -80,17 +57,31 @@ export default function DashboardWorkspace({
 
       <div className="flex-1 min-w-0">
         {tab === "status" && <CurrentStatusPanel employees={employees} />}
-        {tab === "activity" && <TodayActivityPanel records={todaysRecords} />}
         {tab === "calendar" && <CalendarPanel employees={employees} />}
       </div>
     </div>
   );
 }
 
+function formatTime(iso: string | null) {
+  return iso
+    ? new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+    : "—";
+}
+
 function CurrentStatusPanel({ employees }: { employees: EmployeeSummary[] }) {
   return (
     <div className="flex flex-col gap-4">
-      <h2 className="text-xl font-bold text-slate-800">Current Status</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold text-slate-800">Current Status</h2>
+        <a
+          href="/api/admin/attendance/export"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-white border border-slate-200 px-4 py-2 text-sm font-semibold text-primary shadow-sm hover:bg-primary hover:text-white hover:border-primary transition-all duration-200"
+        >
+          <Download className="w-4 h-4" />
+          Export CSV
+        </a>
+      </div>
       <div className="rounded-2xl border border-slate-200/60 bg-white/60 backdrop-blur-md shadow-xl shadow-slate-200/20 overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-slate-50/80 text-secondary text-left border-b border-slate-200/60">
@@ -100,12 +91,13 @@ function CurrentStatusPanel({ employees }: { employees: EmployeeSummary[] }) {
               </th>
               <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">Name</th>
               <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">Status</th>
-              <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">Since</th>
+              <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">In</th>
+              <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">Out</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100/80">
             {employees.map((emp) => {
-              const isIn = emp.lastEvent?.type === "CHECK_IN";
+              const isIn = Boolean(emp.checkInAt) && !emp.checkOutAt;
               return (
                 <tr key={emp.id} className="hover:bg-primary/5 transition-colors duration-200">
                   <td className="px-6 py-4 font-medium text-slate-700">{emp.employeeCode}</td>
@@ -127,101 +119,21 @@ function CurrentStatusPanel({ employees }: { employees: EmployeeSummary[] }) {
                     </span>
                   </td>
                   <td className="px-6 py-4 text-secondary font-medium">
-                    {emp.lastEvent
-                      ? new Date(emp.lastEvent.timestamp).toLocaleString(undefined, {
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })
-                      : "—"}
+                    {formatTime(emp.checkInAt)}
+                  </td>
+                  <td className="px-6 py-4 text-secondary font-medium">
+                    {formatTime(emp.checkOutAt)}
                   </td>
                 </tr>
               );
             })}
             {employees.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-6 py-12 text-center text-secondary">
+                <td colSpan={5} className="px-6 py-12 text-center text-secondary">
                   No active employees found.
                 </td>
               </tr>
             )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function TodayActivityPanel({ records }: { records: TodayRecord[] }) {
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-slate-800">Today&apos;s Activity</h2>
-        <a
-          href="/api/admin/attendance/export"
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-white border border-slate-200 px-4 py-2 text-sm font-semibold text-primary shadow-sm hover:bg-primary hover:text-white hover:border-primary transition-all duration-200"
-        >
-          <Download className="w-4 h-4" />
-          Export CSV
-        </a>
-      </div>
-      <div className="rounded-2xl border border-slate-200/60 bg-white/60 backdrop-blur-md shadow-xl shadow-slate-200/20 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50/80 text-secondary text-left border-b border-slate-200/60">
-            <tr>
-              <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">Time</th>
-              <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">
-                Employee
-              </th>
-              <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">Event</th>
-              <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">Method</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100/80">
-            {records.length === 0 && (
-              <tr>
-                <td colSpan={4} className="px-6 py-12 text-center text-secondary">
-                  <div className="flex flex-col items-center justify-center gap-2">
-                    <CalendarDays className="w-8 h-8 text-slate-300" />
-                    No activity yet today.
-                  </div>
-                </td>
-              </tr>
-            )}
-            {records.map((r) => (
-              <tr key={r.id} className="hover:bg-primary/5 transition-colors duration-200">
-                <td className="px-6 py-4 font-medium text-slate-700">
-                  {new Date(r.timestamp).toLocaleTimeString(undefined, {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </td>
-                <td className="px-6 py-4 font-semibold text-slate-800">
-                  {r.userName}{" "}
-                  <span className="text-secondary font-medium ml-1">({r.employeeCode})</span>
-                </td>
-                <td className="px-6 py-4">
-                  <span
-                    className={`inline-flex items-center gap-1.5 font-bold ${
-                      r.type === "CHECK_IN" ? "text-primary" : "text-slate-500"
-                    }`}
-                  >
-                    {r.type === "CHECK_IN" ? (
-                      <LogIn className="w-4 h-4" />
-                    ) : (
-                      <LogOut className="w-4 h-4" />
-                    )}
-                    {r.type === "CHECK_IN" ? "Check In" : "Check Out"}
-                  </span>
-                </td>
-                <td className="px-6 py-4">
-                  <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 border border-slate-200">
-                    {r.method}
-                  </span>
-                </td>
-              </tr>
-            ))}
           </tbody>
         </table>
       </div>
@@ -331,7 +243,7 @@ function CalendarPanel({ employees }: { employees: EmployeeSummary[] }) {
         )}
       </div>
 
-      <div className="rounded-2xl border border-slate-200/60 bg-white/60 backdrop-blur-md shadow-xl shadow-slate-200/20 p-6">
+      <div className="max-w-sm rounded-2xl border border-slate-200/60 bg-white/60 backdrop-blur-md shadow-xl shadow-slate-200/20 p-4">
         {!selected && (
           <p className="text-sm text-secondary text-center py-8">
             Search for an employee above to view their attendance calendar.
