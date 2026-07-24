@@ -25,17 +25,17 @@ const INSPIRING_MESSAGES = [
 export default function StatusClient({ name, type, timestamp, workHours, checkInTime }: StatusClientProps) {
   const router = useRouter();
   const [timeLeft, setTimeLeft] = useState(30);
-  const [message, setMessage] = useState("");
-  const [windowSize, setWindowSize] = useState({ width: 0, height: 0 });
-
-  useEffect(() => {
-    // Set random message on mount (only for check-in)
-    if (type === "CHECK_IN") {
-      const randomMsg = INSPIRING_MESSAGES[Math.floor(Math.random() * INSPIRING_MESSAGES.length)];
-      setMessage(randomMsg);
-      setWindowSize({ width: window.innerWidth, height: window.innerHeight });
-    }
-  }, [type]);
+  // Lazy initialisers run once on mount — no effect needed, no cascading render.
+  const [message] = useState(() =>
+    type === "CHECK_IN"
+      ? INSPIRING_MESSAGES[Math.floor(Math.random() * INSPIRING_MESSAGES.length)]
+      : "",
+  );
+  const [windowSize] = useState(() =>
+    typeof window !== "undefined" && type === "CHECK_IN"
+      ? { width: window.innerWidth, height: window.innerHeight }
+      : { width: 0, height: 0 },
+  );
 
   useEffect(() => {
     if (timeLeft <= 0) {
@@ -84,7 +84,7 @@ export default function StatusClient({ name, type, timestamp, workHours, checkIn
               </span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-slate-500 font-medium">Today's Work Hours</span>
+              <span className="text-slate-500 font-medium">Today&apos;s Work Hours</span>
               <span className="text-slate-900 font-bold text-xl">
                 {workHours > 0 ? `${workHours.toFixed(2)} hrs` : "N/A"}
               </span>

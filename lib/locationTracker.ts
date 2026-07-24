@@ -4,9 +4,10 @@
 // a component-scoped interval would otherwise die on unmount and silently
 // stop tracking well before the employee's shift ends.
 //
-// `sessionStorage` persists the active session across an accidental hard
-// refresh, and — just as importantly — clears itself when the tab closes,
-// which is exactly the "closing this tab stops tracking" behavior required.
+// `localStorage` persists the active session across hard refreshes AND full
+// browser/laptop restarts. The session is cleared on Check-Out (stopTracking)
+// or when the server returns `tracking: false` (e.g. employee already checked
+// out from another device), so stale entries don't accumulate.
 
 const STORAGE_KEY = "kiosk_tracking_attendance_id";
 const PING_INTERVAL_MS = 60 * 1000; // 1 minute
@@ -78,7 +79,7 @@ function scheduleInterval(attendanceId: string) {
 export function startTracking(attendanceId: string) {
   stopTracking();
   currentAttendanceId = attendanceId;
-  sessionStorage.setItem(STORAGE_KEY, attendanceId);
+  localStorage.setItem(STORAGE_KEY, attendanceId);
   sendPing(attendanceId);
   scheduleInterval(attendanceId);
 }
@@ -90,17 +91,17 @@ export function stopTracking() {
     intervalId = null;
   }
   currentAttendanceId = null;
-  sessionStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(STORAGE_KEY);
 }
 
 export function isTrackingActive(): boolean {
   return intervalId !== null;
 }
 
-/** Call once on app mount to resume a session that survived a page reload. */
+/** Call once on app mount to resume a session that survived a page reload or browser restart. */
 export function resumeTrackingIfActive() {
   if (intervalId) return;
-  const attendanceId = sessionStorage.getItem(STORAGE_KEY);
+  const attendanceId = localStorage.getItem(STORAGE_KEY);
   if (!attendanceId) return;
   currentAttendanceId = attendanceId;
   sendPing(attendanceId);
