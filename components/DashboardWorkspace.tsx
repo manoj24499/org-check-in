@@ -29,9 +29,10 @@ type AttendanceRecord = {
   hasPhoto: boolean;
 };
 
-// A ping is considered "live" if it arrived within 2x the 5-minute tracking
-// interval — generous enough to tolerate one missed/delayed tick.
-const LIVE_THRESHOLD_MS = 10 * 60 * 1000;
+// A ping is considered "live" if it arrived within 3x the 1-minute tracking
+// interval — generous enough to tolerate a couple of missed/delayed ticks
+// without flickering to Offline.
+const LIVE_THRESHOLD_MS = 3 * 60 * 1000;
 
 const TABS = [
   { key: "status", label: "Current Status", icon: Users },

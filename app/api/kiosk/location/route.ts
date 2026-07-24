@@ -5,7 +5,7 @@ import { isRateLimited } from "@/lib/rateLimit";
 import { publishLocationUpdate } from "@/lib/locationEvents";
 
 // The check-in attendance id doubles as an unguessable, session-scoped
-// capability token — no PIN re-entry needed for a background 5-minute ping.
+// capability token — no PIN re-entry needed for a background 1-minute ping.
 const bodySchema = z.object({
   attendanceId: z.string().min(1),
   latitude: z.number().min(-90).max(90),
@@ -16,7 +16,10 @@ const bodySchema = z.object({
 
 export async function POST(req: NextRequest) {
   const ip = req.headers.get("x-forwarded-for") ?? "unknown";
-  if (isRateLimited(`location:${ip}`, 60_000, 30)) {
+  // Generous enough for many employees behind one shared office IP each
+  // pinging ~once a minute (plus the occasional immediate wake-up ping),
+  // while still guarding against genuine abuse.
+  if (isRateLimited(`location:${ip}`, 60_000, 120)) {
     return NextResponse.json({ error: "Too many requests." }, { status: 429 });
   }
 

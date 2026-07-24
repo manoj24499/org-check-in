@@ -9,34 +9,45 @@
 // which is exactly the "closing this tab stops tracking" behavior required.
 
 const STORAGE_KEY = "kiosk_tracking_attendance_id";
-const PING_INTERVAL_MS = 5 * 60 * 1000;
-// Debounces the "immediate ping" triggers below — a laptop waking from sleep
-// or a quick alt-tab both fire visibilitychange, but we don't want to hammer
-// the geolocation API/network if that happens repeatedly in a short span.
-const MIN_IMMEDIATE_PING_GAP_MS = 30 * 1000;
+const PING_INTERVAL_MS = 60 * 1000; // 1 minute
+// Debounces the "immediate ping" triggers below — reopening the window and
+// getting a focus + visibilitychange event in near-quick succession
+// shouldn't fire two pings back to back.
+const MIN_IMMEDIATE_PING_GAP_MS = 15 * 1000;
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
 let currentAttendanceId: string | null = null;
 let lastPingAttemptAt = 0;
 
-function getPosition(): Promise<GeolocationPosition> {
+function getPosition(highAccuracy: boolean): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
       reject(new Error("Geolocation is not supported on this device."));
       return;
     }
     navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: true,
-      timeout: 10_000,
+      enableHighAccuracy: highAccuracy,
+      timeout: highAccuracy ? 8_000 : 5_000,
       maximumAge: 0,
     });
   });
 }
 
+// High-accuracy GPS resolution can be slow or time out on laptops without
+// dedicated GPS hardware (they fall back to Wi-Fi/IP positioning anyway) —
+// retry once at lower accuracy rather than dropping the whole ping.
+async function getCurrentPositionWithFallback(): Promise<GeolocationPosition> {
+  try {
+    return await getPosition(true);
+  } catch {
+    return await getPosition(false);
+  }
+}
+
 async function sendPing(attendanceId: string) {
   lastPingAttemptAt = Date.now();
   try {
-    const position = await getPosition();
+    const position = await getCurrentPositionWithFallback();
     const res = await fetch("/api/kiosk/location", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -99,8 +110,8 @@ export function resumeTrackingIfActive() {
 // A `setInterval` doesn't fire while a laptop is asleep or the tab is deeply
 // throttled in the background — after waking, the "next" tick could be
 // minutes late. Ping immediately as soon as the tab is visible/focused or
-// connectivity returns, then realign the 5-minute schedule to start fresh
-// from that moment (rather than leaving it on its old, now-stale phase).
+// connectivity returns, then realign the schedule to start fresh from that
+// moment (rather than leaving it on its old, now-stale phase).
 function pingNowIfDue() {
   if (!currentAttendanceId) return;
   if (Date.now() - lastPingAttemptAt < MIN_IMMEDIATE_PING_GAP_MS) return;
@@ -115,4 +126,5 @@ if (typeof window !== "undefined") {
   });
   window.addEventListener("focus", pingNowIfDue);
   window.addEventListener("online", pingNowIfDue);
+  window.addEventListener("pageshow", pingNowIfDue);
 }
