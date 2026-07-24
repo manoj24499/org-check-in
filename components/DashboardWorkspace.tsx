@@ -1,8 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Users, CalendarDays, Search, X, Loader2, Download } from "lucide-react";
+import { Users, CalendarDays, Search, X, Loader2, Download, MapPin } from "lucide-react";
 import AttendanceCalendar from "./AttendanceCalendar";
+import LocationMapModal from "./LocationMapModal";
+
+type EmployeeLocation = {
+  latitude: number;
+  longitude: number;
+  accuracy: number;
+  timestamp: string;
+};
 
 type EmployeeSummary = {
   id: string;
@@ -10,6 +18,7 @@ type EmployeeSummary = {
   name: string;
   checkInAt: string | null;
   checkOutAt: string | null;
+  location: EmployeeLocation | null;
 };
 
 type AttendanceRecord = {
@@ -20,6 +29,10 @@ type AttendanceRecord = {
   hasPhoto: boolean;
 };
 
+// A ping is considered "live" if it arrived within 2x the 5-minute tracking
+// interval — generous enough to tolerate one missed/delayed tick.
+const LIVE_THRESHOLD_MS = 10 * 60 * 1000;
+
 const TABS = [
   { key: "status", label: "Current Status", icon: Users },
   { key: "calendar", label: "Calendar", icon: CalendarDays },
@@ -28,11 +41,43 @@ const TABS = [
 type TabKey = (typeof TABS)[number]["key"];
 
 export default function DashboardWorkspace({
-  employees,
+  employees: initialEmployees,
 }: {
   employees: EmployeeSummary[];
 }) {
   const [tab, setTab] = useState<TabKey>("status");
+  const [employees, setEmployees] = useState(initialEmployees);
+
+  // Live-updates the Live Location column via Server-Sent Events — no
+  // polling, no page refresh. Kept at this level (not inside the Current
+  // Status panel) so it keeps receiving updates even while the Calendar tab
+  // is active.
+  useEffect(() => {
+    const source = new EventSource("/api/admin/locations/stream");
+    source.onmessage = (event) => {
+      try {
+        const update: { userId: string } & EmployeeLocation = JSON.parse(event.data);
+        setEmployees((prev) =>
+          prev.map((emp) =>
+            emp.id === update.userId
+              ? {
+                  ...emp,
+                  location: {
+                    latitude: update.latitude,
+                    longitude: update.longitude,
+                    accuracy: update.accuracy,
+                    timestamp: update.timestamp,
+                  },
+                }
+              : emp,
+          ),
+        );
+      } catch {
+        // ignore malformed events
+      }
+    };
+    return () => source.close();
+  }, []);
 
   return (
     <div className="flex flex-col md:flex-row gap-6">
@@ -70,6 +115,16 @@ function formatTime(iso: string | null) {
 }
 
 function CurrentStatusPanel({ employees }: { employees: EmployeeSummary[] }) {
+  const [viewing, setViewing] = useState<EmployeeSummary | null>(null);
+
+  // Re-evaluate "Live vs Offline" freshness periodically even if no new ping
+  // arrives (a stale ping should eventually flip to Offline on its own).
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
@@ -91,6 +146,9 @@ function CurrentStatusPanel({ employees }: { employees: EmployeeSummary[] }) {
               </th>
               <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">Name</th>
               <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">Status</th>
+              <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">
+                Live Location
+              </th>
               <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">In</th>
               <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">Out</th>
             </tr>
@@ -98,6 +156,8 @@ function CurrentStatusPanel({ employees }: { employees: EmployeeSummary[] }) {
           <tbody className="divide-y divide-slate-100/80">
             {employees.map((emp) => {
               const isIn = Boolean(emp.checkInAt) && !emp.checkOutAt;
+              const isLive =
+                isIn && emp.location !== null && now - new Date(emp.location.timestamp).getTime() <= LIVE_THRESHOLD_MS;
               return (
                 <tr key={emp.id} className="hover:bg-primary/5 transition-colors duration-200">
                   <td className="px-6 py-4 font-medium text-slate-700">{emp.employeeCode}</td>
@@ -118,6 +178,26 @@ function CurrentStatusPanel({ employees }: { employees: EmployeeSummary[] }) {
                       {isIn ? "Checked In" : "Checked Out"}
                     </span>
                   </td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-1 text-xs font-bold">
+                        {isLive ? "🟢 Live" : "🔴 Offline"}
+                      </span>
+                      <span className="text-secondary text-xs">
+                        {emp.location
+                          ? `Updated ${formatTime(emp.location.timestamp)}`
+                          : "No location yet"}
+                      </span>
+                      <button
+                        onClick={() => setViewing(emp)}
+                        disabled={!emp.location}
+                        className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-primary hover:bg-primary hover:text-white hover:border-primary transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-primary"
+                      >
+                        <MapPin className="w-3 h-3" />
+                        View
+                      </button>
+                    </div>
+                  </td>
                   <td className="px-6 py-4 text-secondary font-medium">
                     {formatTime(emp.checkInAt)}
                   </td>
@@ -129,7 +209,7 @@ function CurrentStatusPanel({ employees }: { employees: EmployeeSummary[] }) {
             })}
             {employees.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-6 py-12 text-center text-secondary">
+                <td colSpan={6} className="px-6 py-12 text-center text-secondary">
                   No active employees found.
                 </td>
               </tr>
@@ -137,6 +217,17 @@ function CurrentStatusPanel({ employees }: { employees: EmployeeSummary[] }) {
           </tbody>
         </table>
       </div>
+
+      {viewing && viewing.location && (
+        <LocationMapModal
+          employeeName={viewing.name}
+          latitude={viewing.location.latitude}
+          longitude={viewing.location.longitude}
+          accuracy={viewing.location.accuracy}
+          timestamp={viewing.location.timestamp}
+          onClose={() => setViewing(null)}
+        />
+      )}
     </div>
   );
 }

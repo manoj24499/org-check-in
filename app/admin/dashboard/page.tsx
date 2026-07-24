@@ -25,6 +25,25 @@ export default async function AdminDashboard() {
     where: { timestamp: { gte: startOfToday() } },
   });
 
+  // Most recent location ping per employee (one query via `distinct`, rather
+  // than a per-employee lookup).
+  const latestPings = await prisma.locationPing.findMany({
+    where: { userId: { in: employeesRaw.map((e) => e.id) } },
+    orderBy: { timestamp: "desc" },
+    distinct: ["userId"],
+  });
+  const locationByUser = new Map(
+    latestPings.map((p) => [
+      p.userId,
+      {
+        latitude: p.latitude,
+        longitude: p.longitude,
+        accuracy: p.accuracy,
+        timestamp: p.timestamp.toISOString(),
+      },
+    ]),
+  );
+
   const employees = employeesRaw.map((e) => {
     const checkIn = e.attendances.find((a) => a.type === "CHECK_IN");
     const checkOut = e.attendances.find((a) => a.type === "CHECK_OUT");
@@ -34,6 +53,7 @@ export default async function AdminDashboard() {
       name: e.name,
       checkInAt: checkIn ? checkIn.timestamp.toISOString() : null,
       checkOutAt: checkOut ? checkOut.timestamp.toISOString() : null,
+      location: locationByUser.get(e.id) ?? null,
     };
   });
 

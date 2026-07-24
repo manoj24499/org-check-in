@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, LogIn, LogOut, Info, CheckCircle2, Loader2 } from "lucide-react";
+import { ArrowLeft, LogIn, LogOut, Info, CheckCircle2, Loader2, MapPin } from "lucide-react";
 import CameraCapture, { CameraCaptureHandle } from "@/components/CameraCapture";
+import { startTracking, stopTracking } from "@/lib/locationTracker";
 
 type Result = { status: "idle" } | { status: "error"; message: string };
 
@@ -25,6 +26,7 @@ export default function KioskPage() {
   const [empStatus, setEmpStatus] = useState<EmployeeStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
+  const [trackingPopupId, setTrackingPopupId] = useState<string | null>(null);
   const cameraRef = useRef<CameraCaptureHandle>(null);
   const router = useRouter();
 
@@ -104,7 +106,17 @@ export default function KioskPage() {
           setPin("");
           setTimeout(() => setResult({ status: "idle" }), 4000);
         } else if (data.id) {
-          router.push(`/kiosk/status/${data.id}`);
+          if (action === "CHECK_IN") {
+            // Start the 5-minute location ping loop, then let the employee
+            // acknowledge the tracking notice before moving on.
+            startTracking(data.id);
+            setBusy(false);
+            setPin("");
+            setTrackingPopupId(data.id);
+          } else {
+            stopTracking();
+            router.push(`/kiosk/status/${data.id}`);
+          }
         } else {
           setResult({ status: "error", message: "Unexpected response. Please try again." });
           setBusy(false);
@@ -128,7 +140,7 @@ export default function KioskPage() {
   const canCheckOut = Boolean(empStatus?.exists && empStatus.checkedIn && !empStatus.checkedOut);
   const formReady = employeeCode.trim().length > 0 && pin.length >= 4;
 
-  function handleAction(action: "CHECK_IN" | "CHECK_OUT") {
+  async function handleAction(action: "CHECK_IN" | "CHECK_OUT") {
     if (busy || !formReady) return;
     if (action === "CHECK_OUT") {
       if (!canCheckOut) return;
@@ -145,6 +157,39 @@ export default function KioskPage() {
       setTimeout(() => setResult({ status: "idle" }), 4000);
       return;
     }
+
+    // Location permission is requested (and required) before the check-in
+    // completes — live tracking only ever starts after this succeeds.
+    setBusy(true);
+    try {
+      await new Promise<GeolocationPosition>((resolve, reject) => {
+        if (!navigator.geolocation) {
+          reject(new Error("unsupported"));
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10_000,
+          maximumAge: 0,
+        });
+      });
+    } catch (err) {
+      setBusy(false);
+      const denied =
+        typeof err === "object" &&
+        err !== null &&
+        "code" in err &&
+        (err as GeolocationPositionError).code === 1;
+      setResult({
+        status: "error",
+        message: denied
+          ? "Location permission is required to check in."
+          : "Unable to get your location. Please enable location services and try again.",
+      });
+      setTimeout(() => setResult({ status: "idle" }), 4000);
+      return;
+    }
+
     submit(action, photo);
   }
 
@@ -303,6 +348,31 @@ export default function KioskPage() {
           </div>
         )}
       </div>
+
+      {trackingPopupId && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 flex flex-col items-center text-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
+              <MapPin className="w-7 h-7" />
+            </div>
+            <p className="text-slate-700 font-medium">
+              Live location tracking has started. Please keep this tab open and keep location
+              services enabled during your working hours. Closing this tab will stop live
+              location tracking.
+            </p>
+            <button
+              onClick={() => {
+                const id = trackingPopupId;
+                setTrackingPopupId(null);
+                router.push(`/kiosk/status/${id}`);
+              }}
+              className="w-full rounded-xl bg-primary text-white py-3 font-semibold hover:bg-primary-dark transition shadow-md shadow-primary/20"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

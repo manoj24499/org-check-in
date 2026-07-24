@@ -39,7 +39,8 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  attendances Attendance[]
+  attendances   Attendance[]
+  locationPings LocationPing[]
 
   @@index([role])
 }
@@ -59,6 +60,22 @@ model Attendance {
   // is unset in lockstep so no page ever links to an expired image.
   photo    Bytes?
   hasPhoto Boolean @default(false)
+
+  @@index([userId, timestamp])
+}
+
+// One row per live-location ping sent from an employee's kiosk tab while
+// they're checked in (see /api/kiosk/location). Tracking is scoped to a
+// single check-in session — the scan route's returned attendance id doubles
+// as an unguessable capability token for that session's pings.
+model LocationPing {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  latitude  Float
+  longitude Float
+  accuracy  Float
+  timestamp DateTime @default(now())
 
   @@index([userId, timestamp])
 }
