@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Users, CalendarDays, Search, X, Loader2, Download, MapPin } from "lucide-react";
 import AttendanceCalendar from "./AttendanceCalendar";
 import LocationMapModal from "./LocationMapModal";
@@ -49,53 +49,55 @@ export default function DashboardWorkspace({
   const [tab, setTab] = useState<TabKey>("status");
   const [employees, setEmployees] = useState(initialEmployees);
 
-  // Live-updates the Live Location column via Server-Sent Events — no
-  // polling, no page refresh. Kept at this level (not inside the Current
-  // Status panel) so it keeps receiving updates even while the Calendar tab
-  // is active.
+  const applyUpdate = useCallback((update: { userId: string } & EmployeeLocation) => {
+    setEmployees((prev) =>
+      prev.map((emp) =>
+        emp.id === update.userId
+          ? {
+              ...emp,
+              location: {
+                latitude: update.latitude,
+                longitude: update.longitude,
+                accuracy: update.accuracy,
+                timestamp: update.timestamp,
+              },
+            }
+          : emp,
+      ),
+    );
+  }, []);
+
+  const fetchLatest = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/locations/latest");
+      if (!res.ok) return;
+      const data: ({ userId: string } & EmployeeLocation)[] = await res.json();
+      if (!Array.isArray(data)) return;
+      data.forEach(applyUpdate);
+    } catch {
+      // best-effort — the next poll tick or SSE push will retry
+    }
+  }, [applyUpdate]);
+
+  // Guaranteed baseline refresh every 5 seconds — this is what actually
+  // updates the Live Location column without a manual page refresh,
+  // independent of whether the SSE connection below is behaving.
+  useEffect(() => {
+    const id = setInterval(fetchLatest, 5_000);
+    return () => clearInterval(id);
+  }, [fetchLatest]);
+
+  // Server-Sent Events on top of the poll above, for near-instant updates
+  // in between ticks when the connection is healthy.
   useEffect(() => {
     let source: EventSource | null = null;
-    let cancelled = false;
-
-    function applyUpdate(update: { userId: string } & EmployeeLocation) {
-      setEmployees((prev) =>
-        prev.map((emp) =>
-          emp.id === update.userId
-            ? {
-                ...emp,
-                location: {
-                  latitude: update.latitude,
-                  longitude: update.longitude,
-                  accuracy: update.accuracy,
-                  timestamp: update.timestamp,
-                },
-              }
-            : emp,
-        ),
-      );
-    }
-
-    // SSE has no backlog — any pings published while this connection was
-    // down are gone from the stream's perspective. Resync the full snapshot
-    // every time a connection opens (initial + every reconnect) to close
-    // that gap.
-    async function resync() {
-      try {
-        const res = await fetch("/api/admin/locations/latest");
-        if (!res.ok || cancelled) return;
-        const data: ({ userId: string } & EmployeeLocation)[] = await res.json();
-        if (cancelled || !Array.isArray(data)) return;
-        data.forEach(applyUpdate);
-      } catch {
-        // best-effort — the next SSE push or visibility/online event will retry
-      }
-    }
 
     function connect() {
       source = new EventSource("/api/admin/locations/stream");
-      // Fires on the initial connection AND every automatic reconnect.
+      // Fires on the initial connection AND every automatic reconnect — a
+      // good moment to resync in case any pings were missed while down.
       source.onopen = () => {
-        resync();
+        fetchLatest();
       };
       source.onmessage = (event) => {
         try {
@@ -123,13 +125,12 @@ export default function DashboardWorkspace({
     window.addEventListener("focus", handleWake);
 
     return () => {
-      cancelled = true;
       document.removeEventListener("visibilitychange", handleWake);
       window.removeEventListener("online", handleWake);
       window.removeEventListener("focus", handleWake);
       source?.close();
     };
-  }, []);
+  }, [fetchLatest, applyUpdate]);
 
   return (
     <div className="flex flex-col md:flex-row gap-6">
