@@ -10,8 +10,14 @@
 
 const STORAGE_KEY = "kiosk_tracking_attendance_id";
 const PING_INTERVAL_MS = 5 * 60 * 1000;
+// Debounces the "immediate ping" triggers below — a laptop waking from sleep
+// or a quick alt-tab both fire visibilitychange, but we don't want to hammer
+// the geolocation API/network if that happens repeatedly in a short span.
+const MIN_IMMEDIATE_PING_GAP_MS = 30 * 1000;
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
+let currentAttendanceId: string | null = null;
+let lastPingAttemptAt = 0;
 
 function getPosition(): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
@@ -28,6 +34,7 @@ function getPosition(): Promise<GeolocationPosition> {
 }
 
 async function sendPing(attendanceId: string) {
+  lastPingAttemptAt = Date.now();
   try {
     const position = await getPosition();
     const res = await fetch("/api/kiosk/location", {
@@ -51,12 +58,18 @@ async function sendPing(attendanceId: string) {
   }
 }
 
+function scheduleInterval(attendanceId: string) {
+  if (intervalId) clearInterval(intervalId);
+  intervalId = setInterval(() => sendPing(attendanceId), PING_INTERVAL_MS);
+}
+
 /** Call right after a successful Check-In. */
 export function startTracking(attendanceId: string) {
   stopTracking();
+  currentAttendanceId = attendanceId;
   sessionStorage.setItem(STORAGE_KEY, attendanceId);
   sendPing(attendanceId);
-  intervalId = setInterval(() => sendPing(attendanceId), PING_INTERVAL_MS);
+  scheduleInterval(attendanceId);
 }
 
 /** Call right after a successful Check-Out from this same tab. */
@@ -65,6 +78,7 @@ export function stopTracking() {
     clearInterval(intervalId);
     intervalId = null;
   }
+  currentAttendanceId = null;
   sessionStorage.removeItem(STORAGE_KEY);
 }
 
@@ -77,6 +91,28 @@ export function resumeTrackingIfActive() {
   if (intervalId) return;
   const attendanceId = sessionStorage.getItem(STORAGE_KEY);
   if (!attendanceId) return;
+  currentAttendanceId = attendanceId;
   sendPing(attendanceId);
-  intervalId = setInterval(() => sendPing(attendanceId), PING_INTERVAL_MS);
+  scheduleInterval(attendanceId);
+}
+
+// A `setInterval` doesn't fire while a laptop is asleep or the tab is deeply
+// throttled in the background — after waking, the "next" tick could be
+// minutes late. Ping immediately as soon as the tab is visible/focused or
+// connectivity returns, then realign the 5-minute schedule to start fresh
+// from that moment (rather than leaving it on its old, now-stale phase).
+function pingNowIfDue() {
+  if (!currentAttendanceId) return;
+  if (Date.now() - lastPingAttemptAt < MIN_IMMEDIATE_PING_GAP_MS) return;
+  const attendanceId = currentAttendanceId;
+  sendPing(attendanceId);
+  scheduleInterval(attendanceId);
+}
+
+if (typeof window !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") pingNowIfDue();
+  });
+  window.addEventListener("focus", pingNowIfDue);
+  window.addEventListener("online", pingNowIfDue);
 }

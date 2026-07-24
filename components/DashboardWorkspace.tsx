@@ -53,30 +53,81 @@ export default function DashboardWorkspace({
   // Status panel) so it keeps receiving updates even while the Calendar tab
   // is active.
   useEffect(() => {
-    const source = new EventSource("/api/admin/locations/stream");
-    source.onmessage = (event) => {
+    let source: EventSource | null = null;
+    let cancelled = false;
+
+    function applyUpdate(update: { userId: string } & EmployeeLocation) {
+      setEmployees((prev) =>
+        prev.map((emp) =>
+          emp.id === update.userId
+            ? {
+                ...emp,
+                location: {
+                  latitude: update.latitude,
+                  longitude: update.longitude,
+                  accuracy: update.accuracy,
+                  timestamp: update.timestamp,
+                },
+              }
+            : emp,
+        ),
+      );
+    }
+
+    // SSE has no backlog — any pings published while this connection was
+    // down are gone from the stream's perspective. Resync the full snapshot
+    // every time a connection opens (initial + every reconnect) to close
+    // that gap.
+    async function resync() {
       try {
-        const update: { userId: string } & EmployeeLocation = JSON.parse(event.data);
-        setEmployees((prev) =>
-          prev.map((emp) =>
-            emp.id === update.userId
-              ? {
-                  ...emp,
-                  location: {
-                    latitude: update.latitude,
-                    longitude: update.longitude,
-                    accuracy: update.accuracy,
-                    timestamp: update.timestamp,
-                  },
-                }
-              : emp,
-          ),
-        );
+        const res = await fetch("/api/admin/locations/latest");
+        if (!res.ok || cancelled) return;
+        const data: ({ userId: string } & EmployeeLocation)[] = await res.json();
+        if (cancelled || !Array.isArray(data)) return;
+        data.forEach(applyUpdate);
       } catch {
-        // ignore malformed events
+        // best-effort — the next SSE push or visibility/online event will retry
       }
+    }
+
+    function connect() {
+      source = new EventSource("/api/admin/locations/stream");
+      // Fires on the initial connection AND every automatic reconnect.
+      source.onopen = () => {
+        resync();
+      };
+      source.onmessage = (event) => {
+        try {
+          applyUpdate(JSON.parse(event.data));
+        } catch {
+          // ignore malformed events
+        }
+      };
+      // EventSource retries automatically on drop/error — nothing else to do here.
+    }
+
+    connect();
+
+    function handleWake() {
+      if (document.visibilityState === "hidden") return;
+      // A laptop sleeping or a tab being deeply backgrounded can leave the
+      // connection silently stale without ever firing a proper error/close —
+      // force a fresh one rather than trusting readyState alone.
+      source?.close();
+      connect();
+    }
+
+    document.addEventListener("visibilitychange", handleWake);
+    window.addEventListener("online", handleWake);
+    window.addEventListener("focus", handleWake);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", handleWake);
+      window.removeEventListener("online", handleWake);
+      window.removeEventListener("focus", handleWake);
+      source?.close();
     };
-    return () => source.close();
   }, []);
 
   return (
