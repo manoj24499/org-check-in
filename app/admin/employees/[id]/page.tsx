@@ -81,7 +81,7 @@ export default async function EmployeeDetailPage({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+      <div className="flex flex-col gap-8">
         <div className="rounded-2xl border border-slate-200/60 bg-white/60 backdrop-blur-md p-6 shadow-xl shadow-slate-200/20">
           <h2 className="text-lg font-bold text-slate-800 mb-4">Credentials</h2>
           <EmployeeActions employeeId={employee.id} active={employee.active} />
@@ -89,7 +89,7 @@ export default async function EmployeeDetailPage({
 
         <div className="rounded-2xl border border-slate-200/60 bg-white/60 backdrop-blur-md shadow-xl shadow-slate-200/20 p-6">
           <h2 className="text-lg font-bold text-slate-800 mb-4">Attendance Calendar</h2>
-          <AttendanceCalendar attendances={attendances} />
+          <AttendanceCalendar attendances={attendances} layout="split" />
         </div>
       </div>
     </div>

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { KeyRound, QrCode, Power, Copy, Check, Download } from "lucide-react";
+import { KeyRound, QrCode, Power, Copy, Check } from "lucide-react";
 
 export default function EmployeeActions({
   employeeId,
@@ -14,7 +14,6 @@ export default function EmployeeActions({
   const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
   const [newPin, setNewPin] = useState<string | null>(null);
-  const [qrVersion, setQrVersion] = useState(0);
   const [copied, setCopied] = useState(false);
 
   async function call(action: string, extra?: Record<string, unknown>) {
@@ -30,9 +29,6 @@ export default function EmployeeActions({
     if (action === "regenerate-pin" && data.pin) {
       setNewPin(data.pin);
       setCopied(false);
-    }
-    if (action === "regenerate-qr") {
-      setQrVersion((v) => v + 1);
     }
     router.refresh();
   }
@@ -90,25 +86,6 @@ export default function EmployeeActions({
           </button>
         </div>
       )}
-
-      <div>
-        <p className="text-sm font-semibold text-slate-700 mb-2">QR Badge</p>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          key={qrVersion}
-          src={`/api/admin/employees/${employeeId}/qrcode?v=${qrVersion}`}
-          alt="Employee QR code"
-          className="w-48 h-48 rounded-xl border border-slate-200 bg-white p-2"
-        />
-        <a
-          href={`/api/admin/employees/${employeeId}/qrcode?v=${qrVersion}`}
-          download={`${employeeId}-qrcode.png`}
-          className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition w-fit"
-        >
-          <Download className="w-3.5 h-3.5" />
-          Download QR
-        </a>
-      </div>
     </div>
   );
 }
