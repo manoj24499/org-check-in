@@ -70,7 +70,7 @@ export default async function AdminDashboard() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
         <div className="rounded-2xl border border-slate-200/60 bg-white/60 backdrop-blur-md p-6 shadow-xl shadow-slate-200/20 hover:-translate-y-1 hover:shadow-2xl transition-all duration-300">
           <div className="flex items-center justify-between">
             <p className="text-sm font-bold text-secondary uppercase tracking-wider">

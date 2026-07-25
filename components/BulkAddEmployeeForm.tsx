@@ -81,7 +81,7 @@ export default function BulkAddEmployeeForm() {
                 <p className="text-sm text-slate-500">
                   Please copy or screenshot the PINs below. They will not be shown again.
                 </p>
-                <div className="rounded-xl border border-slate-200 bg-slate-50/50 max-h-96 overflow-y-auto">
+                <div className="rounded-xl border border-slate-200 bg-slate-50/50 max-h-96 overflow-auto">
                   <table className="w-full text-sm text-left">
                     <thead className="bg-slate-100/50 sticky top-0">
                       <tr>

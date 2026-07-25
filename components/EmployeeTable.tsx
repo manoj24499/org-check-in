@@ -39,6 +39,7 @@ export default function EmployeeTable({ employees }: { employees: Employee[] }) 
       </div>
 
       <div className="rounded-2xl border border-slate-200/60 bg-white/60 backdrop-blur-md shadow-xl shadow-slate-200/20 overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-slate-50/80 text-secondary text-left border-b border-slate-200/60">
             <tr>
@@ -87,6 +88,7 @@ export default function EmployeeTable({ employees }: { employees: Employee[] }) 
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

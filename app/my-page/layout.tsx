@@ -16,7 +16,7 @@ export default async function MyPageLayout({
       <TabSecurity />
       <div className="min-h-screen bg-slate-50">
         <header className="border-b border-slate-200/60 bg-white/70 backdrop-blur-md sticky top-0 z-10">
-          <div className="max-w-3xl mx-auto flex items-center justify-between px-6 py-4">
+          <div className="w-[90%] mx-auto flex items-center justify-between px-6 py-4">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-primary text-white flex items-center justify-center shrink-0">
                 <Building2 className="w-4 h-4" />
@@ -31,7 +31,7 @@ export default async function MyPageLayout({
             </div>
           </div>
         </header>
-        <div className="max-w-3xl mx-auto px-6 py-8">{children}</div>
+        <div className="w-[90%] mx-auto px-6 py-8">{children}</div>
       </div>
     </Providers>
   );

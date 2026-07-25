@@ -61,9 +61,11 @@ export default async function EmployeeDetailPage({
           <div className="w-14 h-14 rounded-2xl bg-primary text-white flex items-center justify-center text-lg font-bold shadow-lg shadow-primary/20 shrink-0">
             {initials(employee.name)}
           </div>
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-slate-800 tracking-tight">{employee.name}</h1>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-2xl font-bold text-slate-800 tracking-tight break-words">
+                {employee.name}
+              </h1>
               <span
                 className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold tracking-wide ${
                   employee.active
@@ -74,7 +76,7 @@ export default async function EmployeeDetailPage({
                 {employee.active ? "Active" : "Deactivated"}
               </span>
             </div>
-            <p className="text-secondary mt-1 font-medium">
+            <p className="text-secondary mt-1 font-medium break-words">
               {employee.employeeCode} &middot; {employee.email}
             </p>
           </div>

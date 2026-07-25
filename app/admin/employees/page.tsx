@@ -14,12 +14,12 @@ export default async function EmployeesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Employees</h1>
           <p className="text-secondary mt-1 font-medium">{employees.length} total employees</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <BulkAddEmployeeForm />
           <AddEmployeeForm />
         </div>

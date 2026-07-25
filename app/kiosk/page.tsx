@@ -3,7 +3,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, LogIn, LogOut, Info, CheckCircle2, Loader2, MapPin } from "lucide-react";
+import {
+  ArrowLeft,
+  LogIn,
+  LogOut,
+  Info,
+  CheckCircle2,
+  Loader2,
+  MapPin,
+  CalendarDays,
+  Sparkles,
+  Camera,
+  Lock,
+} from "lucide-react";
 import CameraCapture, { CameraCaptureHandle } from "@/components/CameraCapture";
 import { startTracking, stopTracking } from "@/lib/locationTracker";
 
@@ -16,6 +28,24 @@ type EmployeeStatus = {
   checkedOut: boolean;
   checkInAt?: string | null;
 };
+
+const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
+
+// Purely decorative — the current month with today highlighted. No
+// per-employee data here: the kiosk is a shared, unauthenticated device, so
+// nothing tied to a specific employee is shown before their PIN is verified.
+function buildMonthCells(date: Date) {
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const startWeekday = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells: (number | null)[] = [
+    ...Array(startWeekday).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ];
+  while (cells.length % 7 !== 0) cells.push(null);
+  return cells;
+}
 
 export default function KioskPage() {
   const [employeeCode, setEmployeeCode] = useState("");
@@ -222,8 +252,11 @@ export default function KioskPage() {
         : null;
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center p-6 gap-6 bg-slate-50 relative overflow-hidden">
-      <div className="absolute top-6 left-6">
+    <main className="min-h-screen flex flex-col items-center p-6 bg-gradient-to-b from-slate-50 via-white to-slate-50 relative overflow-hidden">
+      <div aria-hidden className="absolute -top-40 -right-40 w-96 h-96 rounded-full bg-primary/10 blur-3xl" />
+      <div aria-hidden className="absolute -bottom-40 -left-40 w-96 h-96 rounded-full bg-primary/10 blur-3xl" />
+
+      <div className="absolute top-6 left-6 z-10">
         <Link
           href="/"
           className="flex items-center gap-2 text-slate-500 hover:text-slate-900 transition-colors font-medium px-4 py-2 rounded-lg hover:bg-slate-200 bg-slate-100/50"
@@ -256,97 +289,160 @@ export default function KioskPage() {
         )}
       </div>
 
-      <div className="text-center mb-4">
-        <h1 className="text-3xl font-bold text-slate-900">Employee Check-In System</h1>
-        {currentTime && (
-          <p className="text-xl text-slate-500 font-medium mt-2 tabular-nums">
-            {currentTime.toLocaleDateString([], {
-              weekday: "long",
-              month: "short",
-              day: "numeric",
-            })}{" "}
-            &middot;{" "}
-            {currentTime.toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-            })}
-          </p>
-        )}
-      </div>
+      <div className="relative w-full max-w-5xl flex flex-col items-center gap-8 pt-14">
+        <h1 className="text-3xl font-bold text-slate-900 text-center">
+          Employee Check-In System
+        </h1>
 
-      <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-        <div className="flex flex-col gap-4">
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-sm font-medium">Presence photo</label>
-              {!cameraReady && (
-                <span className="text-xs text-slate-400">Preparing camera…</span>
+        <div className="w-full grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-8 items-start">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-full max-w-sm bg-white/90 backdrop-blur-xl rounded-3xl shadow-xl shadow-slate-200/50 border border-white/60 p-6">
+              <div className="flex flex-col gap-4">
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-sm font-medium">Presence photo</label>
+                    {!cameraReady && (
+                      <span className="text-xs text-slate-400">Preparing camera…</span>
+                    )}
+                  </div>
+                  <CameraCapture ref={cameraRef} onReadyChange={setCameraReady} />
+                  <p className="text-xs text-slate-400 mt-1.5">
+                    Required to check in, so we know who&apos;s actually present.
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Employee ID</label>
+                  <div className="relative mt-1">
+                    <input
+                      value={employeeCode}
+                      onChange={(e) => setEmployeeCode(e.target.value)}
+                      placeholder="EMP001"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-3 text-center text-lg tracking-wide"
+                      autoFocus
+                    />
+                    {statusLoading && (
+                      <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 animate-spin" />
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">PIN</label>
+                  <input
+                    value={pin}
+                    onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+                    onKeyDown={handlePinKeyDown}
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="••••••"
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 text-center text-2xl tracking-[0.5em]"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleAction("CHECK_IN")}
+                    disabled={busy || !formReady || !canCheckIn}
+                    className="flex items-center justify-center gap-2 rounded-lg bg-primary text-white py-3 font-medium hover:bg-primary-dark transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary"
+                  >
+                    <LogIn className="w-4 h-4" />
+                    {busy ? "Processing…" : "Check In"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleAction("CHECK_OUT")}
+                    disabled={busy || !formReady || !canCheckOut}
+                    className="flex items-center justify-center gap-2 rounded-lg bg-slate-800 text-white py-3 font-medium hover:bg-slate-700 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-slate-800"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    {busy ? "Processing…" : "Check Out"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="h-20 flex items-center">
+              {result.status === "error" && (
+                <div className="rounded-xl px-6 py-4 text-center font-medium bg-red-50 text-red-700 border border-red-200">
+                  {result.message}
+                </div>
               )}
             </div>
-            <CameraCapture ref={cameraRef} onReadyChange={setCameraReady} />
-            <p className="text-xs text-slate-400 mt-1.5">
-              Required to check in, so we know who&apos;s actually present.
-            </p>
-          </div>
-          <div>
-            <label className="text-sm font-medium">Employee ID</label>
-            <div className="relative mt-1">
-              <input
-                value={employeeCode}
-                onChange={(e) => setEmployeeCode(e.target.value)}
-                placeholder="EMP001"
-                className="w-full rounded-lg border border-slate-300 px-3 py-3 text-center text-lg tracking-wide"
-                autoFocus
-              />
-              {statusLoading && (
-                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 animate-spin" />
-              )}
-            </div>
-          </div>
-          <div>
-            <label className="text-sm font-medium">PIN</label>
-            <input
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
-              onKeyDown={handlePinKeyDown}
-              type="password"
-              inputMode="numeric"
-              maxLength={6}
-              placeholder="••••••"
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 text-center text-2xl tracking-[0.5em]"
-            />
           </div>
 
-          <div className="grid grid-cols-2 gap-3 mt-1">
-            <button
-              type="button"
-              onClick={() => handleAction("CHECK_IN")}
-              disabled={busy || !formReady || !canCheckIn}
-              className="flex items-center justify-center gap-2 rounded-lg bg-primary text-white py-3 font-medium hover:bg-primary-dark transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary"
-            >
-              <LogIn className="w-4 h-4" />
-              {busy ? "Processing…" : "Check In"}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleAction("CHECK_OUT")}
-              disabled={busy || !formReady || !canCheckOut}
-              className="flex items-center justify-center gap-2 rounded-lg bg-slate-800 text-white py-3 font-medium hover:bg-slate-700 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-slate-800"
-            >
-              <LogOut className="w-4 h-4" />
-              {busy ? "Processing…" : "Check Out"}
-            </button>
-          </div>
+          <aside className="flex flex-col gap-5">
+            <div className="rounded-2xl bg-white/80 backdrop-blur-xl border border-white/60 shadow-xl shadow-slate-200/40 p-6 text-center">
+              {currentTime ? (
+                <>
+                  <p className="text-4xl font-black text-slate-900 tabular-nums tracking-tight">
+                    {currentTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </p>
+                  <p className="text-sm text-secondary font-medium mt-1">
+                    {currentTime.toLocaleDateString([], {
+                      weekday: "long",
+                      month: "long",
+                      day: "numeric",
+                    })}
+                  </p>
+                </>
+              ) : (
+                <div className="h-[52px]" />
+              )}
+            </div>
+
+            {currentTime && (
+              <div className="rounded-2xl bg-white/80 backdrop-blur-xl border border-white/60 shadow-xl shadow-slate-200/40 p-5">
+                <p className="font-bold text-slate-800 mb-3 flex items-center gap-2">
+                  <CalendarDays className="w-4 h-4 text-primary" />
+                  {currentTime.toLocaleDateString([], { month: "long", year: "numeric" })}
+                </p>
+                <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-secondary uppercase mb-1.5">
+                  {WEEKDAY_LABELS.map((d, i) => (
+                    <div key={i}>{d}</div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-7 gap-1">
+                  {buildMonthCells(currentTime).map((day, i) => (
+                    <div
+                      key={i}
+                      className={`aspect-square rounded-md flex items-center justify-center text-xs font-medium ${
+                        day === currentTime.getDate()
+                          ? "bg-primary text-white font-bold"
+                          : day
+                            ? "text-slate-600"
+                            : ""
+                      }`}
+                    >
+                      {day ?? ""}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-2xl bg-white/80 backdrop-blur-xl border border-white/60 shadow-xl shadow-slate-200/40 p-5">
+              <p className="font-bold text-slate-800 mb-3 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-primary" />
+                Quick Tips
+              </p>
+              <ul className="flex flex-col gap-2.5 text-sm text-slate-600">
+                <li className="flex items-start gap-2">
+                  <Camera className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                  Look at the camera so we can confirm you&apos;re present.
+                </li>
+                <li className="flex items-start gap-2">
+                  <MapPin className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                  Allow location access when prompted to complete check-in.
+                </li>
+                <li className="flex items-start gap-2">
+                  <Lock className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                  Keep your PIN private — never share it with anyone.
+                </li>
+              </ul>
+            </div>
+          </aside>
         </div>
-      </div>
-
-      <div className="h-20 flex items-center">
-        {result.status === "error" && (
-          <div className="rounded-xl px-6 py-4 text-center font-medium bg-red-50 text-red-700 border border-red-200">
-            {result.message}
-          </div>
-        )}
       </div>
 
       {trackingPopupId && (

@@ -13,6 +13,17 @@
   --color-primary: #f06400;
   --color-primary-dark: #c05000;
   --color-secondary: #8c7878;
+
+  /* Project-wide responsive tiers (verified 320–1440px):
+     base   320–500   phones
+     sm     500–768   large phones
+     md     768–1100  tablets / small laptops
+     lg     1100–1440 laptops / desktops
+     xl     1440+         wide desktops */
+  --breakpoint-sm: 500px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1100px;
+  --breakpoint-xl: 1440px;
 }
 
 body {

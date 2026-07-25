@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { LogIn, LogOut, Clock, CalendarCheck } from "lucide-react";
+import { Clock, CalendarCheck } from "lucide-react";
+import MyPageWorkspace from "@/components/MyPageWorkspace";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ export default async function MyPage() {
   const records = await prisma.attendance.findMany({
     where: { userId: session.user.id },
     orderBy: { timestamp: "desc" },
-    take: 100,
+    take: 1000,
   });
 
   const last = records[0];
@@ -50,6 +51,14 @@ export default async function MyPage() {
 
   const monthEvents = records.filter((r) => r.timestamp >= monthStart).length;
 
+  const serializedRecords = records.map((r) => ({
+    id: r.id,
+    type: r.type,
+    method: r.method,
+    timestamp: r.timestamp.toISOString(),
+    hasPhoto: r.hasPhoto,
+  }));
+
   return (
     <div className="flex flex-col gap-8">
       <div className="flex items-center gap-4">
@@ -64,7 +73,7 @@ export default async function MyPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
         <div className="rounded-2xl border border-primary/20 bg-primary/5 backdrop-blur-md p-6 shadow-xl shadow-primary/10 hover:-translate-y-1 hover:shadow-2xl transition-all duration-300">
           <div className="flex items-center justify-between">
             <p className="text-sm font-bold text-primary uppercase tracking-wider">
@@ -104,75 +113,7 @@ export default async function MyPage() {
         </div>
       </div>
 
-      <div className="flex flex-col gap-4">
-        <h2 className="text-xl font-bold text-slate-800">Recent Activity</h2>
-        <div className="rounded-2xl border border-slate-200/60 bg-white/60 backdrop-blur-md shadow-xl shadow-slate-200/20 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50/80 text-secondary text-left border-b border-slate-200/60">
-              <tr>
-                <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">Photo</th>
-                <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">Date</th>
-                <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">Time</th>
-                <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">Event</th>
-                <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">Method</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100/80">
-              {records.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-secondary">
-                    No records yet. Use the kiosk to check in.
-                  </td>
-                </tr>
-              )}
-              {records.map((r) => (
-                <tr key={r.id} className="hover:bg-primary/5 transition-colors duration-200">
-                  <td className="px-6 py-4">
-                    {r.hasPhoto ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={`/api/attendance/${r.id}/photo`}
-                        alt="Check-in photo"
-                        className="w-10 h-10 rounded-lg object-cover border border-slate-200"
-                      />
-                    ) : (
-                      <span className="text-slate-300">—</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 font-medium text-slate-700">
-                    {new Date(r.timestamp).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 text-slate-600">
-                    {new Date(r.timestamp).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={`inline-flex items-center gap-1.5 font-bold ${
-                        r.type === "CHECK_IN" ? "text-primary" : "text-slate-500"
-                      }`}
-                    >
-                      {r.type === "CHECK_IN" ? (
-                        <LogIn className="w-4 h-4" />
-                      ) : (
-                        <LogOut className="w-4 h-4" />
-                      )}
-                      {r.type === "CHECK_IN" ? "Check In" : "Check Out"}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 border border-slate-200">
-                      {r.method}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <MyPageWorkspace records={serializedRecords} />
     </div>
   );
 }
