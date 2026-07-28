@@ -3,10 +3,20 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
 import { generatePin, generateQrToken, hash } from "@/lib/credentials";
+import { DEFAULT_GEOFENCE_RADIUS_METERS } from "@/lib/geofence";
 
 const actionSchema = z.object({
-  action: z.enum(["regenerate-pin", "regenerate-qr", "set-active"]),
+  action: z.enum([
+    "regenerate-pin",
+    "regenerate-qr",
+    "set-active",
+    "update-wfh-location",
+    "clear-wfh-location",
+  ]),
   active: z.boolean().optional(),
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
+  radiusMeters: z.number().min(1).max(100_000).optional(),
 });
 
 export async function GET(
@@ -70,6 +80,43 @@ export async function PATCH(
     await prisma.user.update({
       where: { id },
       data: { active: parsed.data.active ?? true },
+    });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (parsed.data.action === "update-wfh-location") {
+    if (parsed.data.latitude === undefined || parsed.data.longitude === undefined) {
+      return NextResponse.json(
+        { error: "Latitude and longitude are required." },
+        { status: 400 },
+      );
+    }
+    const updated = await prisma.user.update({
+      where: { id },
+      data: {
+        workMode: "WFH",
+        homeLatitude: parsed.data.latitude,
+        homeLongitude: parsed.data.longitude,
+        homeRadiusMeters: parsed.data.radiusMeters ?? DEFAULT_GEOFENCE_RADIUS_METERS,
+      },
+    });
+    return NextResponse.json({
+      workMode: updated.workMode,
+      homeLatitude: updated.homeLatitude,
+      homeLongitude: updated.homeLongitude,
+      homeRadiusMeters: updated.homeRadiusMeters,
+    });
+  }
+
+  if (parsed.data.action === "clear-wfh-location") {
+    await prisma.user.update({
+      where: { id },
+      data: {
+        workMode: "OFFICE",
+        homeLatitude: null,
+        homeLongitude: null,
+        homeRadiusMeters: DEFAULT_GEOFENCE_RADIUS_METERS,
+      },
     });
     return NextResponse.json({ ok: true });
   }

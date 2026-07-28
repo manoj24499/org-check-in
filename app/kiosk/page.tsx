@@ -18,12 +18,23 @@ import {
 } from "lucide-react";
 import CameraCapture, { CameraCaptureHandle } from "@/components/CameraCapture";
 import { startTracking, stopTracking } from "@/lib/locationTracker";
+import { haversineDistanceMeters } from "@/lib/geofence";
 
 type Result = { status: "idle" } | { status: "error"; message: string };
+
+type OfficeLocationInfo = {
+  name: string;
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+} | null;
+
+type GeofenceStatus = { distanceMeters: number; withinRadius: boolean } | null;
 
 type EmployeeStatus = {
   exists: boolean;
   name?: string;
+  workMode?: "OFFICE" | "WFH";
   checkedIn: boolean;
   checkedOut: boolean;
   checkInAt?: string | null;
@@ -57,8 +68,25 @@ export default function KioskPage() {
   const [statusLoading, setStatusLoading] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [trackingPopupId, setTrackingPopupId] = useState<string | null>(null);
+  const [officeLocation, setOfficeLocation] = useState<OfficeLocationInfo>(null);
+  const [geofenceStatus, setGeofenceStatus] = useState<GeofenceStatus>(null);
   const cameraRef = useRef<CameraCaptureHandle>(null);
   const router = useRouter();
+
+  // Fetched once so the distance indicator can be shown as soon as a GPS fix
+  // comes in — this is purely informational, the server remains the gate.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/kiosk/office-location")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled) setOfficeLocation(data.officeLocation ?? null);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Tick the clock every second. The initial paint stays null (set via a
   // deferred timer, not synchronously) so the server-rendered markup never
@@ -109,13 +137,25 @@ export default function KioskPage() {
   }, [employeeCode]);
 
   const submit = useCallback(
-    async (action: "CHECK_IN" | "CHECK_OUT", photo?: string) => {
+    async (
+      action: "CHECK_IN" | "CHECK_OUT",
+      photo?: string,
+      coords?: { latitude: number; longitude: number },
+    ) => {
       setBusy(true);
       try {
         const res = await fetch("/api/kiosk/scan", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mode: "pin", employeeCode, pin, action, photo }),
+          body: JSON.stringify({
+            mode: "pin",
+            employeeCode,
+            pin,
+            action,
+            photo,
+            latitude: coords?.latitude,
+            longitude: coords?.longitude,
+          }),
         });
 
         // A server error (e.g. a 500) may not come back as JSON at all — don't
@@ -191,8 +231,9 @@ export default function KioskPage() {
     // Location permission is requested (and required) before the check-in
     // completes — live tracking only ever starts after this succeeds.
     setBusy(true);
+    let position: GeolocationPosition;
     try {
-      await new Promise<GeolocationPosition>((resolve, reject) => {
+      position = await new Promise<GeolocationPosition>((resolve, reject) => {
         if (!navigator.geolocation) {
           reject(new Error("unsupported"));
           return;
@@ -220,7 +261,23 @@ export default function KioskPage() {
       return;
     }
 
-    submit(action, photo);
+    const coords = { latitude: position.coords.latitude, longitude: position.coords.longitude };
+    // WFH employees are checked against their home location, which is
+    // personal data — never fetched to the client, so no pill is shown for
+    // them. The server-side check-in gate still applies regardless.
+    if (officeLocation && empStatus?.workMode !== "WFH") {
+      const distanceMeters = haversineDistanceMeters(
+        coords.latitude,
+        coords.longitude,
+        officeLocation.latitude,
+        officeLocation.longitude,
+      );
+      setGeofenceStatus({ distanceMeters, withinRadius: distanceMeters <= officeLocation.radiusMeters });
+    } else {
+      setGeofenceStatus(null);
+    }
+
+    submit(action, photo, coords);
   }
 
   function handlePinKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -359,6 +416,24 @@ export default function KioskPage() {
                     {busy ? "Processing…" : "Check Out"}
                   </button>
                 </div>
+
+                {geofenceStatus && (
+                  <div
+                    className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${
+                      geofenceStatus.withinRadius
+                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                        : "bg-red-50 text-red-700 border border-red-200"
+                    }`}
+                  >
+                    <span
+                      className={`w-2 h-2 rounded-full shrink-0 ${
+                        geofenceStatus.withinRadius ? "bg-emerald-500" : "bg-red-500"
+                      }`}
+                    />
+                    {Math.round(geofenceStatus.distanceMeters)}m from the office
+                    {geofenceStatus.withinRadius ? " — within range" : " — outside allowed range"}
+                  </div>
+                )}
               </div>
             </div>
 

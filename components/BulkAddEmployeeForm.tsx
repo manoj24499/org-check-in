@@ -25,14 +25,21 @@ export default function BulkAddEmployeeForm() {
     const lines = csvText.split("\n").map(l => l.trim()).filter(l => l.length > 0);
     const employeesToCreate = lines.map(line => {
       const parts = line.split(",");
+      const homeLatitude = parts[3]?.trim();
+      const homeLongitude = parts[4]?.trim();
+      const homeRadius = parts[5]?.trim();
       return {
         name: parts[0]?.trim(),
-        email: parts[1]?.trim()
+        email: parts[1]?.trim(),
+        workMode: (parts[2]?.trim().toUpperCase() || "OFFICE") as "OFFICE" | "WFH",
+        homeLatitude: homeLatitude ? Number(homeLatitude) : undefined,
+        homeLongitude: homeLongitude ? Number(homeLongitude) : undefined,
+        homeRadiusMeters: homeRadius ? Number(homeRadius) : undefined,
       };
     }).filter(e => e.name && e.email);
 
     if (employeesToCreate.length === 0) {
-      setError("No valid entries found. Please format as: Name, Email");
+      setError("No valid entries found. Please format as: Name, Email, WorkMode, HomeLatitude, HomeLongitude, HomeRadius");
       setLoading(false);
       return;
     }
@@ -112,7 +119,16 @@ export default function BulkAddEmployeeForm() {
               <form onSubmit={handleSubmit} className="flex flex-col gap-5">
                 <div>
                   <h2 className="text-xl font-bold text-slate-800">Bulk Add Employees</h2>
-                  <p className="text-sm text-slate-500 mt-1">Paste CSV data in the format: <code className="bg-slate-100 px-1 py-0.5 rounded text-secondary">Name, Email</code></p>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Paste CSV data in the format:{" "}
+                    <code className="bg-slate-100 px-1 py-0.5 rounded text-secondary">
+                      Name, Email, WorkMode(OFFICE/WFH), HomeLatitude, HomeLongitude, HomeRadius
+                    </code>
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    The last four columns are optional — leave them blank for OFFICE employees.
+                    HomeLatitude/HomeLongitude are required for WFH; HomeRadius defaults to 50 meters.
+                  </p>
                 </div>
                 <div>
                   <textarea
@@ -120,7 +136,10 @@ export default function BulkAddEmployeeForm() {
                     onChange={(e) => setCsvText(e.target.value)}
                     required
                     rows={8}
-                    placeholder="John Doe, john@example.com&#10;Jane Smith, jane@example.com"
+                    placeholder={
+                      "John Doe, john@example.com, OFFICE\n" +
+                      "Jane Smith, jane@example.com, WFH, 12.9716, 77.5946, 75"
+                    }
                     className="w-full rounded-xl border border-slate-200 bg-white/50 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all font-mono"
                   />
                 </div>

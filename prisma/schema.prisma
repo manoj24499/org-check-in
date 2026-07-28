@@ -21,6 +21,11 @@ enum AttendanceMethod {
   PIN
 }
 
+enum WorkMode {
+  OFFICE
+  WFH
+}
+
 model User {
   id           String @id @default(cuid())
   employeeCode String @unique // human-friendly ID, e.g. EMP001 / ADM001
@@ -35,6 +40,13 @@ model User {
   pinHash String?
   qrToken String? @unique // random secret embedded in the QR code
 
+  // WFH employees are geofenced against their own home location instead of
+  // the office (see /api/kiosk/scan). OFFICE (the default) is unaffected.
+  workMode         WorkMode @default(OFFICE)
+  homeLatitude     Float?
+  homeLongitude    Float?
+  homeRadiusMeters Float    @default(50)
+
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -43,6 +55,7 @@ model User {
   locationPings LocationPing[]
 
   @@index([role])
+  @@index([workMode])
 }
 
 model Attendance {
@@ -78,4 +91,16 @@ model LocationPing {
   timestamp DateTime @default(now())
 
   @@index([userId, timestamp])
+}
+
+// Singleton-ish config: the scan route reads whichever row exists (there's
+// normally just one) to geofence check-ins. No row yet == geofencing is off.
+model OfficeLocation {
+  id           String   @id @default(cuid())
+  name         String
+  latitude     Float
+  longitude    Float
+  radiusMeters Float    @default(50)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }

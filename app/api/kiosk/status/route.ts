@@ -38,6 +38,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     exists: true,
     name: user.name,
+    workMode: user.workMode,
     checkedIn: Boolean(checkIn),
     checkedOut: Boolean(checkOut),
     checkInAt: checkIn?.timestamp ?? null,

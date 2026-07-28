@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { verifyHash } from "@/lib/credentials";
 import { isRateLimited } from "@/lib/rateLimit";
+import { haversineDistanceMeters } from "@/lib/geofence";
 
 const qrSchema = z.object({
   mode: z.literal("qr"),
@@ -15,6 +16,8 @@ const pinSchema = z.object({
   pin: z.string().min(4).max(10),
   action: z.enum(["CHECK_IN", "CHECK_OUT"]),
   photo: z.string().optional(),
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
 });
 
 const bodySchema = z.discriminatedUnion("mode", [qrSchema, pinSchema]);
@@ -108,6 +111,61 @@ export async function POST(req: NextRequest) {
       { error: "Not recognized. Please check your QR code or PIN and try again." },
       { status: 401 }
     );
+  }
+
+  // Geofence the check-in against whichever location applies to this
+  // employee. No location configured yet (office or home) == not enforced.
+  if (parsed.data.mode === "pin" && parsed.data.action === "CHECK_IN") {
+    if (user.workMode === "WFH") {
+      if (user.homeLatitude !== null && user.homeLongitude !== null) {
+        if (parsed.data.latitude === undefined || parsed.data.longitude === undefined) {
+          return NextResponse.json(
+            { error: "Location permission is required to check in." },
+            { status: 400 },
+          );
+        }
+        const distance = haversineDistanceMeters(
+          parsed.data.latitude,
+          parsed.data.longitude,
+          user.homeLatitude,
+          user.homeLongitude,
+        );
+        if (distance > user.homeRadiusMeters) {
+          return NextResponse.json(
+            { error: "You are outside your assigned work location." },
+            { status: 409 },
+          );
+        }
+      }
+    } else {
+      const officeLocation = await prisma.officeLocation.findFirst({
+        orderBy: { createdAt: "asc" },
+      });
+      if (officeLocation) {
+        if (parsed.data.latitude === undefined || parsed.data.longitude === undefined) {
+          return NextResponse.json(
+            { error: "Location permission is required to check in." },
+            { status: 400 },
+          );
+        }
+        const distance = haversineDistanceMeters(
+          parsed.data.latitude,
+          parsed.data.longitude,
+          officeLocation.latitude,
+          officeLocation.longitude,
+        );
+        if (distance > officeLocation.radiusMeters) {
+          return NextResponse.json(
+            {
+              error: `You are outside the permitted office area. Please move within ${Math.round(
+                officeLocation.radiusMeters,
+              )} meters of the office to check in.`,
+            },
+            { status: 409 },
+          );
+        }
+      }
+    }
   }
 
   // An employee may only check in once and check out once per calendar day.

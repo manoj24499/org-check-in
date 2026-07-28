@@ -3,12 +3,22 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
 import { generatePin, generateQrToken, hash, nextEmployeeCode } from "@/lib/credentials";
+import { DEFAULT_GEOFENCE_RADIUS_METERS } from "@/lib/geofence";
 
 const bulkCreateSchema = z.array(
-  z.object({
-    name: z.string().min(1),
-    email: z.string().email(),
-  })
+  z
+    .object({
+      name: z.string().min(1),
+      email: z.string().email(),
+      workMode: z.enum(["OFFICE", "WFH"]).default("OFFICE"),
+      homeLatitude: z.coerce.number().min(-90).max(90).optional(),
+      homeLongitude: z.coerce.number().min(-180).max(180).optional(),
+      homeRadiusMeters: z.coerce.number().min(1).max(100_000).optional(),
+    })
+    .refine(
+      (row) => row.workMode !== "WFH" || (row.homeLatitude !== undefined && row.homeLongitude !== undefined),
+      { message: "WFH employees require Home Latitude and Home Longitude." },
+    ),
 );
 
 export async function POST(req: NextRequest) {
@@ -18,7 +28,20 @@ export async function POST(req: NextRequest) {
   const json = await req.json().catch(() => null);
   const parsed = bulkCreateSchema.safeParse(json);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid input. Ensure rows have valid name and email." }, { status: 400 });
+    const issue = parsed.error.issues[0];
+    const rowIndex = typeof issue?.path[0] === "number" ? issue.path[0] : undefined;
+    const rowLabel =
+      rowIndex !== undefined && Array.isArray(json)
+        ? (json[rowIndex]?.email ?? `row ${rowIndex + 1}`)
+        : undefined;
+    return NextResponse.json(
+      {
+        error: rowLabel
+          ? `Invalid data for ${rowLabel}: ${issue?.message ?? "check the row and try again."}`
+          : "Invalid input. Ensure rows have valid name, email, and (for WFH) home coordinates.",
+      },
+      { status: 400 },
+    );
   }
 
   const existingEmails = await prisma.user.findMany({
@@ -27,8 +50,8 @@ export async function POST(req: NextRequest) {
   });
 
   if (existingEmails.length > 0) {
-    return NextResponse.json({ 
-      error: `Some emails are already in use: ${existingEmails.map(e => e.email).join(', ')}` 
+    return NextResponse.json({
+      error: `Some emails are already in use: ${existingEmails.map(e => e.email).join(', ')}`
     }, { status: 409 });
   }
 
@@ -54,6 +77,10 @@ export async function POST(req: NextRequest) {
         employeeCode,
         pinHash,
         qrToken,
+        workMode: empData.workMode,
+        homeLatitude: empData.workMode === "WFH" ? empData.homeLatitude : null,
+        homeLongitude: empData.workMode === "WFH" ? empData.homeLongitude : null,
+        homeRadiusMeters: empData.homeRadiusMeters ?? DEFAULT_GEOFENCE_RADIUS_METERS,
       },
     });
 
