@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, LogIn, LogOut, Clock, CalendarDays, X } from "lucide-react";
+import { computeWorkedMs } from "@/lib/attendanceHours";
 
 type AttendanceRecord = {
   id: string;
@@ -9,6 +10,7 @@ type AttendanceRecord = {
   method: string;
   timestamp: string;
   hasPhoto?: boolean;
+  pauses?: { pausedAt: string; resumedAt: string | null }[];
 };
 
 type Event = AttendanceRecord & { date: Date };
@@ -22,12 +24,16 @@ function dateKey(d: Date) {
 function hoursForDay(list: Event[] | undefined) {
   if (!list) return 0;
   let total = 0;
-  let openIn: Date | null = null;
+  let openIn: Event | null = null;
   for (const e of list) {
     if (e.type === "CHECK_IN") {
-      openIn = e.date;
+      openIn = e;
     } else if (e.type === "CHECK_OUT" && openIn) {
-      total += (e.date.getTime() - openIn.getTime()) / (1000 * 60 * 60);
+      const pauses = (openIn.pauses ?? []).map((p) => ({
+        pausedAt: new Date(p.pausedAt),
+        resumedAt: p.resumedAt ? new Date(p.resumedAt) : null,
+      }));
+      total += computeWorkedMs(openIn.date, e.date, pauses) / (1000 * 60 * 60);
       openIn = null;
     }
   }

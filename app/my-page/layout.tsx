@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import Providers from "@/components/Providers";
 import SignOutButton from "@/components/SignOutButton";
+import ChangePinButton from "@/components/ChangePinButton";
 import TabSecurity from "@/components/TabSecurity";
 import { Building2 } from "lucide-react";
 
@@ -27,6 +28,7 @@ export default async function MyPageLayout({
               <span className="text-sm text-slate-500 hidden sm:inline">
                 {session?.user?.name}
               </span>
+              <ChangePinButton />
               <SignOutButton />
             </div>
           </div>

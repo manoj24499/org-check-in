@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
-import { generatePin, generateQrToken, hash, nextEmployeeCode } from "@/lib/credentials";
+import { generatePin, hash, nextEmployeeCode } from "@/lib/credentials";
 import { DEFAULT_GEOFENCE_RADIUS_METERS } from "@/lib/geofence";
 
 const bulkCreateSchema = z.array(
@@ -10,7 +10,7 @@ const bulkCreateSchema = z.array(
     .object({
       name: z.string().min(1),
       email: z.string().email(),
-      workMode: z.enum(["OFFICE", "WFH"]).default("OFFICE"),
+      workMode: z.enum(["OFFICE", "WFH", "FIELD"]).default("OFFICE"),
       homeLatitude: z.coerce.number().min(-90).max(90).optional(),
       homeLongitude: z.coerce.number().min(-180).max(180).optional(),
       homeRadiusMeters: z.coerce.number().min(1).max(100_000).optional(),
@@ -66,7 +66,6 @@ export async function POST(req: NextRequest) {
     employeeCount++;
 
     const pin = generatePin();
-    const qrToken = generateQrToken();
     const pinHash = await hash(pin);
 
     const user = await prisma.user.create({
@@ -76,7 +75,6 @@ export async function POST(req: NextRequest) {
         role: "EMPLOYEE",
         employeeCode,
         pinHash,
-        qrToken,
         workMode: empData.workMode,
         homeLatitude: empData.workMode === "WFH" ? empData.homeLatitude : null,
         homeLongitude: empData.workMode === "WFH" ? empData.homeLongitude : null,

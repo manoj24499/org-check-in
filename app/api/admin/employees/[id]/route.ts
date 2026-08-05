@@ -2,16 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
-import { generatePin, generateQrToken, hash } from "@/lib/credentials";
+import { generatePin, hash } from "@/lib/credentials";
 import { DEFAULT_GEOFENCE_RADIUS_METERS } from "@/lib/geofence";
 
 const actionSchema = z.object({
   action: z.enum([
     "regenerate-pin",
-    "regenerate-qr",
     "set-active",
     "update-wfh-location",
     "clear-wfh-location",
+    "set-field-mode",
   ]),
   active: z.boolean().optional(),
   latitude: z.number().min(-90).max(90).optional(),
@@ -35,7 +35,6 @@ export async function GET(
       name: true,
       email: true,
       active: true,
-      qrToken: true,
       createdAt: true,
     },
   });
@@ -68,12 +67,6 @@ export async function PATCH(
     const pinHash = await hash(pin);
     await prisma.user.update({ where: { id }, data: { pinHash } });
     return NextResponse.json({ pin });
-  }
-
-  if (parsed.data.action === "regenerate-qr") {
-    const qrToken = generateQrToken();
-    await prisma.user.update({ where: { id }, data: { qrToken } });
-    return NextResponse.json({ qrToken });
   }
 
   if (parsed.data.action === "set-active") {
@@ -109,6 +102,9 @@ export async function PATCH(
   }
 
   if (parsed.data.action === "clear-wfh-location") {
+    // Also doubles as "remove from Anywhere/FIELD" — resetting to OFFICE +
+    // null coords is the correct revert regardless of which mode the
+    // employee is leaving.
     await prisma.user.update({
       where: { id },
       data: {
@@ -119,6 +115,20 @@ export async function PATCH(
       },
     });
     return NextResponse.json({ ok: true });
+  }
+
+  if (parsed.data.action === "set-field-mode") {
+    // Field workers check in from anywhere — no coordinates are stored.
+    const updated = await prisma.user.update({
+      where: { id },
+      data: {
+        workMode: "FIELD",
+        homeLatitude: null,
+        homeLongitude: null,
+        homeRadiusMeters: DEFAULT_GEOFENCE_RADIUS_METERS,
+      },
+    });
+    return NextResponse.json({ workMode: updated.workMode });
   }
 
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });

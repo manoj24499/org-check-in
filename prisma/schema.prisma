@@ -17,13 +17,16 @@ enum AttendanceType {
 }
 
 enum AttendanceMethod {
-  QR
+  QR // legacy — QR check-in was removed; kept so historical rows stay valid
   PIN
 }
 
 enum WorkMode {
   OFFICE
   WFH
+  // Field workers: no geofence is enforced at check-in at all (see
+  // /api/kiosk/scan) — home/office coordinates are irrelevant for this mode.
+  FIELD
 }
 
 model User {
@@ -38,10 +41,10 @@ model User {
 
   // Employee kiosk auth (only set for EMPLOYEE role)
   pinHash String?
-  qrToken String? @unique // random secret embedded in the QR code
 
   // WFH employees are geofenced against their own home location instead of
-  // the office (see /api/kiosk/scan). OFFICE (the default) is unaffected.
+  // the office; FIELD employees skip geofencing entirely (see
+  // /api/kiosk/scan). OFFICE (the default) is unaffected.
   workMode         WorkMode @default(OFFICE)
   homeLatitude     Float?
   homeLongitude    Float?
@@ -53,6 +56,7 @@ model User {
 
   attendances   Attendance[]
   locationPings LocationPing[]
+  pushTokens    PushToken[]
 
   @@index([role])
   @@index([workMode])
@@ -74,7 +78,40 @@ model Attendance {
   photo    Bytes?
   hasPhoto Boolean @default(false)
 
+  // Auto-pause (see /api/kiosk/location): pauseWarningAt marks the moment 3
+  // consecutive out-of-range pings were confirmed, starting a 10-minute grace
+  // period before an AttendancePause row is actually created. Cleared once
+  // resolved either way (return to range, or converted into a real pause).
+  pauseWarningAt DateTime?
+  pauses         AttendancePause[]
+
   @@index([userId, timestamp])
+}
+
+// A paused interval within one CHECK_IN session — resumedAt null means still
+// paused. Kept as its own table (not new AttendanceType values) since several
+// places assume exactly one CHECK_IN + one CHECK_OUT per employee per day.
+model AttendancePause {
+  id           String     @id @default(cuid())
+  attendanceId String
+  attendance   Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  pausedAt     DateTime
+  resumedAt    DateTime?
+  createdAt    DateTime   @default(now())
+
+  @@index([attendanceId])
+}
+
+// One row per device's Expo push token, used to warn an employee before
+// their working time auto-pauses (see lib/pushNotifications.ts).
+model PushToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 // One row per live-location ping sent from an employee's kiosk tab while
@@ -103,4 +140,28 @@ model OfficeLocation {
   radiusMeters Float    @default(50)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+// Singleton app-wide config (see lib/settings.ts) — exactly one row, created
+// on first read if missing. Start here for future toggles rather than adding
+// more one-off models.
+model AppSettings {
+  id                    String   @id @default(cuid())
+  checkOutPhotoRequired Boolean  @default(false)
+  updatedAt             DateTime @updatedAt
+}
+
+// Reverse-geocoding memoization — coordinates rounded to 3 decimal places
+// (~111m grid) before lookup/storage, so nearby pings within the same
+// cluster share one Nominatim call. Never expires: place names for a fixed
+// location don't change, and Nominatim's usage policy expects this kind of
+// caching, not repeat lookups (see lib/geocoding.ts).
+model PlaceNameCache {
+  id        String   @id @default(cuid())
+  latitude  Float
+  longitude Float
+  placeName String
+  createdAt DateTime @default(now())
+
+  @@unique([latitude, longitude])
 }

@@ -14,6 +14,7 @@ export async function GET(
     where: { userId: id },
     orderBy: { timestamp: "desc" },
     take: 2000,
+    include: { pauses: true },
   });
 
   return NextResponse.json(
@@ -23,6 +24,10 @@ export async function GET(
       method: r.method,
       timestamp: r.timestamp.toISOString(),
       hasPhoto: r.hasPhoto,
+      pauses: r.pauses.map((p) => ({
+        pausedAt: p.pausedAt.toISOString(),
+        resumedAt: p.resumedAt?.toISOString() ?? null,
+      })),
     }))
   );
 }

@@ -1,11 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import OfficeLocationForm from "@/components/OfficeLocationForm";
 import WfhLocationTable from "@/components/WfhLocationTable";
+import FieldLocationTable from "@/components/FieldLocationTable";
 
 export const dynamic = "force-dynamic";
 
 export default async function OfficeLocationPage() {
-  const [officeLocation, wfhEmployees] = await Promise.all([
+  const [officeLocation, wfhEmployees, fieldEmployees, allEmployees] = await Promise.all([
     prisma.officeLocation.findFirst({
       orderBy: { createdAt: "asc" },
       select: { name: true, latitude: true, longitude: true, radiusMeters: true },
@@ -23,6 +24,17 @@ export default async function OfficeLocationPage() {
         homeRadiusMeters: true,
       },
     }),
+    prisma.user.findMany({
+      where: { role: "EMPLOYEE", workMode: "FIELD" },
+      orderBy: { name: "asc" },
+      select: { id: true, employeeCode: true, name: true, active: true },
+    }),
+    // Shared candidate list for both tables' "Add" pickers.
+    prisma.user.findMany({
+      where: { role: "EMPLOYEE" },
+      orderBy: { name: "asc" },
+      select: { id: true, employeeCode: true, name: true, active: true, workMode: true },
+    }),
   ]);
 
   return (
@@ -38,7 +50,9 @@ export default async function OfficeLocationPage() {
         <OfficeLocationForm officeLocation={officeLocation} />
       </div>
 
-      <WfhLocationTable employees={wfhEmployees} />
+      <WfhLocationTable employees={wfhEmployees} allEmployees={allEmployees} />
+
+      <FieldLocationTable employees={fieldEmployees} allEmployees={allEmployees} />
     </div>
   );
 }

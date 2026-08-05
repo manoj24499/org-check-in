@@ -31,7 +31,7 @@ export default function BulkAddEmployeeForm() {
       return {
         name: parts[0]?.trim(),
         email: parts[1]?.trim(),
-        workMode: (parts[2]?.trim().toUpperCase() || "OFFICE") as "OFFICE" | "WFH",
+        workMode: (parts[2]?.trim().toUpperCase() || "OFFICE") as "OFFICE" | "WFH" | "FIELD",
         homeLatitude: homeLatitude ? Number(homeLatitude) : undefined,
         homeLongitude: homeLongitude ? Number(homeLongitude) : undefined,
         homeRadiusMeters: homeRadius ? Number(homeRadius) : undefined,
@@ -122,12 +122,13 @@ export default function BulkAddEmployeeForm() {
                   <p className="text-sm text-slate-500 mt-1">
                     Paste CSV data in the format:{" "}
                     <code className="bg-slate-100 px-1 py-0.5 rounded text-secondary">
-                      Name, Email, WorkMode(OFFICE/WFH), HomeLatitude, HomeLongitude, HomeRadius
+                      Name, Email, WorkMode(OFFICE/WFH/FIELD), HomeLatitude, HomeLongitude, HomeRadius
                     </code>
                   </p>
                   <p className="text-xs text-slate-400 mt-1">
-                    The last four columns are optional — leave them blank for OFFICE employees.
+                    The last four columns are optional — leave them blank for OFFICE or FIELD employees.
                     HomeLatitude/HomeLongitude are required for WFH; HomeRadius defaults to 50 meters.
+                    FIELD employees are never geofenced.
                   </p>
                 </div>
                 <div>
@@ -138,7 +139,8 @@ export default function BulkAddEmployeeForm() {
                     rows={8}
                     placeholder={
                       "John Doe, john@example.com, OFFICE\n" +
-                      "Jane Smith, jane@example.com, WFH, 12.9716, 77.5946, 75"
+                      "Jane Smith, jane@example.com, WFH, 12.9716, 77.5946, 75\n" +
+                      "Alex Kim, alex@example.com, FIELD"
                     }
                     className="w-full rounded-xl border border-slate-200 bg-white/50 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all font-mono"
                   />

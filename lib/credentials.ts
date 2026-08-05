@@ -11,11 +11,6 @@ export function generatePin(length = 6): string {
   return pin;
 }
 
-/** Generates a random opaque token to embed in an employee's QR code */
-export function generateQrToken(): string {
-  return crypto.randomBytes(24).toString("base64url");
-}
-
 export async function hash(value: string): Promise<string> {
   return bcrypt.hash(value, 10);
 }

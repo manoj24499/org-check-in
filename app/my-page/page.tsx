@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Clock, CalendarCheck } from "lucide-react";
 import MyPageWorkspace from "@/components/MyPageWorkspace";
+import { computeWorkedMs } from "@/lib/attendanceHours";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,7 @@ export default async function MyPage() {
     where: { userId: session.user.id },
     orderBy: { timestamp: "desc" },
     take: 1000,
+    include: { pauses: true },
   });
 
   const last = records[0];
@@ -37,13 +39,13 @@ export default async function MyPage() {
 
   // Pair each check-in with the next check-out (chronologically) to total hours worked in the last 7 days.
   let weeklyHours = 0;
-  let openCheckIn: Date | null = null;
+  let openCheckIn: (typeof records)[number] | null = null;
   for (const r of [...records].reverse()) {
     if (r.type === "CHECK_IN") {
-      openCheckIn = r.timestamp;
+      openCheckIn = r;
     } else if (r.type === "CHECK_OUT" && openCheckIn) {
       if (r.timestamp >= weekAgo) {
-        weeklyHours += (r.timestamp.getTime() - openCheckIn.getTime()) / (1000 * 60 * 60);
+        weeklyHours += computeWorkedMs(openCheckIn.timestamp, r.timestamp, openCheckIn.pauses) / (1000 * 60 * 60);
       }
       openCheckIn = null;
     }
@@ -57,6 +59,10 @@ export default async function MyPage() {
     method: r.method,
     timestamp: r.timestamp.toISOString(),
     hasPhoto: r.hasPhoto,
+    pauses: r.pauses.map((p) => ({
+      pausedAt: p.pausedAt.toISOString(),
+      resumedAt: p.resumedAt?.toISOString() ?? null,
+    })),
   }));
 
   return (

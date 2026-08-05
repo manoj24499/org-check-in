@@ -27,6 +27,7 @@ type AttendanceRecord = {
   method: string;
   timestamp: string;
   hasPhoto: boolean;
+  pauses?: { pausedAt: string; resumedAt: string | null }[];
 };
 
 // A ping is considered "live" if it arrived within 3x the 1-minute tracking

@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { computeWorkedMs } from "@/lib/attendanceHours";
 import StatusClient from "./StatusClient";
 
 export default async function KioskStatusPage({ params }: { params: Promise<{ id: string }> }) {
@@ -32,12 +33,13 @@ export default async function KioskStatusPage({ params }: { params: Promise<{ id
         },
       },
       orderBy: { timestamp: "desc" },
+      include: { pauses: true },
     });
 
     if (checkInRecord) {
       checkInTime = checkInRecord.timestamp;
-      const diffMs = record.timestamp.getTime() - checkInRecord.timestamp.getTime();
-      workHours = diffMs / (1000 * 60 * 60);
+      const workedMs = computeWorkedMs(checkInRecord.timestamp, record.timestamp, checkInRecord.pauses);
+      workHours = workedMs / (1000 * 60 * 60);
     }
   }
 

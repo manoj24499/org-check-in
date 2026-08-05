@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isRateLimited } from "@/lib/rateLimit";
+import { getSettings } from "@/lib/settings";
 
 function startOfToday() {
   const d = new Date();
@@ -34,6 +35,15 @@ export async function GET(req: NextRequest) {
 
   const checkIn = todaysRecords.find((r) => r.type === "CHECK_IN");
   const checkOut = todaysRecords.find((r) => r.type === "CHECK_OUT");
+  const settings = await getSettings();
+
+  const isPaused = checkIn
+    ? Boolean(
+        await prisma.attendancePause.findFirst({
+          where: { attendanceId: checkIn.id, resumedAt: null },
+        }),
+      )
+    : false;
 
   return NextResponse.json({
     exists: true,
@@ -42,5 +52,7 @@ export async function GET(req: NextRequest) {
     checkedIn: Boolean(checkIn),
     checkedOut: Boolean(checkOut),
     checkInAt: checkIn?.timestamp ?? null,
+    checkOutPhotoRequired: settings.checkOutPhotoRequired,
+    isPaused,
   });
 }

@@ -32,6 +32,7 @@ export default async function EmployeeDetailPage({
       attendances: {
         orderBy: { timestamp: "desc" },
         take: 2000,
+        include: { pauses: true },
       },
     },
   });
@@ -44,6 +45,10 @@ export default async function EmployeeDetailPage({
     method: r.method,
     timestamp: r.timestamp.toISOString(),
     hasPhoto: r.hasPhoto,
+    pauses: r.pauses.map((p) => ({
+      pausedAt: p.pausedAt.toISOString(),
+      resumedAt: p.resumedAt?.toISOString() ?? null,
+    })),
   }));
 
   return (

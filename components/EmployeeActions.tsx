@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { KeyRound, QrCode, Power, Copy, Check } from "lucide-react";
+import { KeyRound, Power, Copy, Check } from "lucide-react";
 
 export default function EmployeeActions({
   employeeId,
@@ -50,14 +50,6 @@ export default function EmployeeActions({
         >
           <KeyRound className="w-4 h-4" />
           {loading === "regenerate-pin" ? "Generating…" : "Regenerate PIN"}
-        </button>
-        <button
-          onClick={() => call("regenerate-qr")}
-          disabled={loading !== null}
-          className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50 transition disabled:opacity-50"
-        >
-          <QrCode className="w-4 h-4" />
-          {loading === "regenerate-qr" ? "Generating…" : "Regenerate QR Code"}
         </button>
         <button
           onClick={() => call("set-active", { active: !active })}

@@ -4,8 +4,8 @@ Internal attendance system built with Next.js (App Router), PostgreSQL, and Pris
 
 ## Features
 
-- **Kiosk mode** (`/kiosk`) — public shared-device screen. Employees scan their personal QR badge or type their Employee ID + PIN. The system automatically toggles between Check In and Check Out based on their last recorded event.
-- **Admin dashboard** (`/admin`) — email/password login. See who's currently checked in, today's activity log, manage employees (add, deactivate, regenerate PIN/QR), export all attendance as CSV.
+- **Kiosk mode** (`/kiosk`) — public shared-device screen. Employees type their Employee ID + PIN to check in or out.
+- **Admin dashboard** (`/admin`) — email/password login. See who's currently checked in, today's activity log, manage employees (add, deactivate, regenerate PIN), export all attendance as CSV.
 - **Employee "My Page"** (`/my-page`) — employees log in with Employee ID + PIN to see their own attendance history only.
 - Roles are enforced by middleware; employees can never see other employees' data, and only admins can manage employees.
 
@@ -52,10 +52,9 @@ npm run dev
 ## 3. Using it
 
 1. Log in as admin → **Employees** → **+ Add Employee**. This shows a one-time PIN — write it down or share it with the employee (e.g. via a private message). It cannot be retrieved again, only regenerated.
-2. Open the employee's profile (**Manage**) to download/print their QR badge. Put it on an ID card, or let them keep it on their phone.
-3. Point the kiosk device (tablet/laptop with a camera) at `/kiosk`. Employees scan their QR badge, or switch to "Enter PIN" and type their Employee ID + PIN.
-4. Every scan/PIN entry automatically alternates between Check In and Check Out — no separate buttons needed.
-5. Employees can check their own history any time at `/my-page` (Employee ID + PIN login). Admins see everyone's status live on `/admin/dashboard`.
+2. Point the kiosk device (tablet/laptop) at `/kiosk`. Employees type their Employee ID + PIN.
+3. Every PIN entry automatically alternates between Check In and Check Out — no separate buttons needed.
+4. Employees can check their own history any time at `/my-page` (Employee ID + PIN login). Admins see everyone's status live on `/admin/dashboard`.
 
 ## 4. Deploying (Vercel + Neon/Supabase)
 
@@ -75,12 +74,23 @@ npm run dev
 Built comfortably for ~100 employees / ~10 admins. A couple of things worth knowing as you grow:
 
 - The kiosk rate-limiter (`app/api/kiosk/scan/route.ts`) is in-memory, which is fine for a single kiosk/serverless instance under light load. If you run multiple kiosks at high volume, swap it for a Redis-backed limiter (e.g. Upstash).
-- PINs and passwords are hashed with bcrypt; QR codes encode a random opaque token (not the employee's actual ID), so a photographed badge can't be reverse-engineered into guessing another employee's code.
-- Regenerating a PIN or QR code immediately invalidates the old one.
+- PINs and passwords are hashed with bcrypt.
+- Regenerating a PIN immediately invalidates the old one.
+- Check-in also rejects the request outright if the client flags the submitted location as coming from a mock-location provider (`mocked: true`) — see the mobile app's `useGeofence` for where that's detected.
 
 ## 6. Tech stack
 
 - Next.js 16 (App Router) + TypeScript + Tailwind CSS
 - PostgreSQL + Prisma ORM
 - NextAuth v5 (Credentials provider — one for admin email/password, one for employee ID/PIN)
-- `html5-qrcode` for camera-based QR scanning, `qrcode` for generating employee QR badges
+
+## 7. Mobile app
+
+A companion Expo (React Native) app lives at `D:\projects\Native\checkin-app`
+and talks to this backend directly — no separate mobile backend. It reuses
+`/api/kiosk/*` for check-in/out (PIN, same as the physical kiosk) and
+live location, and uses five small additive routes under `app/api/mobile/**`
+(`lib/mobileAuth.ts`) for a bearer-token login/session, since NextAuth's own
+`employee-login` provider is cookie-session only. Those routes reuse the
+existing bcrypt/Prisma logic verbatim — no duplicated business logic, no
+schema changes.

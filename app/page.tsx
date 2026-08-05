@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Building2, QrCode, LogIn } from "lucide-react";
+import { Building2, Fingerprint, LogIn } from "lucide-react";
 
 export default function HomePage() {
   return (
@@ -30,7 +30,7 @@ export default function HomePage() {
           href="/kiosk"
           className="group flex flex-col items-center justify-center gap-3 w-60 rounded-2xl bg-primary text-white p-8 font-medium shadow-lg shadow-orange-900/20 transition-all hover:bg-primary-dark hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
         >
-          <QrCode className="w-9 h-9" />
+          <Fingerprint className="w-9 h-9" />
           <span className="text-lg">Check In / Out</span>
         </Link>
         <Link

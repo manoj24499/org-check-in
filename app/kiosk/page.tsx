@@ -34,10 +34,11 @@ type GeofenceStatus = { distanceMeters: number; withinRadius: boolean } | null;
 type EmployeeStatus = {
   exists: boolean;
   name?: string;
-  workMode?: "OFFICE" | "WFH";
+  workMode?: "OFFICE" | "WFH" | "FIELD";
   checkedIn: boolean;
   checkedOut: boolean;
   checkInAt?: string | null;
+  checkOutPhotoRequired?: boolean;
 };
 
 const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
@@ -206,15 +207,31 @@ export default function KioskPage() {
   // Unknown / not-yet-looked-up employees default to a fresh state: Check In
   // open, Check Out closed — the common case for someone arriving for the day.
   // Check In additionally requires a working camera, since a photo is mandatory.
+  const checkOutPhotoRequired = Boolean(empStatus?.checkOutPhotoRequired);
   const canCheckIn = (!empStatus?.exists || !empStatus.checkedIn) && cameraReady;
-  const canCheckOut = Boolean(empStatus?.exists && empStatus.checkedIn && !empStatus.checkedOut);
+  const canCheckOut =
+    Boolean(empStatus?.exists && empStatus.checkedIn && !empStatus.checkedOut) &&
+    (!checkOutPhotoRequired || cameraReady);
   const formReady = employeeCode.trim().length > 0 && pin.length >= 4;
 
   async function handleAction(action: "CHECK_IN" | "CHECK_OUT") {
     if (busy || !formReady) return;
     if (action === "CHECK_OUT") {
       if (!canCheckOut) return;
-      submit(action);
+      if (!checkOutPhotoRequired) {
+        submit(action);
+        return;
+      }
+      const photo = cameraRef.current?.capture();
+      if (!photo) {
+        setResult({
+          status: "error",
+          message: "Camera isn't ready yet. Please wait a moment and try again.",
+        });
+        setTimeout(() => setResult({ status: "idle" }), 4000);
+        return;
+      }
+      submit(action, photo);
       return;
     }
     if (!canCheckIn) return;
@@ -264,8 +281,9 @@ export default function KioskPage() {
     const coords = { latitude: position.coords.latitude, longitude: position.coords.longitude };
     // WFH employees are checked against their home location, which is
     // personal data — never fetched to the client, so no pill is shown for
-    // them. The server-side check-in gate still applies regardless.
-    if (officeLocation && empStatus?.workMode !== "WFH") {
+    // them. FIELD employees aren't geofenced at all. The server-side
+    // check-in gate still applies regardless.
+    if (officeLocation && empStatus?.workMode !== "WFH" && empStatus?.workMode !== "FIELD") {
       const distanceMeters = haversineDistanceMeters(
         coords.latitude,
         coords.longitude,
@@ -364,7 +382,9 @@ export default function KioskPage() {
                   </div>
                   <CameraCapture ref={cameraRef} onReadyChange={setCameraReady} />
                   <p className="text-xs text-slate-400 mt-1.5">
-                    Required to check in, so we know who&apos;s actually present.
+                    {checkOutPhotoRequired
+                      ? "Required to check in and check out, so we know who's actually present."
+                      : "Required to check in, so we know who's actually present."}
                   </p>
                 </div>
                 <div>

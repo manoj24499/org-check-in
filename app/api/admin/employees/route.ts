@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
-import { generatePin, generateQrToken, hash, nextEmployeeCode } from "@/lib/credentials";
+import { generatePin, hash, nextEmployeeCode } from "@/lib/credentials";
 
 const createSchema = z.object({
   name: z.string().min(1),
@@ -22,6 +22,7 @@ export async function GET() {
       name: true,
       email: true,
       active: true,
+      workMode: true,
       createdAt: true,
     },
   });
@@ -58,7 +59,6 @@ export async function POST(req: NextRequest) {
     const employeeCode = nextEmployeeCode("EMP", currentMax);
 
     const pin = generatePin();
-    const qrToken = generateQrToken();
     const pinHash = await hash(pin);
 
     const user = await prisma.user.create({
@@ -68,7 +68,6 @@ export async function POST(req: NextRequest) {
         role: "EMPLOYEE",
         employeeCode,
         pinHash,
-        qrToken,
       },
     });
 

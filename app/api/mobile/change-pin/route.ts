@@ -1,0 +1,55 @@
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { prisma } from "@/lib/prisma";
+import { hash, verifyHash } from "@/lib/credentials";
+import { isRateLimited } from "@/lib/rateLimit";
+import { requireMobileUser } from "@/lib/mobileAuth";
+
+const bodySchema = z.object({
+  currentPin: z.string().min(4).max(10),
+  newPin: z.string().min(4).max(10).regex(/^\d+$/, "PIN must be numeric."),
+});
+
+export async function POST(req: NextRequest) {
+  const auth = await requireMobileUser(req);
+  if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  if (isRateLimited(`change-pin:${auth.sub}`, 60_000, 5)) {
+    return NextResponse.json(
+      { error: "Too many attempts. Please wait a moment and try again." },
+      { status: 429 },
+    );
+  }
+
+  const json = await req.json().catch(() => null);
+  const parsed = bodySchema.safeParse(json);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: auth.sub } });
+  if (!user || user.role !== "EMPLOYEE" || !user.pinHash || !user.active) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // 403, not 401: a wrong current-PIN entry is a business rejection, not an
+  // expired/invalid session — the API client retries session-protected 401s
+  // with a refreshed token, which would otherwise misfire here and could log
+  // the employee out on a simple typo if the refresh itself failed.
+  const currentValid = await verifyHash(parsed.data.currentPin, user.pinHash);
+  if (!currentValid) {
+    return NextResponse.json({ error: "Current PIN is incorrect." }, { status: 403 });
+  }
+
+  if (parsed.data.newPin === parsed.data.currentPin) {
+    return NextResponse.json(
+      { error: "New PIN must be different from the current PIN." },
+      { status: 400 },
+    );
+  }
+
+  const newPinHash = await hash(parsed.data.newPin);
+  await prisma.user.update({ where: { id: user.id }, data: { pinHash: newPinHash } });
+
+  return NextResponse.json({ success: true });
+}

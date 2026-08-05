@@ -10,6 +10,7 @@ type AttendanceRecord = {
   method: string;
   timestamp: string;
   hasPhoto: boolean;
+  pauses?: { pausedAt: string; resumedAt: string | null }[];
 };
 
 const TABS = [

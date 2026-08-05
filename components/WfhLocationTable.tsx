@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { Pencil, Trash2, X } from "lucide-react";
+import { Pencil, Trash2, X, Plus, Search } from "lucide-react";
+import EmployeePicker, { type PickableEmployee } from "./EmployeePicker";
 
 const OfficeLocationMap = dynamic(() => import("./OfficeLocationMap"), {
   ssr: false,
@@ -24,8 +25,15 @@ type WfhEmployee = {
   homeRadiusMeters: number;
 };
 
-export default function WfhLocationTable({ employees }: { employees: WfhEmployee[] }) {
+interface WfhLocationTableProps {
+  employees: WfhEmployee[];
+  allEmployees: PickableEmployee[];
+}
+
+export default function WfhLocationTable({ employees, allEmployees }: WfhLocationTableProps) {
   const router = useRouter();
+  const [query, setQuery] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [editing, setEditing] = useState<WfhEmployee | null>(null);
   const [latitude, setLatitude] = useState(0);
   const [longitude, setLongitude] = useState(0);
@@ -34,12 +42,40 @@ export default function WfhLocationTable({ employees }: { employees: WfhEmployee
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return employees;
+    return employees.filter(
+      (emp) => emp.name.toLowerCase().includes(q) || emp.employeeCode.toLowerCase().includes(q),
+    );
+  }, [employees, query]);
+
+  // Anyone not already WFH is a valid candidate — converting from OFFICE or
+  // FIELD into WFH is a legitimate reassignment.
+  const candidates = useMemo(
+    () => allEmployees.filter((e) => e.active && e.workMode !== "WFH"),
+    [allEmployees],
+  );
+
   function openEdit(emp: WfhEmployee) {
     setEditing(emp);
     setLatitude(emp.homeLatitude ?? 0);
     setLongitude(emp.homeLongitude ?? 0);
     setRadiusMeters(emp.homeRadiusMeters ?? 50);
     setError(null);
+  }
+
+  function openAdd(emp: PickableEmployee) {
+    setPickerOpen(false);
+    openEdit({
+      id: emp.id,
+      employeeCode: emp.employeeCode,
+      name: emp.name,
+      active: emp.active,
+      homeLatitude: null,
+      homeLongitude: null,
+      homeRadiusMeters: 50,
+    });
   }
 
   async function handleSave() {
@@ -80,11 +116,31 @@ export default function WfhLocationTable({ employees }: { employees: WfhEmployee
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-xl font-bold text-slate-800 tracking-tight">Work From Home Locations</h2>
-        <p className="text-secondary mt-1 text-sm font-medium">
-          WFH employees are geofenced against their own home location instead of the office.
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-slate-800 tracking-tight">Work From Home Locations</h2>
+          <p className="text-secondary mt-1 text-sm font-medium">
+            WFH employees are geofenced against their own home location instead of the office.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setPickerOpen(true)}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-md shadow-primary/20 hover:bg-primary-dark transition-all duration-200 self-start"
+        >
+          <Plus className="w-4 h-4" />
+          Add
+        </button>
+      </div>
+
+      <div className="relative max-w-xs">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search by name or ID…"
+          className="w-full rounded-lg border border-slate-300 bg-white/80 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+        />
       </div>
 
       <div className="rounded-2xl border border-slate-200/60 bg-white/60 backdrop-blur-md shadow-xl shadow-slate-200/20 overflow-hidden">
@@ -102,7 +158,7 @@ export default function WfhLocationTable({ employees }: { employees: WfhEmployee
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100/80">
-              {employees.map((emp) => (
+              {filtered.map((emp) => (
                 <tr key={emp.id} className="hover:bg-primary/5 transition-colors duration-200">
                   <td className="px-6 py-4 text-slate-800 font-semibold">{emp.name}</td>
                   <td className="px-6 py-4 font-medium text-slate-700">{emp.employeeCode}</td>
@@ -141,10 +197,12 @@ export default function WfhLocationTable({ employees }: { employees: WfhEmployee
                   </td>
                 </tr>
               ))}
-              {employees.length === 0 && (
+              {filtered.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-6 py-12 text-center text-secondary">
-                    No WFH employees yet. Import employees with WorkMode set to WFH to see them here.
+                    {employees.length === 0
+                      ? "No WFH employees yet. Click Add to assign one."
+                      : "No employees match your search."}
                   </td>
                 </tr>
               )}
@@ -163,7 +221,9 @@ export default function WfhLocationTable({ employees }: { employees: WfhEmployee
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-              <h2 className="text-lg font-bold text-slate-800">Edit home location — {editing.name}</h2>
+              <h2 className="text-lg font-bold text-slate-800">
+                {editing.homeLatitude === null ? "Set" : "Edit"} home location — {editing.name}
+              </h2>
               <button
                 onClick={() => setEditing(null)}
                 className="text-slate-400 hover:text-slate-700 transition-colors"
@@ -239,6 +299,36 @@ export default function WfhLocationTable({ employees }: { employees: WfhEmployee
                   {loading ? "Saving…" : "Save"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pickerOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+          onClick={() => setPickerOpen(false)}
+        >
+          <div
+            className="w-full max-w-md bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/50 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+              <h2 className="text-lg font-bold text-slate-800">Add a WFH employee</h2>
+              <button
+                onClick={() => setPickerOpen(false)}
+                className="text-slate-400 hover:text-slate-700 transition-colors"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6">
+              <EmployeePicker
+                employees={candidates}
+                onSelect={openAdd}
+                emptyLabel="No eligible employees — everyone active is already set to WFH."
+              />
             </div>
           </div>
         </div>
