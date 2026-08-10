@@ -15,25 +15,31 @@ export default async function MyPageLayout({
   return (
     <Providers>
       <TabSecurity />
-      <div className="min-h-screen bg-slate-50">
-        <header className="border-b border-slate-200/60 bg-white/70 backdrop-blur-md sticky top-0 z-10">
-          <div className="w-[90%] mx-auto flex items-center justify-between px-6 py-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-primary text-white flex items-center justify-center shrink-0">
-                <Building2 className="w-4 h-4" />
-              </div>
-              <span className="font-semibold text-slate-800">My Attendance</span>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-slate-500 hidden sm:inline">
-                {session?.user?.name}
+      <div className="min-h-screen bg-background py-3 sm:py-6 md:py-9">
+        {/*
+          Same composition as the admin panel: nav/header lives inside one
+          bordered, 8px-radius panel on the light background, above a
+          fading rule, rather than a page-wide bar outside it.
+        */}
+        <div className="w-[95%] mx-auto rounded-lg border border-border bg-surface overflow-hidden">
+          <header className="bg-surface-2">
+            <div className="flex items-center gap-3 px-5 sm:px-7 h-14">
+              <Building2 className="w-[18px] h-[18px] text-primary" />
+              <span className="text-xs font-medium tracking-[0.12em] uppercase text-muted">
+                My attendance
               </span>
-              <ChangePinButton />
-              <SignOutButton />
+              <div className="ml-auto flex items-center gap-2 text-[13px] text-muted">
+                <span className="hidden sm:inline mr-1.5">
+                  {session?.user?.name}
+                </span>
+                <ChangePinButton />
+                <SignOutButton />
+              </div>
             </div>
-          </div>
-        </header>
-        <div className="w-[90%] mx-auto px-6 py-8">{children}</div>
+            <div className="fade-rule" />
+          </header>
+          <main>{children}</main>
+        </div>
       </div>
     </Providers>
   );

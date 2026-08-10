@@ -1,18 +1,36 @@
 @import "tailwindcss";
 
+/*
+ * Design system: "Nocturne — light, compact, orange" (see
+ * `Check-In Nocturne.dc.html` in the claude.ai/design project). Left-aligned,
+ * dense spacing, 8px radii, hairline borders, Inter at weight 500 for
+ * headings, and the app's existing #f06400 orange kept as the single accent.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #e8eaf2;
+  --foreground: #292b31;
+  --color-muted: #75798c;
+  --color-muted-2: #595d6c;
+  --color-surface: #f5f6fb;
+  --color-surface-2: #ffffff;
+  --color-border: rgba(41, 43, 49, 0.14);
+  --color-border-soft: rgba(41, 43, 49, 0.08);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-inter), system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
   --color-primary: #f06400;
   --color-primary-dark: #c05000;
-  --color-secondary: #8c7878;
+  --color-secondary: #75798c; /* was #8c7878 — realigned to the Nocturne muted tone so every existing `text-secondary`/`bg-secondary` usage matches without touching each call site */
+  --color-muted: var(--color-muted);
+  --color-muted-2: var(--color-muted-2);
+  --color-surface: var(--color-surface);
+  --color-surface-2: var(--color-surface-2);
+  --color-border: var(--color-border);
+  --color-border-soft: var(--color-border-soft);
 
   /* Project-wide responsive tiers (verified 320–1440px):
      base   320–500   phones
@@ -29,5 +47,18 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-inter), system-ui, sans-serif;
+}
+
+/* Rules that fade out at their ends instead of stopping cleanly — a
+   Nocturne signature. Use on freestanding dividers (not box outlines). */
+.fade-rule {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--color-border) 48px,
+    var(--color-border) calc(100% - 48px),
+    transparent
+  );
 }

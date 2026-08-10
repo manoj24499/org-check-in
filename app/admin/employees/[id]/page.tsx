@@ -3,9 +3,16 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import EmployeeActions from "@/components/EmployeeActions";
 import AttendanceCalendar from "@/components/AttendanceCalendar";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Clock } from "lucide-react";
 
 export const dynamic = "force-dynamic";
+
+function formatTimeLabel(value: string) {
+  const [h, m] = value.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hour12}:${String(m).padStart(2, "0")} ${period}`;
+}
 
 function initials(name: string) {
   return (
@@ -29,6 +36,9 @@ export default async function EmployeeDetailPage({
   const employee = await prisma.user.findUnique({
     where: { id },
     include: {
+      shift: {
+        select: { id: true, name: true, startTime: true, endTime: true },
+      },
       attendances: {
         orderBy: { timestamp: "desc" },
         take: 2000,
@@ -52,30 +62,30 @@ export default async function EmployeeDetailPage({
   }));
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6 px-5 sm:px-7 py-6 sm:py-7">
       <div className="flex flex-col gap-4">
         <Link
           href="/admin/employees"
-          className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors w-fit"
+          className="inline-flex items-center gap-2 text-sm font-medium text-muted hover:text-foreground transition-colors w-fit"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to Employees
         </Link>
 
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-primary text-white flex items-center justify-center text-lg font-bold shadow-lg shadow-primary/20 shrink-0">
+          <div className="w-14 h-14 rounded-lg bg-primary text-white flex items-center justify-center text-lg font-medium shadow-[0_1px_2px_rgba(41,43,49,0.05)] shrink-0">
             {initials(employee.name)}
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-2xl font-bold text-slate-800 tracking-tight break-words">
+              <h1 className="text-2xl font-medium text-foreground tracking-tight break-words">
                 {employee.name}
               </h1>
               <span
-                className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold tracking-wide ${
+                className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium tracking-wide ${
                   employee.active
                     ? "bg-primary/10 text-primary border border-primary/20"
-                    : "bg-slate-100 text-slate-500 border border-slate-200"
+                    : "bg-surface text-muted border border-border"
                 }`}
               >
                 {employee.active ? "Active" : "Deactivated"}
@@ -89,13 +99,50 @@ export default async function EmployeeDetailPage({
       </div>
 
       <div className="flex flex-col gap-8">
-        <div className="rounded-2xl border border-slate-200/60 bg-white/60 backdrop-blur-md p-6 shadow-xl shadow-slate-200/20">
-          <h2 className="text-lg font-bold text-slate-800 mb-4">Credentials</h2>
+        <div className="rounded-lg border border-border bg-surface-2 p-6 shadow-[0_1px_2px_rgba(41,43,49,0.05)] ">
+          <h2 className="text-lg font-medium text-foreground mb-4">
+            Credentials
+          </h2>
           <EmployeeActions employeeId={employee.id} active={employee.active} />
         </div>
 
-        <div className="rounded-2xl border border-slate-200/60 bg-white/60 backdrop-blur-md shadow-xl shadow-slate-200/20 p-6">
-          <h2 className="text-lg font-bold text-slate-800 mb-4">Attendance Calendar</h2>
+        <div className="rounded-lg border border-border bg-surface-2 p-6 shadow-[0_1px_2px_rgba(41,43,49,0.05)] ">
+          <h2 className="text-lg font-medium text-foreground mb-4">
+            Shift &amp; Lateness
+          </h2>
+          {employee.shift ? (
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <Clock className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-semibold text-foreground">
+                  {employee.shift.name || "Assigned shift"}
+                </p>
+                <p className="text-secondary text-sm">
+                  {formatTimeLabel(employee.shift.startTime)} –{" "}
+                  {formatTimeLabel(employee.shift.endTime)}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-secondary text-sm font-medium">
+              Not assigned to a shift — late check-ins aren&apos;t tracked for
+              this employee.
+            </p>
+          )}
+          <Link
+            href="/admin/shifts"
+            className="inline-flex items-center gap-1.5 mt-4 text-sm font-semibold text-primary hover:text-primary-dark transition-colors"
+          >
+            Manage shifts &amp; assignments →
+          </Link>
+        </div>
+
+        <div className="rounded-lg border border-border bg-surface-2 shadow-[0_1px_2px_rgba(41,43,49,0.05)] p-6">
+          <h2 className="text-lg font-medium text-foreground mb-4">
+            Attendance Calendar
+          </h2>
           <AttendanceCalendar attendances={attendances} layout="split" />
         </div>
       </div>

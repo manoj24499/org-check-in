@@ -7,7 +7,10 @@ export async function getSettings() {
   return prisma.appSettings.create({ data: {} });
 }
 
-export async function updateSettings(data: { checkOutPhotoRequired?: boolean }) {
+export async function updateSettings(data: {
+  checkOutPhotoRequired?: boolean;
+  reimbursementRatePerKm?: number | null;
+}) {
   const existing = await getSettings();
   return prisma.appSettings.update({ where: { id: existing.id }, data });
 }

@@ -9,17 +9,27 @@ export default async function EmployeesPage() {
   const employees = await prisma.user.findMany({
     where: { role: "EMPLOYEE" },
     orderBy: { name: "asc" },
-    select: { id: true, employeeCode: true, name: true, email: true, active: true },
+    select: {
+      id: true,
+      employeeCode: true,
+      name: true,
+      email: true,
+      active: true,
+    },
   });
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-5 px-5 sm:px-7 py-6 sm:py-7">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Employees</h1>
-          <p className="text-secondary mt-1 font-medium">{employees.length} total employees</p>
+          <h1 className="text-[28px] sm:text-[30px] font-medium tracking-[-0.025em] text-foreground">
+            Employees
+          </h1>
+          <p className="text-sm text-muted mt-1">
+            {employees.length} total employees
+          </p>
         </div>
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-2.5">
           <BulkAddEmployeeForm />
           <AddEmployeeForm />
         </div>

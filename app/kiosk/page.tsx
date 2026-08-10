@@ -11,10 +11,9 @@ import {
   CheckCircle2,
   Loader2,
   MapPin,
-  CalendarDays,
-  Sparkles,
-  Camera,
+  Building2,
   Lock,
+  Delete,
 } from "lucide-react";
 import CameraCapture, { CameraCaptureHandle } from "@/components/CameraCapture";
 import { startTracking, stopTracking } from "@/lib/locationTracker";
@@ -41,23 +40,8 @@ type EmployeeStatus = {
   checkOutPhotoRequired?: boolean;
 };
 
-const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
-
-// Purely decorative — the current month with today highlighted. No
-// per-employee data here: the kiosk is a shared, unauthenticated device, so
-// nothing tied to a specific employee is shown before their PIN is verified.
-function buildMonthCells(date: Date) {
-  const year = date.getFullYear();
-  const month = date.getMonth();
-  const startWeekday = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells: (number | null)[] = [
-    ...Array(startWeekday).fill(null),
-    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
-  ];
-  while (cells.length % 7 !== 0) cells.push(null);
-  return cells;
-}
+const PIN_SLOTS = 6;
+const KEYPAD_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "clear", "0", "back"] as const;
 
 export default function KioskPage() {
   const [employeeCode, setEmployeeCode] = useState("");
@@ -298,11 +282,17 @@ export default function KioskPage() {
     submit(action, photo, coords);
   }
 
-  function handlePinKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key !== "Enter") return;
-    e.preventDefault();
-    if (canCheckOut) handleAction("CHECK_OUT");
-    else if (canCheckIn) handleAction("CHECK_IN");
+  function pressKey(key: (typeof KEYPAD_KEYS)[number]) {
+    if (busy) return;
+    if (key === "clear") {
+      setPin("");
+      return;
+    }
+    if (key === "back") {
+      setPin((p) => p.slice(0, -1));
+      return;
+    }
+    setPin((p) => (p.length >= PIN_SLOTS ? p : p + key));
   }
 
   const firstName = empStatus?.name?.split(" ")[0];
@@ -310,14 +300,14 @@ export default function KioskPage() {
     empStatus?.exists && empStatus.checkedIn && !empStatus.checkedOut
       ? {
           tone: "info" as const,
-          message: `Hi ${firstName ?? "there"}, you're already checked in${
+          message: `Hi ${firstName ?? "there"} — checked in since ${
             empStatus.checkInAt
-              ? ` since ${new Date(empStatus.checkInAt).toLocaleTimeString([], {
+              ? new Date(empStatus.checkInAt).toLocaleTimeString([], {
                   hour: "2-digit",
                   minute: "2-digit",
-                })}`
-              : ""
-          }. Don't forget to check out!`,
+                })
+              : "earlier"
+          }. Don't forget to check out.`,
         }
       : empStatus?.exists && empStatus.checkedIn && empStatus.checkedOut
         ? {
@@ -327,226 +317,186 @@ export default function KioskPage() {
         : null;
 
   return (
-    <main className="min-h-screen flex flex-col items-center p-6 bg-gradient-to-b from-slate-50 via-white to-slate-50 relative overflow-hidden">
-      <div aria-hidden className="absolute -top-40 -right-40 w-96 h-96 rounded-full bg-primary/10 blur-3xl" />
-      <div aria-hidden className="absolute -bottom-40 -left-40 w-96 h-96 rounded-full bg-primary/10 blur-3xl" />
+    <main className="min-h-screen flex items-center justify-center bg-background p-4 sm:p-6">
+      <div className="w-full max-w-[1024px] rounded-lg border border-border bg-surface overflow-hidden grid grid-cols-1 lg:grid-cols-[1fr_400px]">
+        {/* Left pane */}
+        <div className="flex flex-col p-5 sm:p-7 gap-4">
+          <div className="flex items-center gap-2">
+            <Building2 className="w-[18px] h-[18px] text-primary" />
+            <span className="text-xs font-medium tracking-[0.12em] uppercase text-muted">
+              Kiosk
+            </span>
+            <Link
+              href="/"
+              className="ml-auto inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-foreground transition-colors"
+            >
+              <ArrowLeft className="w-[15px] h-[15px]" />
+              Back to start
+            </Link>
+          </div>
 
-      <div className="absolute top-6 left-6 z-10">
-        <Link
-          href="/"
-          className="flex items-center gap-2 text-slate-500 hover:text-slate-900 transition-colors font-medium px-4 py-2 rounded-lg hover:bg-slate-200 bg-slate-100/50"
-        >
-          <ArrowLeft className="w-5 h-5" />
-          <span>Back to Start</span>
-        </Link>
-      </div>
-
-      <div
-        className={`fixed top-6 right-6 z-20 w-72 rounded-2xl border p-4 shadow-xl backdrop-blur-md transition-all duration-300 ${
-          notice ? "opacity-100 translate-x-0" : "opacity-0 translate-x-6 pointer-events-none"
-        } ${notice?.tone === "done" ? "bg-emerald-50/95 border-emerald-200" : "bg-primary/10 border-primary/20"}`}
-      >
-        {notice && (
-          <div className="flex items-start gap-3">
-            {notice.tone === "done" ? (
-              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+          <div>
+            {currentTime ? (
+              <>
+                <div className="text-[44px] sm:text-[52px] font-medium leading-none tracking-[-0.03em] tabular-nums text-foreground">
+                  {currentTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                </div>
+                <div className="text-sm text-muted mt-1">
+                  {currentTime.toLocaleDateString([], {
+                    weekday: "long",
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                  })}
+                </div>
+              </>
             ) : (
-              <Info className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+              <div className="h-[64px]" />
             )}
-            <p
-              className={`text-sm font-medium ${
-                notice.tone === "done" ? "text-emerald-800" : "text-primary"
+          </div>
+
+          {(notice || result.status === "error") && (
+            <div
+              className={`flex items-center gap-2.5 rounded-lg border px-3.5 py-2.5 text-sm ${
+                result.status === "error"
+                  ? "bg-red-50 border-red-200 text-red-700"
+                  : notice?.tone === "done"
+                    ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                    : "bg-primary/[0.08] border-primary/30 text-[#8a4a10]"
               }`}
             >
-              {notice.message}
-            </p>
-          </div>
-        )}
-      </div>
-
-      <div className="relative w-full max-w-5xl flex flex-col items-center gap-8 pt-14">
-        <h1 className="text-3xl font-bold text-slate-900 text-center">
-          Employee Check-In System
-        </h1>
-
-        <div className="w-full grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-8 items-start">
-          <div className="flex flex-col items-center gap-4">
-            <div className="w-full max-w-sm bg-white/90 backdrop-blur-xl rounded-3xl shadow-xl shadow-slate-200/50 border border-white/60 p-6">
-              <div className="flex flex-col gap-4">
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-sm font-medium">Presence photo</label>
-                    {!cameraReady && (
-                      <span className="text-xs text-slate-400">Preparing camera…</span>
-                    )}
-                  </div>
-                  <CameraCapture ref={cameraRef} onReadyChange={setCameraReady} />
-                  <p className="text-xs text-slate-400 mt-1.5">
-                    {checkOutPhotoRequired
-                      ? "Required to check in and check out, so we know who's actually present."
-                      : "Required to check in, so we know who's actually present."}
-                  </p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium">Employee ID</label>
-                  <div className="relative mt-1">
-                    <input
-                      value={employeeCode}
-                      onChange={(e) => setEmployeeCode(e.target.value)}
-                      placeholder="EMP001"
-                      className="w-full rounded-lg border border-slate-300 px-3 py-3 text-center text-lg tracking-wide"
-                      autoFocus
-                    />
-                    {statusLoading && (
-                      <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 animate-spin" />
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <label className="text-sm font-medium">PIN</label>
-                  <input
-                    value={pin}
-                    onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
-                    onKeyDown={handlePinKeyDown}
-                    type="password"
-                    inputMode="numeric"
-                    maxLength={6}
-                    placeholder="••••••"
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 text-center text-2xl tracking-[0.5em]"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 mt-1">
-                  <button
-                    type="button"
-                    onClick={() => handleAction("CHECK_IN")}
-                    disabled={busy || !formReady || !canCheckIn}
-                    className="flex items-center justify-center gap-2 rounded-lg bg-primary text-white py-3 font-medium hover:bg-primary-dark transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary"
-                  >
-                    <LogIn className="w-4 h-4" />
-                    {busy ? "Processing…" : "Check In"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleAction("CHECK_OUT")}
-                    disabled={busy || !formReady || !canCheckOut}
-                    className="flex items-center justify-center gap-2 rounded-lg bg-slate-800 text-white py-3 font-medium hover:bg-slate-700 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-slate-800"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    {busy ? "Processing…" : "Check Out"}
-                  </button>
-                </div>
-
-                {geofenceStatus && (
-                  <div
-                    className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${
-                      geofenceStatus.withinRadius
-                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                        : "bg-red-50 text-red-700 border border-red-200"
-                    }`}
-                  >
-                    <span
-                      className={`w-2 h-2 rounded-full shrink-0 ${
-                        geofenceStatus.withinRadius ? "bg-emerald-500" : "bg-red-500"
-                      }`}
-                    />
-                    {Math.round(geofenceStatus.distanceMeters)}m from the office
-                    {geofenceStatus.withinRadius ? " — within range" : " — outside allowed range"}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="h-20 flex items-center">
-              {result.status === "error" && (
-                <div className="rounded-xl px-6 py-4 text-center font-medium bg-red-50 text-red-700 border border-red-200">
-                  {result.message}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <aside className="flex flex-col gap-5">
-            <div className="rounded-2xl bg-white/80 backdrop-blur-xl border border-white/60 shadow-xl shadow-slate-200/40 p-6 text-center">
-              {currentTime ? (
-                <>
-                  <p className="text-4xl font-black text-slate-900 tabular-nums tracking-tight">
-                    {currentTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                  </p>
-                  <p className="text-sm text-secondary font-medium mt-1">
-                    {currentTime.toLocaleDateString([], {
-                      weekday: "long",
-                      month: "long",
-                      day: "numeric",
-                    })}
-                  </p>
-                </>
+              {result.status === "error" ? (
+                <Info className="w-[18px] h-[18px] shrink-0" />
+              ) : notice?.tone === "done" ? (
+                <CheckCircle2 className="w-[18px] h-[18px] shrink-0" />
               ) : (
-                <div className="h-[52px]" />
+                <Info className="w-[18px] h-[18px] shrink-0 text-primary-dark" />
+              )}
+              <span>{result.status === "error" ? result.message : notice?.message}</span>
+            </div>
+          )}
+
+          <div className="relative flex-1 min-h-[180px] rounded-lg border border-border bg-[#e4e7f5] overflow-hidden">
+            <CameraCapture ref={cameraRef} onReadyChange={setCameraReady} />
+            <div className="absolute left-3.5 bottom-3.5 flex items-center gap-1.5 bg-surface-2 border border-border rounded-lg px-2.5 py-1 text-xs text-muted-2">
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${cameraReady ? "bg-[#3f9c5a]" : "bg-muted"}`}
+              />
+              {cameraReady ? "Camera ready" : "Preparing camera…"}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 text-[13px] text-muted">
+            {geofenceStatus ? (
+              <span className="inline-flex items-center gap-1.5">
+                <MapPin
+                  className={`w-4 h-4 ${geofenceStatus.withinRadius ? "text-primary" : "text-red-600"}`}
+                />
+                {Math.round(geofenceStatus.distanceMeters)}m from the office
+                {geofenceStatus.withinRadius ? " — within range" : " — outside allowed range"}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5">
+                <MapPin className="w-4 h-4 text-primary" />
+                Location is checked when you check in
+              </span>
+            )}
+            <span className="ml-auto inline-flex items-center gap-1.5">
+              <Lock className="w-[15px] h-[15px]" />
+              Never share your PIN
+            </span>
+          </div>
+        </div>
+
+        {/* Right pane */}
+        <div className="border-t lg:border-t-0 lg:border-l border-border bg-surface-2 flex flex-col p-5 sm:p-6 gap-4">
+          <div>
+            <label className="text-[11px] font-medium tracking-[0.14em] uppercase text-muted">
+              Employee ID
+            </label>
+            <div className="relative mt-0.5">
+              <input
+                value={employeeCode}
+                onChange={(e) => setEmployeeCode(e.target.value.toUpperCase())}
+                placeholder="EMP001"
+                autoCapitalize="characters"
+                autoFocus
+                className="w-full bg-transparent text-[26px] sm:text-[30px] font-medium tracking-[-0.01em] text-foreground focus:outline-none placeholder:text-muted/60"
+              />
+              {statusLoading && (
+                <Loader2 className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 text-muted animate-spin" />
               )}
             </div>
+          </div>
 
-            {currentTime && (
-              <div className="rounded-2xl bg-white/80 backdrop-blur-xl border border-white/60 shadow-xl shadow-slate-200/40 p-5">
-                <p className="font-bold text-slate-800 mb-3 flex items-center gap-2">
-                  <CalendarDays className="w-4 h-4 text-primary" />
-                  {currentTime.toLocaleDateString([], { month: "long", year: "numeric" })}
-                </p>
-                <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-secondary uppercase mb-1.5">
-                  {WEEKDAY_LABELS.map((d, i) => (
-                    <div key={i}>{d}</div>
-                  ))}
-                </div>
-                <div className="grid grid-cols-7 gap-1">
-                  {buildMonthCells(currentTime).map((day, i) => (
-                    <div
-                      key={i}
-                      className={`aspect-square rounded-md flex items-center justify-center text-xs font-medium ${
-                        day === currentTime.getDate()
-                          ? "bg-primary text-white font-bold"
-                          : day
-                            ? "text-slate-600"
-                            : ""
-                      }`}
-                    >
-                      {day ?? ""}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="rounded-2xl bg-white/80 backdrop-blur-xl border border-white/60 shadow-xl shadow-slate-200/40 p-5">
-              <p className="font-bold text-slate-800 mb-3 flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-primary" />
-                Quick Tips
-              </p>
-              <ul className="flex flex-col gap-2.5 text-sm text-slate-600">
-                <li className="flex items-start gap-2">
-                  <Camera className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                  Look at the camera so we can confirm you&apos;re present.
-                </li>
-                <li className="flex items-start gap-2">
-                  <MapPin className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                  Allow location access when prompted to complete check-in.
-                </li>
-                <li className="flex items-start gap-2">
-                  <Lock className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                  Keep your PIN private — never share it with anyone.
-                </li>
-              </ul>
+          <div>
+            <label className="text-[11px] font-medium tracking-[0.14em] uppercase text-muted">
+              PIN
+            </label>
+            <div className="flex gap-2 mt-2">
+              {Array.from({ length: PIN_SLOTS }, (_, i) => (
+                <span
+                  key={i}
+                  className={`flex-1 h-[46px] rounded-lg border flex items-center justify-center text-[22px] ${
+                    i < pin.length ? "border-primary text-foreground" : "border-border"
+                  }`}
+                >
+                  {i < pin.length ? "•" : ""}
+                </span>
+              ))}
             </div>
-          </aside>
+          </div>
+
+          <div className="flex-1 grid grid-cols-3 gap-2">
+            {KEYPAD_KEYS.map((key) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => pressKey(key)}
+                disabled={busy}
+                className={
+                  key === "clear"
+                    ? "rounded-lg border border-border text-[13px] text-muted hover:bg-black/[0.03] transition-colors disabled:opacity-50"
+                    : key === "back"
+                      ? "rounded-lg border border-border text-muted flex items-center justify-center hover:bg-black/[0.03] transition-colors disabled:opacity-50"
+                      : "rounded-lg border border-border bg-surface text-2xl font-medium text-foreground hover:bg-black/[0.03] transition-colors disabled:opacity-50"
+                }
+              >
+                {key === "clear" ? "Clear" : key === "back" ? <Delete className="w-5 h-5" /> : key}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => handleAction("CHECK_OUT")}
+              disabled={busy || !formReady || !canCheckOut}
+              className="flex items-center gap-2.5 rounded-lg border border-primary bg-primary/[0.08] text-primary-dark py-3.5 px-4 text-base font-medium hover:bg-primary/[0.14] transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary/[0.08]"
+            >
+              <LogOut className="w-[19px] h-[19px]" />
+              {busy ? "Processing…" : "Check out"}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleAction("CHECK_IN")}
+              disabled={busy || !formReady || !canCheckIn}
+              className="flex items-center gap-2.5 rounded-lg border border-border text-muted py-3.5 px-4 text-base font-medium hover:bg-black/[0.03] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <LogIn className="w-[19px] h-[19px]" />
+              {busy ? "Processing…" : "Check in"}
+            </button>
+          </div>
         </div>
       </div>
 
       {trackingPopupId && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6">
-          <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 flex flex-col items-center text-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-6">
+          <div className="w-full max-w-sm bg-surface-2 rounded-lg border border-border p-6 flex flex-col items-center text-center gap-4">
+            <div className="w-14 h-14 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
               <MapPin className="w-7 h-7" />
             </div>
-            <p className="text-slate-700 font-medium">
+            <p className="text-foreground">
               Live location tracking has started. Please keep this tab open and keep location
               services enabled during your working hours. Closing this tab will stop live
               location tracking.
@@ -557,7 +507,7 @@ export default function KioskPage() {
                 setTrackingPopupId(null);
                 router.push(`/kiosk/status/${id}`);
               }}
-              className="w-full rounded-xl bg-primary text-white py-3 font-semibold hover:bg-primary-dark transition shadow-md shadow-primary/20"
+              className="w-full rounded-lg border border-primary text-primary-dark py-3 font-medium hover:bg-primary/5 transition-colors"
             >
               Got it
             </button>

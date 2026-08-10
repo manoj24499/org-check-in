@@ -11,7 +11,7 @@ export async function GET() {
     include: { user: true },
   });
 
-  const header = "Employee ID,Name,Email,Event,Method,Timestamp\n";
+  const header = "Employee ID,Name,Email,Event,Method,Timestamp,Late (min),Leave Type\n";
   const rows = records
     .map((r) =>
       [
@@ -21,6 +21,8 @@ export async function GET() {
         r.type,
         r.method,
         r.timestamp.toISOString(),
+        r.lateMinutes ?? "",
+        r.leaveType,
       ].join(",")
     )
     .join("\n");

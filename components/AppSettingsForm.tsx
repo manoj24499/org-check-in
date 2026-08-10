@@ -10,7 +10,8 @@ export default function AppSettingsForm({
   checkOutPhotoRequired: boolean;
 }) {
   const router = useRouter();
-  const [checkOutPhotoRequired, setCheckOutPhotoRequired] = useState(initialValue);
+  const [checkOutPhotoRequired, setCheckOutPhotoRequired] =
+    useState(initialValue);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -26,7 +27,9 @@ export default function AppSettingsForm({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ checkOutPhotoRequired: next }),
     });
-    const data = await res.json().catch(() => ({ error: "Unexpected server response." }));
+    const data = await res
+      .json()
+      .catch(() => ({ error: "Unexpected server response." }));
     setLoading(false);
 
     if (!res.ok) {
@@ -41,17 +44,19 @@ export default function AppSettingsForm({
   }
 
   return (
-    <div className="rounded-2xl bg-white/90 backdrop-blur-xl border border-white/60 shadow-xl shadow-slate-200/40 p-6 max-w-xl">
+    <div className="rounded-lg bg-surface-2 border border-white/60 shadow-[0_1px_2px_rgba(41,43,49,0.05)] p-6 max-w-xl">
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-3">
           <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-0.5">
             <Camera className="w-4 h-4" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-slate-800">Require photo on check-out</p>
+            <p className="text-sm font-semibold text-foreground">
+              Require photo on check-out
+            </p>
             <p className="text-xs text-secondary mt-1">
-              When enabled, employees must take a presence photo to check out, the same as
-              check-in — on both the kiosk and the mobile app.
+              When enabled, employees must take a presence photo to check out,
+              the same as check-in — on both the kiosk and the mobile app.
             </p>
           </div>
         </div>
@@ -63,7 +68,7 @@ export default function AppSettingsForm({
           disabled={loading}
           onClick={() => handleToggle(!checkOutPhotoRequired)}
           className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
-            checkOutPhotoRequired ? "bg-primary" : "bg-slate-300"
+            checkOutPhotoRequired ? "bg-primary" : "bg-muted"
           }`}
         >
           <span

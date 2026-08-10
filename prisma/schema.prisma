@@ -29,6 +29,24 @@ enum WorkMode {
   FIELD
 }
 
+// Auto-computed at check-in (see /api/kiosk/scan) by comparing the check-in
+// time against the employee's shiftStartTime. PERMISSION = up to 1 hour
+// late, HALF_DAY = more than 1 hour late.
+enum LeaveType {
+  NONE
+  PERMISSION
+  HALF_DAY
+}
+
+// The choice a FIELD-workMode employee makes at check-in each day — Office
+// (geofenced against the shared OfficeLocation, same as regular OFFICE
+// employees) or Field (no geofence, distance/visit tracking active). See
+// /api/kiosk/scan.
+enum CheckInMode {
+  OFFICE
+  FIELD
+}
+
 model User {
   id           String @id @default(cuid())
   employeeCode String @unique // human-friendly ID, e.g. EMP001 / ADM001
@@ -50,16 +68,38 @@ model User {
   homeLongitude    Float?
   homeRadiusMeters Float    @default(50)
 
+  // Assigned from the Shifts admin page. Only enforced for OFFICE employees
+  // (see /api/kiosk/scan). Null == lateness isn't tracked for this employee.
+  shiftId String?
+  shift   Shift?  @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  attendances   Attendance[]
-  locationPings LocationPing[]
-  pushTokens    PushToken[]
+  attendances    Attendance[]
+  locationPings  LocationPing[]
+  pushTokens     PushToken[]
+  reimbursements Reimbursement[]
 
   @@index([role])
   @@index([workMode])
+  @@index([shiftId])
+}
+
+// A named time slot (e.g. "General Shift", 09:00–18:00) an OFFICE employee
+// can be assigned to. Managed on the admin Shifts page — startTime drives
+// the lateness classification in /api/kiosk/scan; endTime is captured for
+// future use (e.g. early-checkout tracking) but nothing reads it yet.
+model Shift {
+  id        String   @id @default(cuid())
+  name      String?
+  startTime String // "HH:mm", 24-hour
+  endTime   String // "HH:mm", 24-hour
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employees User[]
 }
 
 model Attendance {
@@ -78,14 +118,45 @@ model Attendance {
   photo    Bytes?
   hasPhoto Boolean @default(false)
 
+  // Set only on CHECK_IN records, from the employee's shiftStartTime at the
+  // moment of check-in (see /api/kiosk/scan). Null lateMinutes / NONE
+  // leaveType means either on time, or the employee has no shiftStartTime
+  // configured (lateness isn't tracked for them).
+  lateMinutes Int?
+  leaveType   LeaveType @default(NONE)
+
+  // Set only on CHECK_IN records for FIELD-workMode employees — the choice
+  // they made that day (see /api/kiosk/scan). Null for OFFICE/WFH employees,
+  // whose mode is already fixed on their profile.
+  checkInMode CheckInMode?
+
   // Auto-pause (see /api/kiosk/location): pauseWarningAt marks the moment 3
   // consecutive out-of-range pings were confirmed, starting a 10-minute grace
   // period before an AttendancePause row is actually created. Cleared once
   // resolved either way (return to range, or converted into a real pause).
   pauseWarningAt DateTime?
   pauses         AttendancePause[]
+  fieldVisits    FieldVisit[]
 
   @@index([userId, timestamp])
+}
+
+// A manually-logged stop during a Field day (see /api/mobile/field-visits) —
+// distinct from PlaceNameCache/visited-places, which auto-infers stops from
+// raw GPS pings. This is the employee's own record: a name, when they
+// reached it, a photo, and where it was.
+model FieldVisit {
+  id           String     @id @default(cuid())
+  attendanceId String
+  attendance   Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  name         String
+  reachedAt    DateTime   @default(now())
+  photo        Bytes
+  latitude     Float
+  longitude    Float
+  createdAt    DateTime   @default(now())
+
+  @@index([attendanceId])
 }
 
 // A paused interval within one CHECK_IN session — resumedAt null means still
@@ -148,7 +219,30 @@ model OfficeLocation {
 model AppSettings {
   id                    String   @id @default(cuid())
   checkOutPhotoRequired Boolean  @default(false)
+  // Default ₹/km used to suggest a reimbursement amount (see
+  // /api/admin/employees/[id]/reimbursement). Null == no default set yet;
+  // admin can still enter an amount manually per day.
+  reimbursementRatePerKm Float?
   updatedAt             DateTime @updatedAt
+}
+
+// One row per employee per calendar day — admin enters/edits this from the
+// Field workers panel. ratePerKm and distanceKm are snapshotted at save time
+// so a later change to the default rate never rewrites history.
+model Reimbursement {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date       DateTime
+  distanceKm Float
+  ratePerKm  Float
+  amount     Float
+  note       String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId])
 }
 
 // Reverse-geocoding memoization — coordinates rounded to 3 decimal places

@@ -8,7 +8,7 @@ import { MapPin } from "lucide-react";
 const OfficeLocationMap = dynamic(() => import("./OfficeLocationMap"), {
   ssr: false,
   loading: () => (
-    <div className="h-[360px] w-full flex items-center justify-center bg-slate-100 text-sm text-secondary">
+    <div className="h-[360px] w-full flex items-center justify-center bg-surface text-sm text-secondary">
       Loading map…
     </div>
   ),
@@ -25,12 +25,22 @@ const DEFAULT_LATITUDE = 28.6139;
 const DEFAULT_LONGITUDE = 77.209;
 const DEFAULT_RADIUS_METERS = 50;
 
-export default function OfficeLocationForm({ officeLocation }: { officeLocation: OfficeLocation }) {
+export default function OfficeLocationForm({
+  officeLocation,
+}: {
+  officeLocation: OfficeLocation;
+}) {
   const router = useRouter();
   const [name, setName] = useState(officeLocation?.name ?? "Main Office");
-  const [latitude, setLatitude] = useState(officeLocation?.latitude ?? DEFAULT_LATITUDE);
-  const [longitude, setLongitude] = useState(officeLocation?.longitude ?? DEFAULT_LONGITUDE);
-  const [radiusMeters, setRadiusMeters] = useState(officeLocation?.radiusMeters ?? DEFAULT_RADIUS_METERS);
+  const [latitude, setLatitude] = useState(
+    officeLocation?.latitude ?? DEFAULT_LATITUDE,
+  );
+  const [longitude, setLongitude] = useState(
+    officeLocation?.longitude ?? DEFAULT_LONGITUDE,
+  );
+  const [radiusMeters, setRadiusMeters] = useState(
+    officeLocation?.radiusMeters ?? DEFAULT_RADIUS_METERS,
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -62,7 +72,9 @@ export default function OfficeLocationForm({ officeLocation }: { officeLocation:
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, latitude, longitude, radiusMeters }),
     });
-    const data = await res.json().catch(() => ({ error: "Unexpected server response." }));
+    const data = await res
+      .json()
+      .catch(() => ({ error: "Unexpected server response." }));
     setLoading(false);
 
     if (!res.ok) {
@@ -77,7 +89,7 @@ export default function OfficeLocationForm({ officeLocation }: { officeLocation:
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
-      <div className="rounded-2xl overflow-hidden border border-white/60 shadow-xl shadow-slate-200/40">
+      <div className="rounded-lg overflow-hidden border border-white/60 shadow-[0_1px_2px_rgba(41,43,49,0.05)] ">
         <OfficeLocationMap
           latitude={latitude}
           longitude={longitude}
@@ -91,52 +103,58 @@ export default function OfficeLocationForm({ officeLocation }: { officeLocation:
 
       <form
         onSubmit={handleSubmit}
-        className="flex flex-col gap-4 rounded-2xl bg-white/90 backdrop-blur-xl border border-white/60 shadow-xl shadow-slate-200/40 p-6"
+        className="flex flex-col gap-4 rounded-lg bg-surface-2 border border-white/60 shadow-[0_1px_2px_rgba(41,43,49,0.05)] p-6"
       >
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
             <MapPin className="w-4 h-4" />
           </div>
-          <h2 className="text-lg font-bold text-slate-800">Office Location</h2>
+          <h2 className="text-lg font-medium text-foreground">Office Location</h2>
         </div>
 
         <div>
-          <label className="text-sm font-medium text-slate-700">Office name</label>
+          <label className="text-sm font-medium text-muted-2">
+            Office name
+          </label>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+            className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
           />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-sm font-medium text-slate-700">Latitude</label>
+            <label className="text-sm font-medium text-muted-2">Latitude</label>
             <input
               type="number"
               step="any"
               value={latitude}
               onChange={(e) => setLatitude(Number(e.target.value))}
               required
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+              className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
             />
           </div>
           <div>
-            <label className="text-sm font-medium text-slate-700">Longitude</label>
+            <label className="text-sm font-medium text-muted-2">
+              Longitude
+            </label>
             <input
               type="number"
               step="any"
               value={longitude}
               onChange={(e) => setLongitude(Number(e.target.value))}
               required
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+              className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
             />
           </div>
         </div>
 
         <div>
-          <label className="text-sm font-medium text-slate-700">Allowed radius (meters)</label>
+          <label className="text-sm font-medium text-muted-2">
+            Allowed radius (meters)
+          </label>
           <input
             type="number"
             min={1}
@@ -144,9 +162,9 @@ export default function OfficeLocationForm({ officeLocation }: { officeLocation:
             value={radiusMeters}
             onChange={(e) => setRadiusMeters(Number(e.target.value))}
             required
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+            className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
           />
-          <p className="text-xs text-slate-400 mt-1.5">Default is 50 meters.</p>
+          <p className="text-xs text-muted mt-1.5">Default is 50 meters.</p>
         </div>
 
         {error && (
@@ -162,13 +180,14 @@ export default function OfficeLocationForm({ officeLocation }: { officeLocation:
 
         <button
           disabled={loading}
-          className="rounded-lg bg-primary text-white py-2.5 text-sm font-medium hover:bg-primary-dark transition shadow-md shadow-primary/20 disabled:opacity-50 disabled:shadow-none"
+          className="rounded-lg border border-primary bg-transparent text-primary-dark py-2.5 text-sm font-medium hover:bg-primary/5 transition disabled:opacity-50"
         >
           {loading ? "Saving…" : "Save location"}
         </button>
 
-        <p className="text-xs text-slate-400">
-          Click anywhere on the map, or drag the marker, to set the office location.
+        <p className="text-xs text-muted">
+          Click anywhere on the map, or drag the marker, to set the office
+          location.
         </p>
       </form>
     </div>

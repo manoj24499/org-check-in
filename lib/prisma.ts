@@ -15,6 +15,9 @@ function createPrismaClient() {
       attendance: {
         photo: true,
       },
+      fieldVisit: {
+        photo: true,
+      },
     },
     log:
       process.env.NODE_ENV === "development"

@@ -18,12 +18,43 @@ const scanSchema = z.object({
   // location provider (Android only). Rejected outright wherever the
   // geofence would otherwise be enforced — see below.
   mocked: z.boolean().optional(),
+  // Only meaningful for FIELD-workMode employees on CHECK_IN — the choice
+  // they made for today. Defaults to "FIELD" when omitted, preserving the
+  // kiosk's existing behavior (it has no UI for this choice).
+  checkInMode: z.enum(["OFFICE", "FIELD"]).optional(),
 });
 
 function startOfToday() {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   return d;
+}
+
+const SHIFT_START_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+/**
+ * Late-arrival classification for OFFICE employees with a configured
+ * shiftStartTime: up to 1 hour late is treated as Permission, more than 1
+ * hour is Half-day leave. WFH/FIELD employees and anyone without a
+ * shiftStartTime set are never classified — leaveType stays NONE.
+ */
+function computeLateness(
+  user: { workMode: string; shift: { startTime: string } | null },
+  checkInAt: Date,
+): { lateMinutes: number | null; leaveType: "NONE" | "PERMISSION" | "HALF_DAY" } {
+  if (user.workMode !== "OFFICE" || !user.shift) {
+    return { lateMinutes: null, leaveType: "NONE" };
+  }
+  const match = SHIFT_START_PATTERN.exec(user.shift.startTime);
+  if (!match) return { lateMinutes: null, leaveType: "NONE" };
+
+  const shiftStart = new Date(checkInAt);
+  shiftStart.setHours(Number(match[1]), Number(match[2]), 0, 0);
+
+  const lateMinutes = Math.round((checkInAt.getTime() - shiftStart.getTime()) / 60_000);
+  if (lateMinutes <= 0) return { lateMinutes: 0, leaveType: "NONE" };
+  if (lateMinutes <= 60) return { lateMinutes, leaveType: "PERMISSION" };
+  return { lateMinutes, leaveType: "HALF_DAY" };
 }
 
 const PHOTO_RETENTION_DAYS = 45;
@@ -96,6 +127,7 @@ export async function POST(req: NextRequest) {
 
   const candidate = await prisma.user.findUnique({
     where: { employeeCode: parsed.data.employeeCode },
+    include: { shift: { select: { startTime: true } } },
   });
   const user =
     candidate?.pinHash && (await verifyHash(parsed.data.pin, candidate.pinHash)) ? candidate : null;
@@ -107,18 +139,27 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // A FIELD-workMode employee picks their mode for the day at check-in — if
+  // they chose "Office", they're geofenced against the shared office
+  // location exactly like a regular OFFICE employee; otherwise (the default)
+  // they're never geofenced, same as before this choice existed.
+  const effectiveWorkMode: typeof user.workMode =
+    user.workMode === "FIELD"
+      ? parsed.data.checkInMode === "OFFICE"
+        ? "OFFICE"
+        : "FIELD"
+      : user.workMode;
+
   // Geofence the check-in against whichever location applies to this
   // employee. No location configured yet (office or home) == not enforced.
-  // FIELD employees are never geofenced at all — they can check in from
-  // anywhere, no location required.
-  if (parsed.data.action === "CHECK_IN" && user.workMode !== "FIELD") {
+  if (parsed.data.action === "CHECK_IN" && effectiveWorkMode !== "FIELD") {
     if (parsed.data.mocked) {
       return NextResponse.json(
         { error: "Mock location detected. Please disable mock/fake GPS apps and try again." },
         { status: 409 },
       );
     }
-    const target = await resolveGeofenceTarget(user);
+    const target = await resolveGeofenceTarget({ ...user, workMode: effectiveWorkMode });
     if (target) {
       if (parsed.data.latitude === undefined || parsed.data.longitude === undefined) {
         return NextResponse.json(
@@ -134,7 +175,7 @@ export async function POST(req: NextRequest) {
       );
       if (distance > target.radiusMeters) {
         const message =
-          user.workMode === "WFH"
+          effectiveWorkMode === "WFH"
             ? "You are outside your assigned work location."
             : `You are outside the permitted office area. Please move within ${Math.round(
                 target.radiusMeters,
@@ -162,11 +203,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "You've already checked out today." }, { status: 409 });
   }
 
+  const now = new Date();
+  const lateness =
+    parsed.data.action === "CHECK_IN"
+      ? computeLateness(user, now)
+      : { lateMinutes: null, leaveType: "NONE" as const };
+
   const record = await prisma.attendance.create({
     data: {
       userId: user.id,
       type: parsed.data.action,
       method: "PIN",
+      timestamp: now,
+      lateMinutes: lateness.lateMinutes,
+      leaveType: lateness.leaveType,
+      ...(parsed.data.action === "CHECK_IN" && user.workMode === "FIELD"
+        ? { checkInMode: effectiveWorkMode === "OFFICE" ? "OFFICE" : "FIELD" }
+        : {}),
       ...(photoBuffer ? { photo: photoBuffer, hasPhoto: true } : {}),
     },
   });
@@ -196,5 +249,8 @@ export async function POST(req: NextRequest) {
     employeeCode: user.employeeCode,
     type: record.type,
     timestamp: record.timestamp,
+    lateMinutes: record.lateMinutes,
+    leaveType: record.leaveType,
+    checkInMode: record.checkInMode,
   });
 }

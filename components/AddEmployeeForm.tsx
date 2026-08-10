@@ -30,7 +30,9 @@ export default function AddEmployeeForm() {
         email: form.get("email"),
       }),
     });
-    const data = await res.json().catch(() => ({ error: "Unexpected server response." }));
+    const data = await res
+      .json()
+      .catch(() => ({ error: "Unexpected server response." }));
     setLoading(false);
 
     if (!res.ok) {
@@ -60,58 +62,75 @@ export default function AddEmployeeForm() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-white px-4 py-2 text-sm font-medium hover:bg-primary-dark transition shadow-md shadow-primary/20"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-primary bg-transparent text-primary-dark px-4 py-2 text-sm font-medium hover:bg-primary/5 transition"
       >
         <Plus className="w-4 h-4" />
         Add Employee
       </button>
 
       {open && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="w-full max-w-sm bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl p-6 border border-white/50">
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+          <div className="w-full max-w-sm bg-surface-2 rounded-lg shadow-2xl p-6 border border-white/50">
             {created ? (
               <div className="flex flex-col gap-4">
-                <h2 className="text-xl font-bold text-slate-800">Employee created!</h2>
-                <p className="text-sm text-slate-500">
-                  Share this PIN with {created.name} now — it won&apos;t be shown
-                  again. You can always issue a new one from their profile.
+                <h2 className="text-xl font-medium text-foreground">
+                  Employee created!
+                </h2>
+                <p className="text-sm text-muted">
+                  Share this PIN with {created.name} now — it won&apos;t be
+                  shown again. You can always issue a new one from their
+                  profile.
                 </p>
-                <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 text-center">
-                  <p className="text-xs text-secondary font-medium">{created.employeeCode}</p>
-                  <p className="text-3xl font-bold tracking-widest mt-1 text-slate-900">{created.pin}</p>
+                <div className="rounded-lg bg-primary/5 border border-primary/20 p-4 text-center">
+                  <p className="text-xs text-secondary font-medium">
+                    {created.employeeCode}
+                  </p>
+                  <p className="text-3xl font-medium tracking-widest mt-1 text-foreground">
+                    {created.pin}
+                  </p>
                   <button
                     onClick={copyPin}
                     className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-primary/30 text-primary px-3 py-1.5 text-xs font-semibold hover:bg-primary/10 transition"
                   >
-                    {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copied ? (
+                      <Check className="w-3.5 h-3.5" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
                     {copied ? "Copied" : "Copy PIN"}
                   </button>
                 </div>
                 <button
                   onClick={closeAll}
-                  className="rounded-lg bg-primary text-white py-2.5 text-sm font-medium hover:bg-primary-dark transition shadow-md shadow-primary/20"
+                  className="rounded-lg border border-primary bg-transparent text-primary-dark py-2.5 text-sm font-medium hover:bg-primary/5 transition"
                 >
                   Done
                 </button>
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-                <h2 className="text-xl font-bold text-slate-800">Add Employee</h2>
+                <h2 className="text-xl font-medium text-foreground">
+                  Add Employee
+                </h2>
                 <div>
-                  <label className="text-sm font-medium text-slate-700">Full name</label>
+                  <label className="text-sm font-medium text-muted-2">
+                    Full name
+                  </label>
                   <input
                     name="name"
                     required
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+                    className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-slate-700">Email</label>
+                  <label className="text-sm font-medium text-muted-2">
+                    Email
+                  </label>
                   <input
                     name="email"
                     type="email"
                     required
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+                    className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
                   />
                 </div>
                 {error && (
@@ -123,13 +142,13 @@ export default function AddEmployeeForm() {
                   <button
                     type="button"
                     onClick={closeAll}
-                    className="flex-1 rounded-lg bg-white border border-slate-200 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition"
+                    className="flex-1 rounded-lg bg-white border border-border py-2.5 text-sm font-medium text-muted hover:bg-surface transition"
                   >
                     Cancel
                   </button>
                   <button
                     disabled={loading}
-                    className="flex-1 rounded-lg bg-primary text-white py-2.5 text-sm font-medium hover:bg-primary-dark transition shadow-md shadow-primary/20 disabled:opacity-50 disabled:shadow-none"
+                    className="flex-1 rounded-lg border border-primary bg-transparent text-primary-dark py-2.5 text-sm font-medium hover:bg-primary/5 transition disabled:opacity-50"
                   >
                     {loading ? "Creating…" : "Create"}
                   </button>

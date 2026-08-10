@@ -4,7 +4,8 @@ import { requireAdmin } from "@/lib/requireAdmin";
 import { getSettings, updateSettings } from "@/lib/settings";
 
 const putSchema = z.object({
-  checkOutPhotoRequired: z.boolean(),
+  checkOutPhotoRequired: z.boolean().optional(),
+  reimbursementRatePerKm: z.number().min(0).nullable().optional(),
 });
 
 export async function GET() {

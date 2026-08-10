@@ -1,7 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, LogIn, LogOut, Clock, CalendarDays, X } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  LogIn,
+  LogOut,
+  Clock,
+  CalendarDays,
+  X,
+} from "lucide-react";
 import { computeWorkedMs } from "@/lib/attendanceHours";
 
 type AttendanceRecord = {
@@ -108,7 +116,9 @@ export default function AttendanceCalendar({
   ];
   while (cells.length % 7 !== 0) cells.push(null);
 
-  const selectedList = selectedDay ? byDay.get(dateKey(new Date(year, month, selectedDay))) : undefined;
+  const selectedList = selectedDay
+    ? byDay.get(dateKey(new Date(year, month, selectedDay)))
+    : undefined;
 
   function changeMonth(delta: number) {
     setViewDate(new Date(year, month + delta, 1));
@@ -124,23 +134,26 @@ export default function AttendanceCalendar({
     <div className="flex items-center justify-between">
       <button
         onClick={() => changeMonth(-1)}
-        className="rounded-lg p-2 hover:bg-slate-100 text-slate-500 transition"
+        className="rounded-lg p-2 hover:bg-surface text-muted transition"
         aria-label="Previous month"
       >
         <ChevronLeft className="w-4 h-4" />
       </button>
       <button
         onClick={goToToday}
-        className="flex items-center gap-2 rounded-lg px-3 py-1.5 hover:bg-slate-100 transition"
+        className="flex items-center gap-2 rounded-lg px-3 py-1.5 hover:bg-surface transition"
       >
         <CalendarDays className="w-4 h-4 text-primary" />
-        <span className="font-bold text-slate-800">
-          {viewDate.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+        <span className="font-medium text-foreground">
+          {viewDate.toLocaleDateString("en-US", {
+            month: "long",
+            year: "numeric",
+          })}
         </span>
       </button>
       <button
         onClick={() => changeMonth(1)}
-        className="rounded-lg p-2 hover:bg-slate-100 text-slate-500 transition"
+        className="rounded-lg p-2 hover:bg-surface text-muted transition"
         aria-label="Next month"
       >
         <ChevronRight className="w-4 h-4" />
@@ -150,21 +163,27 @@ export default function AttendanceCalendar({
 
   const monthSummaryEl = (
     <div className="grid grid-cols-3 gap-3 text-center">
-      <div className="rounded-xl bg-primary/5 border border-primary/20 py-3">
-        <p className="text-2xl font-black text-primary">{monthSummary.daysPresent}</p>
-        <p className="text-[11px] font-bold text-primary uppercase tracking-wide mt-0.5">
+      <div className="rounded-lg bg-primary/5 border border-primary/20 py-3">
+        <p className="text-2xl font-medium tracking-tight text-primary">
+          {monthSummary.daysPresent}
+        </p>
+        <p className="text-[11px] font-medium text-primary uppercase tracking-wide mt-0.5">
           Days Present
         </p>
       </div>
-      <div className="rounded-xl bg-slate-50 border border-slate-200 py-3">
-        <p className="text-2xl font-black text-slate-800">{monthSummary.totalHours.toFixed(1)}</p>
-        <p className="text-[11px] font-bold text-secondary uppercase tracking-wide mt-0.5">
+      <div className="rounded-lg bg-surface border border-border py-3">
+        <p className="text-2xl font-medium tracking-tight text-foreground">
+          {monthSummary.totalHours.toFixed(1)}
+        </p>
+        <p className="text-[11px] font-medium text-secondary uppercase tracking-wide mt-0.5">
           Total Hours
         </p>
       </div>
-      <div className="rounded-xl bg-slate-50 border border-slate-200 py-3">
-        <p className="text-2xl font-black text-slate-800">{monthSummary.incompleteDays}</p>
-        <p className="text-[11px] font-bold text-secondary uppercase tracking-wide mt-0.5">
+      <div className="rounded-lg bg-surface border border-border py-3">
+        <p className="text-2xl font-medium tracking-tight text-foreground">
+          {monthSummary.incompleteDays}
+        </p>
+        <p className="text-[11px] font-medium text-secondary uppercase tracking-wide mt-0.5">
           Incomplete
         </p>
       </div>
@@ -172,7 +191,7 @@ export default function AttendanceCalendar({
   );
 
   const weekdayHeader = (
-    <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-bold text-secondary uppercase tracking-wide">
+    <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-medium text-secondary uppercase tracking-wide">
       {WEEKDAYS.map((w) => (
         <div key={w}>{w}</div>
       ))}
@@ -198,17 +217,21 @@ export default function AttendanceCalendar({
             disabled={isFuture}
             className={`relative aspect-square rounded-lg flex items-center justify-center text-sm font-medium transition-colors ${
               isSelected
-                ? "bg-primary text-white shadow-md shadow-primary/30"
+                ? "border border-primary text-primary-dark"
                 : isToday
                   ? "bg-primary/10 text-primary"
-                  : "text-slate-700 hover:bg-slate-100"
+                  : "text-muted-2 hover:bg-surface"
             } ${isFuture ? "cursor-not-allowed opacity-30" : "cursor-pointer"}`}
           >
             {day}
             {list && list.length > 0 && (
               <span
                 className={`absolute bottom-1 w-1.5 h-1.5 rounded-full ${
-                  isSelected ? "bg-white" : status === "complete" ? "bg-primary" : "bg-amber-500"
+                  isSelected
+                    ? "bg-white"
+                    : status === "complete"
+                      ? "bg-primary"
+                      : "bg-amber-500"
                 }`}
               />
             )}
@@ -219,7 +242,7 @@ export default function AttendanceCalendar({
   );
 
   const dayDetail = (
-    <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 min-h-[92px]">
+    <div className="rounded-lg border border-border bg-surface p-4 min-h-[92px]">
       {!selectedDay && (
         <p className="text-sm text-secondary text-center py-2">
           Select a date to see check-in / check-out times.
@@ -228,15 +251,18 @@ export default function AttendanceCalendar({
       {selectedDay && (
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <p className="font-bold text-slate-800">
-              {new Date(year, month, selectedDay).toLocaleDateString(undefined, {
-                weekday: "long",
-                month: "long",
-                day: "numeric",
-              })}
+            <p className="font-medium text-foreground">
+              {new Date(year, month, selectedDay).toLocaleDateString(
+                undefined,
+                {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                },
+              )}
             </p>
             {hoursForDay(selectedList) > 0 && (
-              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-primary bg-primary/10 border border-primary/20 rounded-full px-2.5 py-1">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-primary bg-primary/10 border border-primary/20 rounded-full px-2.5 py-1">
                 <Clock className="w-3.5 h-3.5" />
                 {hoursForDay(selectedList).toFixed(2)} hrs
               </span>
@@ -244,14 +270,16 @@ export default function AttendanceCalendar({
           </div>
 
           {(!selectedList || selectedList.length === 0) && (
-            <p className="text-sm text-secondary">No attendance recorded for this date.</p>
+            <p className="text-sm text-secondary">
+              No attendance recorded for this date.
+            </p>
           )}
 
           <div className="flex flex-col gap-2">
             {(selectedList ?? []).map((e) => (
               <div
                 key={e.id}
-                className="flex items-center justify-between gap-3 rounded-lg bg-white border border-slate-200 px-3 py-2"
+                className="flex items-center justify-between gap-3 rounded-lg bg-white border border-border px-3 py-2"
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   {e.hasPhoto && (
@@ -264,13 +292,13 @@ export default function AttendanceCalendar({
                       <img
                         src={`/api/attendance/${e.id}/photo`}
                         alt="Check-in photo"
-                        className="w-9 h-9 rounded-md object-cover border border-slate-200 hover:opacity-80 transition-opacity"
+                        className="w-9 h-9 rounded-md object-cover border border-border hover:opacity-80 transition-opacity"
                       />
                     </button>
                   )}
                   <span
                     className={`inline-flex items-center gap-1.5 text-sm font-semibold truncate ${
-                      e.type === "CHECK_IN" ? "text-primary" : "text-slate-500"
+                      e.type === "CHECK_IN" ? "text-primary" : "text-muted"
                     }`}
                   >
                     {e.type === "CHECK_IN" ? (
@@ -282,10 +310,13 @@ export default function AttendanceCalendar({
                   </span>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-sm text-slate-600">
-                    {e.date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  <span className="text-sm text-muted">
+                    {e.date.toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
                   </span>
-                  <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500 border border-slate-200">
+                  <span className="inline-flex items-center rounded-md bg-surface px-2 py-0.5 text-xs font-medium text-muted border border-border">
                     {e.method}
                   </span>
                 </div>
@@ -323,7 +354,7 @@ export default function AttendanceCalendar({
 
       {lightboxId && (
         <div
-          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-6"
+          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6"
           onClick={() => setLightboxId(null)}
         >
           <div className="relative max-w-sm w-full">
@@ -338,7 +369,7 @@ export default function AttendanceCalendar({
             <img
               src={`/api/attendance/${lightboxId}/photo`}
               alt="Check-in photo"
-              className="w-full rounded-2xl shadow-2xl"
+              className="w-full rounded-lg shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             />
           </div>

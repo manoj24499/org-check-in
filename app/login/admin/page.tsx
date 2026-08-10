@@ -4,7 +4,7 @@ import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, ShieldCheck } from "lucide-react";
 
 export default function AdminLoginPage() {
   const [loading, setLoading] = useState(false);
@@ -34,56 +34,60 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <main className="relative min-h-screen flex items-center justify-center p-6 overflow-hidden bg-gradient-to-b from-slate-50 via-white to-slate-50">
-      <div aria-hidden className="absolute -top-40 -right-40 w-96 h-96 rounded-full bg-primary/10 blur-3xl" />
-      <div aria-hidden className="absolute -bottom-40 -left-40 w-96 h-96 rounded-full bg-primary/10 blur-3xl" />
-
-      <div className="absolute top-6 left-6">
+    <main className="min-h-screen flex items-center justify-center bg-background p-6">
+      <div className="w-full max-w-[420px] rounded-lg border border-border bg-surface flex flex-col p-7 sm:p-8">
         <Link
           href="/login"
-          className="flex items-center gap-2 text-slate-500 hover:text-slate-900 transition-colors font-medium px-4 py-2 rounded-lg hover:bg-slate-100"
+          className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-foreground transition-colors self-start"
         >
-          <ArrowLeft className="w-5 h-5" />
-          <span>Back</span>
+          <ArrowLeft className="w-[15px] h-[15px]" />
+          Back
         </Link>
-      </div>
 
-      <div className="relative w-full max-w-sm bg-white/80 backdrop-blur-xl rounded-3xl shadow-xl shadow-slate-200/40 border border-white/60 p-10">
-        <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-primary text-white shadow-lg shadow-primary/20 mx-auto mb-5">
-          <ShieldCheck className="w-7 h-7" />
+        <div className="mt-7 flex flex-col gap-1">
+          <span className="text-[11px] font-medium tracking-[0.16em] uppercase text-primary-dark">
+            Restricted
+          </span>
+          <h1 className="text-[26px] sm:text-[28px] font-medium tracking-[-0.025em] text-foreground flex items-center gap-2.5">
+            <ShieldCheck className="w-[22px] h-[22px] text-primary" />
+            Admin login
+          </h1>
         </div>
-        <h1 className="text-2xl font-bold text-center mb-2 text-slate-900">Admin Login</h1>
-        <p className="text-center text-slate-500 mb-8 text-sm">Sign in to manage the workspace</p>
 
-        <form onSubmit={handleAdminSubmit} className="flex flex-col gap-5">
-          <div>
-            <label className="text-sm font-semibold text-slate-700">Email</label>
+        <form onSubmit={handleAdminSubmit} className="mt-6 flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs text-muted">Email</label>
             <input
               name="email"
               type="email"
               required
-              className="mt-1.5 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+              className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-[15px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
               placeholder="admin@example.com"
             />
           </div>
-          <div>
-            <label className="text-sm font-semibold text-slate-700">Password</label>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs text-muted">Password</label>
             <input
               name="password"
               type="password"
               required
-              className="mt-1.5 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+              className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-[15px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
               placeholder="••••••••"
             />
           </div>
 
-          {error && <p className="text-sm text-red-600 bg-red-50 p-3 rounded-lg border border-red-100">{error}</p>}
+          {error && (
+            <p className="text-sm text-red-700 bg-red-50 p-3 rounded-lg border border-red-100">
+              {error}
+            </p>
+          )}
 
           <button
             disabled={loading}
-            className="mt-4 w-full rounded-xl bg-primary text-white py-3.5 text-sm font-bold hover:bg-primary-dark transition-colors shadow-md shadow-primary/20 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            className="mt-2 w-full rounded-lg border border-primary bg-transparent text-primary-dark py-3 px-4 text-sm font-medium flex items-center justify-between hover:bg-primary/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? "Signing in…" : "Sign In"}
+            {loading ? "Signing in…" : "Sign in"}
+            <ArrowRight className="w-4 h-4" />
           </button>
         </form>
       </div>

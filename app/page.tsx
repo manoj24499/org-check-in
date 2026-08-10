@@ -1,48 +1,92 @@
 import Link from "next/link";
-import { Building2, Fingerprint, LogIn } from "lucide-react";
+import { Building2, Fingerprint, LogIn, ShieldCheck } from "lucide-react";
 
 export default function HomePage() {
   return (
-    <main className="relative min-h-screen overflow-hidden flex flex-col items-center justify-center gap-10 p-6 text-center bg-gradient-to-b from-slate-50 via-white to-slate-50">
-      <div
-        aria-hidden
-        className="absolute -top-40 -right-40 w-96 h-96 rounded-full bg-primary/10 blur-3xl"
-      />
-      <div
-        aria-hidden
-        className="absolute -bottom-40 -left-40 w-96 h-96 rounded-full bg-primary/10 blur-3xl"
-      />
+    <main className="min-h-screen flex flex-col bg-background">
+      <div className="flex items-center gap-2 px-6 sm:px-9 h-14 sm:h-[68px] shrink-0">
+        <Building2 className="w-5 h-5 text-primary" />
+        <span className="text-[13px] font-medium tracking-[0.12em] uppercase text-muted">
+          Qube Space
+        </span>
+        <span className="ml-auto text-[13px] text-muted hidden sm:inline">
+          Internal use only
+        </span>
+      </div>
+      <div className="fade-rule shrink-0" />
 
-      <div className="relative flex flex-col items-center gap-4">
-        <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-primary text-white shadow-lg shadow-orange-900/10">
-          <Building2 className="w-8 h-8" />
-        </div>
-        <div>
-          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
-            Employee Check-In System
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-8 px-6 sm:px-9 py-10 sm:py-14 max-w-6xl mx-auto w-full">
+        <div className="flex flex-col justify-center gap-5">
+          <div className="flex items-center gap-2">
+            <span className="w-[22px] h-[2px] bg-primary block" />
+            <span className="text-[11px] font-medium tracking-[0.16em] uppercase text-primary-dark">
+              Attendance portal
+            </span>
+          </div>
+          <h1 className="text-[40px] sm:text-[56px] leading-[1.05] tracking-[-0.03em] font-medium text-foreground">
+            Check in.
+            <br />
+            Check out.
+            <br />
+            <span className="text-muted">That&apos;s it.</span>
           </h1>
-          <p className="text-slate-500 mt-2">Internal use only</p>
+          <p className="max-w-[44ch] text-[15px] sm:text-base leading-relaxed text-muted">
+            Presence photo, geofence and live location for the whole
+            organisation — one shared device, one PIN, no paperwork.
+          </p>
+          <div className="flex flex-wrap gap-3 mt-1.5">
+            <Link
+              href="/kiosk"
+              className="inline-flex items-center gap-2 rounded-lg border border-primary px-4 py-2.5 text-sm font-medium text-primary-dark hover:bg-primary/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+            >
+              <Fingerprint className="w-4 h-4" />
+              Check In / Out
+            </Link>
+            <Link
+              href="/login"
+              className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-muted-2 hover:bg-black/[0.03] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+            >
+              <LogIn className="w-4 h-4" />
+              Login
+            </Link>
+          </div>
+        </div>
+
+        <div className="flex flex-col justify-center gap-3">
+          <div className="rounded-lg border border-border bg-surface-2 px-5 py-4 shadow-[0_1px_2px_rgba(41,43,49,0.05)]">
+            <div className="flex items-center gap-2.5">
+              <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 text-primary shrink-0">
+                <Fingerprint className="w-[18px] h-[18px]" />
+              </div>
+              <div>
+                <div className="text-sm font-medium text-foreground">
+                  One shared kiosk
+                </div>
+                <div className="text-[13px] text-muted">
+                  Employee ID + PIN, presence photo, geofence check
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-lg border border-border bg-surface-2 px-5 py-4 shadow-[0_1px_2px_rgba(41,43,49,0.05)]">
+            <div className="flex items-center gap-2.5">
+              <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 text-primary shrink-0">
+                <ShieldCheck className="w-[18px] h-[18px]" />
+              </div>
+              <div>
+                <div className="text-sm font-medium text-foreground">
+                  Admin oversight
+                </div>
+                <div className="text-[13px] text-muted">
+                  Live dashboard, employee roster, office geofencing
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="relative flex flex-col sm:flex-row gap-5">
-        <Link
-          href="/kiosk"
-          className="group flex flex-col items-center justify-center gap-3 w-60 rounded-2xl bg-primary text-white p-8 font-medium shadow-lg shadow-orange-900/20 transition-all hover:bg-primary-dark hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-        >
-          <Fingerprint className="w-9 h-9" />
-          <span className="text-lg">Check In / Out</span>
-        </Link>
-        <Link
-          href="/login"
-          className="group flex flex-col items-center justify-center gap-3 w-60 rounded-2xl border border-slate-200 bg-white p-8 font-medium text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:shadow-md hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-        >
-          <LogIn className="w-9 h-9 text-slate-400 transition-colors group-hover:text-slate-600" />
-          <span className="text-lg">Login</span>
-        </Link>
-      </div>
-
-      <p className="relative text-xs text-slate-400">
+      <p className="text-center text-xs text-muted pb-6">
         Qube Space &middot; Employee Portal
       </p>
     </main>

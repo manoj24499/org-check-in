@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
 import { computeTotalDistanceMeters, clusterPings } from "@/lib/locationClustering";
 import { reverseGeocode } from "@/lib/geocoding";
+import { getSettings } from "@/lib/settings";
 
 function startOfDay(date: Date) {
   const d = new Date(date);
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const day = parseDateParam(req.nextUrl.searchParams.get("date"));
 
-  const [pings, mostRecentPing] = await Promise.all([
+  const [pings, mostRecentPing, todaysCheckIns, settings, existingReimbursement] = await Promise.all([
     prisma.locationPing.findMany({
       where: { userId: id, timestamp: { gte: startOfDay(day), lte: endOfDay(day) } },
       orderBy: { timestamp: "asc" },
@@ -49,7 +50,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       where: { userId: id },
       orderBy: { timestamp: "desc" },
     }),
+    prisma.attendance.findMany({
+      where: { userId: id, type: "CHECK_IN", timestamp: { gte: startOfDay(day), lte: endOfDay(day) } },
+      select: { id: true },
+    }),
+    getSettings(),
+    prisma.reimbursement.findUnique({ where: { userId_date: { userId: id, date: startOfDay(day) } } }),
   ]);
+
+  // Manually-logged stops (see /api/mobile/field-visits) — distinct from the
+  // auto-clustered `visits` below, which infers stops from raw GPS pings.
+  const fieldVisits = todaysCheckIns.length
+    ? await prisma.fieldVisit.findMany({
+        where: { attendanceId: { in: todaysCheckIns.map((c) => c.id) } },
+        orderBy: { reachedAt: "asc" },
+        select: { id: true, name: true, reachedAt: true, latitude: true, longitude: true },
+      })
+    : [];
 
   const totalDistanceMeters = computeTotalDistanceMeters(pings);
   const clusters = clusterPings(pings);
@@ -73,6 +90,22 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     totalDistanceMeters,
     pings: pings.map((p) => ({ latitude: p.latitude, longitude: p.longitude, timestamp: p.timestamp })),
     visits,
+    fieldVisits: fieldVisits.map((v) => ({
+      id: v.id,
+      name: v.name,
+      reachedAt: v.reachedAt,
+      latitude: v.latitude,
+      longitude: v.longitude,
+    })),
     mostRecentDataDate: mostRecentPing ? formatDateKey(mostRecentPing.timestamp) : null,
+    defaultRatePerKm: settings.reimbursementRatePerKm,
+    reimbursement: existingReimbursement
+      ? {
+          distanceKm: existingReimbursement.distanceKm,
+          ratePerKm: existingReimbursement.ratePerKm,
+          amount: existingReimbursement.amount,
+          note: existingReimbursement.note,
+        }
+      : null,
   });
 }

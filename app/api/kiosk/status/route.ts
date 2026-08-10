@@ -54,5 +54,8 @@ export async function GET(req: NextRequest) {
     checkInAt: checkIn?.timestamp ?? null,
     checkOutPhotoRequired: settings.checkOutPhotoRequired,
     isPaused,
+    lateMinutes: checkIn?.lateMinutes ?? null,
+    leaveType: checkIn?.leaveType ?? "NONE",
+    checkInMode: checkIn?.checkInMode ?? null,
   });
 }

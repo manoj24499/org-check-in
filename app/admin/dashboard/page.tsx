@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
 import DashboardWorkspace from "@/components/DashboardWorkspace";
-import FieldWorkersPanel from "@/components/FieldWorkersPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +53,8 @@ export default async function AdminDashboard() {
       name: e.name,
       checkInAt: checkIn ? checkIn.timestamp.toISOString() : null,
       checkOutAt: checkOut ? checkOut.timestamp.toISOString() : null,
+      lateMinutes: checkIn?.lateMinutes ?? null,
+      leaveType: checkIn?.leaveType ?? "NONE",
       location: locationByUser.get(e.id) ?? null,
     };
   });
@@ -67,85 +68,44 @@ export default async function AdminDashboard() {
   });
 
   return (
-    <div className="flex flex-col gap-8">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-800 tracking-tight">
+    <div className="flex flex-col">
+      <div className="px-5 sm:px-7 pt-6 sm:pt-7">
+        <h1 className="text-[28px] sm:text-[30px] font-medium tracking-[-0.025em] text-foreground">
           Dashboard
         </h1>
-        <p className="text-secondary mt-1 font-medium">
-          Live attendance overview
-        </p>
+        <p className="text-sm text-muted mt-1">Live attendance overview</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-        <div className="rounded-2xl border border-slate-200/60 bg-white/60 backdrop-blur-md p-6 shadow-xl shadow-slate-200/20 hover:-translate-y-1 hover:shadow-2xl transition-all duration-300">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-bold text-secondary uppercase tracking-wider">
-              Total Employees
-            </p>
-            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                fill="currentColor"
-                viewBox="0 0 16 16"
-              >
-                <path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1zm4-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6m-5.784 6A2.24 2.24 0 0 1 5 13c0-1.355.68-2.75 1.936-3.72A6.3 6.3 0 0 0 5 9c-4 0-5 3-5 4s1 1 1 1zM4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5" />
-              </svg>
-            </div>
-          </div>
-          <p className="text-4xl font-black mt-4 text-slate-800">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 px-5 sm:px-7 py-5">
+        <div className="rounded-lg border border-border bg-surface-2 p-[17px] shadow-[0_1px_2px_rgba(41,43,49,0.05)]">
+          <p className="text-[11px] font-medium tracking-[0.14em] uppercase text-muted">
+            Total employees
+          </p>
+          <p className="text-4xl font-medium tracking-[-0.03em] mt-1.5 tabular-nums text-foreground">
             {employeesRaw.length}
           </p>
         </div>
-        <div className="rounded-2xl border border-primary/20 bg-primary/5 backdrop-blur-md p-6 shadow-xl shadow-primary/10 hover:-translate-y-1 hover:shadow-2xl transition-all duration-300">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-bold text-primary uppercase tracking-wider">
-              Currently In
-            </p>
-            <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                fill="currentColor"
-                viewBox="0 0 16 16"
-              >
-                <path d="M12.5 16a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7m.5-5v1.5a.5.5 0 0 1-1 0V11a.5.5 0 0 1 1 0m0 3a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0" />
-                <path d="M12.096 6.223A5 5 0 0 0 13 5.6V4a2 2 0 0 0-2-2h-1V.5a.5.5 0 0 0-1 0V2H7V.5a.5.5 0 0 0-1 0V2H5V.5a.5.5 0 0 0-1 0V2H3a2 2 0 0 0-2 2v1h8.096z" />
-              </svg>
-            </div>
-          </div>
-          <p className="text-4xl font-black mt-4 text-primary">{currentlyIn}</p>
+        <div className="rounded-lg border border-primary/35 bg-surface-2 p-[17px] shadow-[0_1px_2px_rgba(41,43,49,0.05)]">
+          <p className="text-[11px] font-medium tracking-[0.14em] uppercase text-primary-dark">
+            Currently in
+          </p>
+          <p className="text-4xl font-medium tracking-[-0.03em] mt-1.5 tabular-nums text-foreground">
+            {currentlyIn}
+          </p>
         </div>
-        <div className="rounded-2xl border border-slate-200/60 bg-white/60 backdrop-blur-md p-6 shadow-xl shadow-slate-200/20 hover:-translate-y-1 hover:shadow-2xl transition-all duration-300">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-bold text-secondary uppercase tracking-wider">
-              Today&apos;s Events
-            </p>
-            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                fill="currentColor"
-                viewBox="0 0 16 16"
-              >
-                <path d="M8 3.5a.5.5 0 0 0-1 0V9a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 8.71z" />
-                <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z" />
-              </svg>
-            </div>
-          </div>
-          <p className="text-4xl font-black mt-4 text-slate-800">
+        <div className="rounded-lg border border-border bg-surface-2 p-[17px] shadow-[0_1px_2px_rgba(41,43,49,0.05)]">
+          <p className="text-[11px] font-medium tracking-[0.14em] uppercase text-muted">
+            Today&apos;s events
+          </p>
+          <p className="text-4xl font-medium tracking-[-0.03em] mt-1.5 tabular-nums text-foreground">
             {todaysEventCount}
           </p>
         </div>
       </div>
 
-      <DashboardWorkspace employees={employees} />
-
-      <FieldWorkersPanel employees={fieldEmployees} />
+      <div className="px-5 sm:px-7 pb-6 sm:pb-7">
+        <DashboardWorkspace employees={employees} fieldEmployees={fieldEmployees} />
+      </div>
     </div>
   );
 }

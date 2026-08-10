@@ -46,7 +46,7 @@ export default function EmployeeActions({
         <button
           onClick={() => call("regenerate-pin")}
           disabled={loading !== null}
-          className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50 transition disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface transition disabled:opacity-50"
         >
           <KeyRound className="w-4 h-4" />
           {loading === "regenerate-pin" ? "Generating…" : "Regenerate PIN"}
@@ -66,14 +66,22 @@ export default function EmployeeActions({
       </div>
 
       {newPin && (
-        <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 text-center">
-          <p className="text-xs text-secondary font-medium">New PIN (shown once)</p>
-          <p className="text-3xl font-bold tracking-widest mt-1 text-slate-900">{newPin}</p>
+        <div className="rounded-lg bg-primary/5 border border-primary/20 p-4 text-center">
+          <p className="text-xs text-secondary font-medium">
+            New PIN (shown once)
+          </p>
+          <p className="text-3xl font-medium tracking-widest mt-1 text-foreground">
+            {newPin}
+          </p>
           <button
             onClick={copyPin}
             className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-primary/30 text-primary px-3 py-1.5 text-xs font-semibold hover:bg-primary/10 transition"
           >
-            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+            {copied ? (
+              <Check className="w-3.5 h-3.5" />
+            ) : (
+              <Copy className="w-3.5 h-3.5" />
+            )}
             {copied ? "Copied" : "Copy PIN"}
           </button>
         </div>

@@ -73,7 +73,7 @@ const CameraCapture = forwardRef<CameraCaptureHandle, Props>(function CameraCapt
   }));
 
   return (
-    <div className="relative rounded-xl overflow-hidden bg-slate-900 aspect-[4/3]">
+    <div className="relative rounded-lg overflow-hidden bg-slate-900 aspect-[4/3]">
       {error ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-4 text-center bg-slate-100">
           <AlertTriangle className="w-6 h-6 text-amber-500" />

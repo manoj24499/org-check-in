@@ -15,30 +15,40 @@ export default async function AdminLayout({
   return (
     <Providers>
       <TabSecurity />
-      <div className="min-h-screen bg-slate-50">
-        <header className="border-b border-slate-200/60 bg-white/70 backdrop-blur-md sticky top-0 z-10">
-          <div className="w-[90%] mx-auto flex flex-col gap-3 py-3 md:flex-row md:items-center md:justify-between md:gap-6 md:py-3.5">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-primary text-white flex items-center justify-center shrink-0">
-                  <Building2 className="w-4 h-4" />
+      <div className="min-h-screen bg-background py-3 sm:py-6 md:py-9">
+        {/*
+          The whole page — nav and content — lives inside one bordered,
+          8px-radius panel on the light background, per the Nocturne mock:
+          the header sits *inside* the card, above a fading rule, not as a
+          page-wide bar outside it. Panel is 95% of the viewport width
+          rather than a fixed max-width, so it scales with the screen.
+        */}
+        <div className="w-[95%] mx-auto rounded-lg border border-border bg-surface overflow-hidden">
+          <header className="bg-surface-2">
+            <div className="flex flex-col gap-3 px-5 py-3 sm:px-7 md:flex-row md:items-center md:gap-6 md:py-0 md:h-14">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2 shrink-0">
+                  <Building2 className="w-[18px] h-[18px] text-primary" />
+                  <span className="text-xs font-medium tracking-[0.12em] uppercase text-muted">
+                    Admin
+                  </span>
                 </div>
-                <span className="font-semibold text-slate-800">Admin</span>
+                <div className="flex items-center gap-4 md:hidden">
+                  <SignOutButton />
+                </div>
               </div>
-              <div className="flex items-center gap-4 md:hidden">
+
+              <AdminNav />
+
+              <div className="hidden md:flex items-center gap-3.5 ml-auto text-[13px] text-muted">
+                <span>{session?.user?.name}</span>
                 <SignOutButton />
               </div>
             </div>
-
-            <AdminNav />
-
-            <div className="hidden md:flex items-center gap-4">
-              <span className="text-sm text-slate-500">{session?.user?.name}</span>
-              <SignOutButton />
-            </div>
-          </div>
-        </header>
-        <div className="w-[90%] mx-auto px-6 py-8">{children}</div>
+            <div className="fade-rule" />
+          </header>
+          <main>{children}</main>
+        </div>
       </div>
     </Providers>
   );

@@ -1,6 +1,13 @@
 import type { Metadata } from "next";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import LocationTrackerBoot from "@/components/LocationTrackerBoot";
+
+const inter = Inter({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-inter",
+});
 
 export const metadata: Metadata = {
   title: "Employee Check-In",
@@ -11,8 +18,8 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
-      <body className="antialiased bg-slate-50 min-h-screen text-slate-900">
+    <html lang="en" className={inter.variable}>
+      <body className="antialiased bg-background min-h-screen text-foreground font-sans">
         <LocationTrackerBoot />
         {children}
       </body>
