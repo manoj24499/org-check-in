@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { verifyHash } from "@/lib/credentials";
-import { isRateLimited } from "@/lib/rateLimit";
+import { getClientIp, isRateLimited } from "@/lib/rateLimit";
 import { signAccessToken, signRefreshToken } from "@/lib/mobileAuth";
 
 const bodySchema = z.object({
@@ -11,7 +11,7 @@ const bodySchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get("x-forwarded-for") ?? "unknown";
+  const ip = getClientIp(req);
   if (isRateLimited(`mobile-login:${ip}`, 60_000, 10)) {
     return NextResponse.json(
       { error: "Too many attempts. Please wait a moment and try again." },

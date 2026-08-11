@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { isRateLimited } from "@/lib/rateLimit";
+import { getClientIp, isRateLimited } from "@/lib/rateLimit";
 import { publishLocationUpdate } from "@/lib/locationEvents";
 import { haversineDistanceMeters } from "@/lib/geofence";
 import { resolveGeofenceTarget } from "@/lib/geofenceTarget";
@@ -123,7 +123,7 @@ const bodySchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get("x-forwarded-for") ?? "unknown";
+  const ip = getClientIp(req);
   // Generous enough for many employees behind one shared office IP each
   // pinging ~once a minute (plus the occasional immediate wake-up ping),
   // while still guarding against genuine abuse.

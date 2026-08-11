@@ -55,6 +55,9 @@ export default function KioskPage() {
   const [trackingPopupId, setTrackingPopupId] = useState<string | null>(null);
   const [officeLocation, setOfficeLocation] = useState<OfficeLocationInfo>(null);
   const [geofenceStatus, setGeofenceStatus] = useState<GeofenceStatus>(null);
+  const [kioskCoords, setKioskCoords] = useState<{ latitude: number; longitude: number } | null>(
+    null,
+  );
   const cameraRef = useRef<CameraCaptureHandle>(null);
   const router = useRouter();
 
@@ -71,6 +74,24 @@ export default function KioskPage() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Fetched once on load, not per keystroke — the pre-PIN status lookup
+  // below needs this to prove the kiosk is physically near the employee's
+  // assigned location (the server rejects that lookup without it). A fixed
+  // kiosk device only ever has to grant this permission once; if it's
+  // denied or unavailable, the lookup below simply skips the personalized
+  // greeting — the actual check-in/check-out button still works, since
+  // handleAction() gets its own independent, authoritative location fix.
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setKioskCoords({ latitude: position.coords.latitude, longitude: position.coords.longitude });
+      },
+      () => {},
+      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 },
+    );
   }, []);
 
   // Tick the clock every second. The initial paint stays null (set via a
@@ -103,7 +124,12 @@ export default function KioskPage() {
         }
         setStatusLoading(true);
         try {
-          const res = await fetch(`/api/kiosk/status?employeeCode=${encodeURIComponent(code)}`);
+          const params = new URLSearchParams({ employeeCode: code });
+          if (kioskCoords) {
+            params.set("latitude", String(kioskCoords.latitude));
+            params.set("longitude", String(kioskCoords.longitude));
+          }
+          const res = await fetch(`/api/kiosk/status?${params.toString()}`);
           const data = await res.json();
           if (!cancelled) setEmpStatus(data);
         } catch {
@@ -119,7 +145,11 @@ export default function KioskPage() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [employeeCode]);
+    // Re-runs once kioskCoords resolves too, so a lookup that already fired
+    // without them (geolocation hadn't returned yet) retries with them as
+    // soon as they're available, instead of being stuck without the
+    // personalized greeting for the rest of that employee's session.
+  }, [employeeCode, kioskCoords]);
 
   const submit = useCallback(
     async (

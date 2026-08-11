@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { verifyHash } from "@/lib/credentials";
-import { isRateLimited } from "@/lib/rateLimit";
+import { getClientIp, isRateLimited } from "@/lib/rateLimit";
 import { haversineDistanceMeters } from "@/lib/geofence";
 import { resolveGeofenceTarget } from "@/lib/geofenceTarget";
 import { getSettings } from "@/lib/settings";
@@ -87,7 +87,7 @@ function decodePhoto(dataUrl: string): Uint8Array<ArrayBuffer> | null {
 }
 
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get("x-forwarded-for") ?? "unknown";
+  const ip = getClientIp(req);
   if (isRateLimited(`scan:${ip}`)) {
     return NextResponse.json(
       { error: "Too many attempts. Please wait a moment and try again." },
