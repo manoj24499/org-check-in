@@ -3,7 +3,7 @@ import Providers from "@/components/Providers";
 import SignOutButton from "@/components/SignOutButton";
 import TabSecurity from "@/components/TabSecurity";
 import AdminNav from "@/components/AdminNav";
-import { Building2 } from "lucide-react";
+import { Logo } from "@/components/Logo";
 
 export default async function AdminLayout({
   children,
@@ -28,7 +28,7 @@ export default async function AdminLayout({
             <div className="flex flex-col gap-3 px-5 py-3 sm:px-7 md:flex-row md:items-center md:gap-6 md:py-0 md:h-14">
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-2 shrink-0">
-                  <Building2 className="w-[18px] h-[18px] text-primary" />
+                  <Logo variant="static" size={18} className="text-foreground" />
                   <span className="text-xs font-medium tracking-[0.12em] uppercase text-muted">
                     Admin
                   </span>

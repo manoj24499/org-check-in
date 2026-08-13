@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Search, X, Loader2, Download, MapPin } from "lucide-react";
 import AttendanceCalendar from "./AttendanceCalendar";
 import LocationMapModal from "./LocationMapModal";
-import FieldWorkersPanel from "./FieldWorkersPanel";
 
 type EmployeeLocation = {
   latitude: number;
@@ -25,8 +24,6 @@ type EmployeeSummary = {
   leaveType: LeaveType;
   location: EmployeeLocation | null;
 };
-
-type FieldEmployee = { id: string; name: string; employeeCode: string };
 
 type AttendanceRecord = {
   id: string;
@@ -51,10 +48,8 @@ type TabKey = (typeof TABS)[number]["key"];
 
 export default function DashboardWorkspace({
   employees: initialEmployees,
-  fieldEmployees,
 }: {
   employees: EmployeeSummary[];
-  fieldEmployees: FieldEmployee[];
 }) {
   const [tab, setTab] = useState<TabKey>("status");
   const [employees, setEmployees] = useState(initialEmployees);
@@ -88,49 +83,29 @@ export default function DashboardWorkspace({
       if (!Array.isArray(data)) return;
       data.forEach(applyUpdate);
     } catch {
-      // best-effort — the next poll tick or SSE push will retry
+      // best-effort — the next poll tick will retry
     }
   }, [applyUpdate]);
 
-  // Guaranteed baseline refresh every 5 seconds — this is what actually
-  // updates the Live Location column without a manual page refresh,
-  // independent of whether the SSE connection below is behaving.
+  // Baseline refresh every 5 seconds — this is what updates the Live
+  // Location column without a manual page refresh. (Previously paired with
+  // a Server-Sent Events push for near-instant updates in between ticks,
+  // removed: that relied on an in-memory EventEmitter shared between the
+  // request publishing a ping and the request holding the SSE connection —
+  // not a safe assumption on Vercel's serverless functions, which don't
+  // guarantee either request lands on the same instance. This poll was
+  // already the only mechanism actually guaranteed to work in production.)
   useEffect(() => {
     const id = setInterval(fetchLatest, 5_000);
     return () => clearInterval(id);
   }, [fetchLatest]);
 
-  // Server-Sent Events on top of the poll above, for near-instant updates
-  // in between ticks when the connection is healthy.
+  // Also resync immediately on wake — a laptop sleeping or a tab being
+  // deeply backgrounded can leave data stale until the next poll tick.
   useEffect(() => {
-    let source: EventSource | null = null;
-
-    function connect() {
-      source = new EventSource("/api/admin/locations/stream");
-      // Fires on the initial connection AND every automatic reconnect — a
-      // good moment to resync in case any pings were missed while down.
-      source.onopen = () => {
-        fetchLatest();
-      };
-      source.onmessage = (event) => {
-        try {
-          applyUpdate(JSON.parse(event.data));
-        } catch {
-          // ignore malformed events
-        }
-      };
-      // EventSource retries automatically on drop/error — nothing else to do here.
-    }
-
-    connect();
-
     function handleWake() {
       if (document.visibilityState === "hidden") return;
-      // A laptop sleeping or a tab being deeply backgrounded can leave the
-      // connection silently stale without ever firing a proper error/close —
-      // force a fresh one rather than trusting readyState alone.
-      source?.close();
-      connect();
+      fetchLatest();
     }
 
     document.addEventListener("visibilitychange", handleWake);
@@ -141,9 +116,8 @@ export default function DashboardWorkspace({
       document.removeEventListener("visibilitychange", handleWake);
       window.removeEventListener("online", handleWake);
       window.removeEventListener("focus", handleWake);
-      source?.close();
     };
-  }, [fetchLatest, applyUpdate]);
+  }, [fetchLatest]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -174,12 +148,7 @@ export default function DashboardWorkspace({
         )}
       </div>
 
-      {tab === "status" && (
-        <div className="flex flex-col gap-4">
-          <CurrentStatusPanel employees={employees} />
-          <FieldWorkersPanel employees={fieldEmployees} />
-        </div>
-      )}
+      {tab === "status" && <CurrentStatusPanel employees={employees} />}
       {tab === "calendar" && <CalendarPanel employees={employees} />}
     </div>
   );

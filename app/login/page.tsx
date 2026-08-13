@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { User, ShieldCheck, ArrowLeft, ArrowRight } from "lucide-react";
+import { Logo } from "@/components/Logo";
 
 export default function LoginSelectionPage() {
   return (
     <main className="min-h-screen flex items-center justify-center bg-background p-6">
       <div className="w-full max-w-[420px] rounded-lg border border-border bg-surface flex flex-col p-7 sm:p-8">
+        <Logo variant="static" size={20} className="text-foreground mb-5" />
         <Link
           href="/"
           className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-foreground transition-colors self-start"

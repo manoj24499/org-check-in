@@ -3,7 +3,7 @@ import Providers from "@/components/Providers";
 import SignOutButton from "@/components/SignOutButton";
 import ChangePinButton from "@/components/ChangePinButton";
 import TabSecurity from "@/components/TabSecurity";
-import { Building2 } from "lucide-react";
+import { Logo } from "@/components/Logo";
 
 export default async function MyPageLayout({
   children,
@@ -24,7 +24,7 @@ export default async function MyPageLayout({
         <div className="w-[95%] mx-auto rounded-lg border border-border bg-surface overflow-hidden">
           <header className="bg-surface-2">
             <div className="flex items-center gap-3 px-5 sm:px-7 h-14">
-              <Building2 className="w-[18px] h-[18px] text-primary" />
+              <Logo variant="static" size={18} className="text-foreground" />
               <span className="text-xs font-medium tracking-[0.12em] uppercase text-muted">
                 My attendance
               </span>

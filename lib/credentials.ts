@@ -11,12 +11,20 @@ export function generatePin(length = 6): string {
   return pin;
 }
 
-export async function hash(value: string): Promise<string> {
-  return bcrypt.hash(value, 10);
+// Cost 12, not the more common 10 — every caller of this pair hashes a
+// 4-6 digit numeric PIN (at most 1,000,000 possible values), not a
+// full-entropy password. Bcrypt embeds its cost factor in the hash string
+// itself, so raising this doesn't invalidate any already-stored pinHash —
+// existing ones keep verifying at whatever cost they were created with;
+// only newly-set/changed PINs get the stronger cost going forward.
+const PIN_HASH_COST = 12;
+
+export async function hashPin(pin: string): Promise<string> {
+  return bcrypt.hash(pin, PIN_HASH_COST);
 }
 
-export async function verifyHash(value: string, hashed: string): Promise<boolean> {
-  return bcrypt.compare(value, hashed);
+export async function verifyPin(pin: string, hashed: string): Promise<boolean> {
+  return bcrypt.compare(pin, hashed);
 }
 
 /** Builds the next sequential employee code, e.g. EMP001, EMP002... */

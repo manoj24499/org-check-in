@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
-import { generatePin, hash, nextEmployeeCode } from "@/lib/credentials";
+import { generatePin, hashPin, nextEmployeeCode } from "@/lib/credentials";
 import { DEFAULT_GEOFENCE_RADIUS_METERS } from "@/lib/geofence";
 
 const bulkCreateSchema = z.array(
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
     employeeCount++;
 
     const pin = generatePin();
-    const pinHash = await hash(pin);
+    const pinHash = await hashPin(pin);
 
     const user = await prisma.user.create({
       data: {

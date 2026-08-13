@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
-import { generatePin, hash } from "@/lib/credentials";
+import { generatePin, hashPin } from "@/lib/credentials";
 import { DEFAULT_GEOFENCE_RADIUS_METERS } from "@/lib/geofence";
 
 const actionSchema = z.object({
@@ -64,7 +64,7 @@ export async function PATCH(
 
   if (parsed.data.action === "regenerate-pin") {
     const pin = generatePin();
-    const pinHash = await hash(pin);
+    const pinHash = await hashPin(pin);
     await prisma.user.update({ where: { id }, data: { pinHash } });
     return NextResponse.json({ pin });
   }

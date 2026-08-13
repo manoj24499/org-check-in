@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getClientIp, isRateLimited } from "@/lib/rateLimit";
-import { publishLocationUpdate } from "@/lib/locationEvents";
 import { haversineDistanceMeters } from "@/lib/geofence";
 import { resolveGeofenceTarget } from "@/lib/geofenceTarget";
 import { sendPushNotification } from "@/lib/pushNotifications";
@@ -180,14 +179,6 @@ export async function POST(req: NextRequest) {
       accuracy: parsed.data.accuracy,
       timestamp,
     },
-  });
-
-  publishLocationUpdate({
-    userId: checkIn.userId,
-    latitude: parsed.data.latitude,
-    longitude: parsed.data.longitude,
-    accuracy: parsed.data.accuracy,
-    timestamp: timestamp.toISOString(),
   });
 
   return NextResponse.json({ tracking: true });

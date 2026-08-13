@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { verifyHash } from "@/lib/credentials";
+import { verifyPin } from "@/lib/credentials";
 import { getClientIp, isRateLimited } from "@/lib/rateLimit";
 import { signAccessToken, signRefreshToken } from "@/lib/mobileAuth";
 
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
 
   const valid =
     !!user?.pinHash && user.role === "EMPLOYEE" && user.active &&
-    (await verifyHash(parsed.data.pin, user.pinHash));
+    (await verifyPin(parsed.data.pin, user.pinHash));
 
   if (!user || !valid) {
     return NextResponse.json({ error: "Invalid employee code or PIN." }, { status: 401 });

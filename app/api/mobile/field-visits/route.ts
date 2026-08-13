@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireMobileUser } from "@/lib/mobileAuth";
+import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
+import { PayloadTooLargeError, readJsonWithLimit } from "@/lib/readJsonBody";
 
 function startOfToday() {
   const d = new Date();
@@ -9,7 +11,10 @@ function startOfToday() {
   return d;
 }
 
-const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
+// See kiosk/scan/route.ts's identical constant for why this is larger than
+// MAX_PHOTO_BYTES: it bounds the raw request body (base64 inflates size by
+// ~4/3), checked before the body is ever parsed as JSON.
+const MAX_REQUEST_BYTES = 6 * 1024 * 1024;
 
 const createSchema = z.object({
   name: z.string().trim().min(1).max(120),
@@ -17,16 +22,6 @@ const createSchema = z.object({
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
 });
-
-function decodePhoto(dataUrl: string): Uint8Array<ArrayBuffer> | null {
-  const match = /^data:image\/(jpeg|jpg|png|webp);base64,([a-zA-Z0-9+/=]+)$/.exec(dataUrl);
-  if (!match) return null;
-  try {
-    return new Uint8Array(Buffer.from(match[2], "base64")) as Uint8Array<ArrayBuffer>;
-  } catch {
-    return null;
-  }
-}
 
 /** Today's active FIELD check-in — the parent every FieldVisit hangs off. */
 async function findTodaysFieldCheckIn(userId: string) {
@@ -64,13 +59,21 @@ export async function POST(req: NextRequest) {
   const auth = await requireMobileUser(req);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const json = await req.json().catch(() => null);
+  let json: unknown;
+  try {
+    json = await readJsonWithLimit(req, MAX_REQUEST_BYTES);
+  } catch (err) {
+    if (err instanceof PayloadTooLargeError) {
+      return NextResponse.json({ error: "Request is too large." }, { status: 413 });
+    }
+    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+  }
   const parsed = createSchema.safeParse(json);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
 
-  const photoBuffer = decodePhoto(parsed.data.photo);
+  const photoBuffer = await decodePhoto(parsed.data.photo);
   if (!photoBuffer) {
     return NextResponse.json({ error: "Invalid photo data." }, { status: 400 });
   }

@@ -11,13 +11,13 @@ import {
   CheckCircle2,
   Loader2,
   MapPin,
-  Building2,
   Lock,
   Delete,
 } from "lucide-react";
 import CameraCapture, { CameraCaptureHandle } from "@/components/CameraCapture";
 import { startTracking, stopTracking } from "@/lib/locationTracker";
 import { haversineDistanceMeters } from "@/lib/geofence";
+import { Logo } from "@/components/Logo";
 
 type Result = { status: "idle" } | { status: "error"; message: string };
 
@@ -352,7 +352,7 @@ export default function KioskPage() {
         {/* Left pane */}
         <div className="flex flex-col p-5 sm:p-7 gap-4">
           <div className="flex items-center gap-2">
-            <Building2 className="w-[18px] h-[18px] text-primary" />
+            <Logo variant="static" size={18} className="text-foreground" />
             <span className="text-xs font-medium tracking-[0.12em] uppercase text-muted">
               Kiosk
             </span>

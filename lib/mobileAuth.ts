@@ -1,11 +1,16 @@
 import { SignJWT, jwtVerify } from "jose";
+import { prisma } from "@/lib/prisma";
 
-// Reuses the same secret NextAuth signs its own session JWTs with — no new
-// env var, no schema changes. These tokens are otherwise unrelated to
-// NextAuth's own session cookies (different claims, verified independently).
+// Deliberately its own secret, separate from AUTH_SECRET (which signs
+// NextAuth's own web session JWTs) — previously the two were reused from the
+// same value. Reusing one secret across two unrelated token systems means a
+// single leak (a log line, a misconfigured env dump, a future accidental
+// commit) forges both admin/employee web sessions *and* mobile access/
+// refresh tokens for any user; separating them means a leak of one doesn't
+// compromise the other. Generate with `openssl rand -base64 32`.
 function secretKey() {
-  const secret = process.env.AUTH_SECRET;
-  if (!secret) throw new Error("AUTH_SECRET is not configured");
+  const secret = process.env.MOBILE_JWT_SECRET;
+  if (!secret) throw new Error("MOBILE_JWT_SECRET is not configured");
   return new TextEncoder().encode(secret);
 }
 
@@ -57,11 +62,27 @@ export async function verifyMobileToken(
   }
 }
 
-/** Verifies the `Authorization: Bearer <token>` header of a mobile API request. */
+/**
+ * Verifies the `Authorization: Bearer <token>` header of a mobile API
+ * request. Also re-checks the account is still active in the database —
+ * the JWT signature/expiry alone only proves the token was validly issued,
+ * not that the account is still allowed to use it *right now*. Without
+ * this, deactivating an employee (offboarding, a suspected compromised
+ * device) wouldn't take effect on most mobile routes for up to the access
+ * token's full 15-minute lifetime. Centralized here, rather than repeated
+ * per-route, so every current and future caller of requireMobileUser gets
+ * it automatically instead of relying on each route remembering to check.
+ */
 export async function requireMobileUser(req: Request): Promise<MobileTokenPayload | null> {
   const header = req.headers.get("authorization");
   if (!header?.startsWith("Bearer ")) return null;
   const token = header.slice("Bearer ".length).trim();
   if (!token) return null;
-  return verifyMobileToken(token, "access");
+  const payload = await verifyMobileToken(token, "access");
+  if (!payload) return null;
+
+  const user = await prisma.user.findUnique({ where: { id: payload.sub }, select: { active: true } });
+  if (!user?.active) return null;
+
+  return payload;
 }

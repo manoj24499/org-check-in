@@ -12,6 +12,7 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Employee Check-In",
   description: "Internal employee check-in / check-out system",
+  applicationName: "Inzivo",
 };
 
 export default function RootLayout({

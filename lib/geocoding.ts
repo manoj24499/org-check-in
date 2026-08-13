@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 
 // Identifies this app to Nominatim, per their usage policy — required, not
 // optional. See https://operations.osmfoundation.org/policies/nominatim/
-const NOMINATIM_USER_AGENT = "QubeSpaceCheckin-AdminPanel/1.0";
+const NOMINATIM_USER_AGENT = "InzivoCheckin-AdminPanel/1.0";
 const MIN_REQUEST_INTERVAL_MS = 1100;
 const ROUND_PRECISION = 3; // ~111m grid at the equator
 

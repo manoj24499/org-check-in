@@ -60,10 +60,10 @@ export default async function MyPage() {
   }
 
   const monthRecords = records.filter((r) => r.timestamp >= monthStart);
-  const monthEvents = monthRecords.length;
 
   // Average check-in time of day this month, e.g. "09:06".
   const monthCheckIns = monthRecords.filter((r) => r.type === "CHECK_IN");
+  const lateThisMonth = monthCheckIns.filter((r) => r.lateMinutes !== null && r.lateMinutes > 0).length;
   let avgStart = "—";
   if (monthCheckIns.length > 0) {
     const avgMinutes =
@@ -123,10 +123,10 @@ export default async function MyPage() {
         </div>
         <div className="rounded-lg border border-border bg-surface-2 p-[17px] shadow-[0_1px_2px_rgba(41,43,49,0.05)]">
           <p className="text-[11px] font-medium tracking-[0.14em] uppercase text-muted">
-            Events this month
+            Late this month
           </p>
           <p className="text-4xl font-medium tracking-[-0.03em] mt-1.5 tabular-nums text-foreground">
-            {monthEvents}
+            {lateThisMonth}
           </p>
         </div>
         <div className="rounded-lg border border-border bg-surface-2 p-[17px] shadow-[0_1px_2px_rgba(41,43,49,0.05)]">

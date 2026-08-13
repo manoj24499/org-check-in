@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { hash, verifyHash } from "@/lib/credentials";
+import { hashPin, verifyPin } from "@/lib/credentials";
 import { isRateLimited } from "@/lib/rateLimit";
 import { requireMobileUser } from "@/lib/mobileAuth";
 
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
   // expired/invalid session — the API client retries session-protected 401s
   // with a refreshed token, which would otherwise misfire here and could log
   // the employee out on a simple typo if the refresh itself failed.
-  const currentValid = await verifyHash(parsed.data.currentPin, user.pinHash);
+  const currentValid = await verifyPin(parsed.data.currentPin, user.pinHash);
   if (!currentValid) {
     return NextResponse.json({ error: "Current PIN is incorrect." }, { status: 403 });
   }
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const newPinHash = await hash(parsed.data.newPin);
+  const newPinHash = await hashPin(parsed.data.newPin);
   await prisma.user.update({ where: { id: user.id }, data: { pinHash: newPinHash } });
 
   return NextResponse.json({ success: true });

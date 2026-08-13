@@ -21,10 +21,6 @@ export default async function AdminDashboard() {
     },
   });
 
-  const todaysEventCount = await prisma.attendance.count({
-    where: { timestamp: { gte: startOfToday() } },
-  });
-
   // Most recent location ping per employee (one query via `distinct`, rather
   // than a per-employee lookup).
   const latestPings = await prisma.locationPing.findMany({
@@ -60,12 +56,7 @@ export default async function AdminDashboard() {
   });
 
   const currentlyIn = employees.filter((e) => e.checkInAt && !e.checkOutAt).length;
-
-  const fieldEmployees = await prisma.user.findMany({
-    where: { role: "EMPLOYEE", active: true, workMode: "FIELD" },
-    orderBy: { name: "asc" },
-    select: { id: true, name: true, employeeCode: true },
-  });
+  const lateToday = employees.filter((e) => e.lateMinutes !== null && e.lateMinutes > 0).length;
 
   return (
     <div className="flex flex-col">
@@ -95,16 +86,16 @@ export default async function AdminDashboard() {
         </div>
         <div className="rounded-lg border border-border bg-surface-2 p-[17px] shadow-[0_1px_2px_rgba(41,43,49,0.05)]">
           <p className="text-[11px] font-medium tracking-[0.14em] uppercase text-muted">
-            Today&apos;s events
+            Late today
           </p>
           <p className="text-4xl font-medium tracking-[-0.03em] mt-1.5 tabular-nums text-foreground">
-            {todaysEventCount}
+            {lateToday}
           </p>
         </div>
       </div>
 
       <div className="px-5 sm:px-7 pb-6 sm:pb-7">
-        <DashboardWorkspace employees={employees} fieldEmployees={fieldEmployees} />
+        <DashboardWorkspace employees={employees} />
       </div>
     </div>
   );

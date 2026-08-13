@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hash, verifyHash } from "@/lib/credentials";
+import { hashPin, verifyPin } from "@/lib/credentials";
 import { isRateLimited } from "@/lib/rateLimit";
 
 const bodySchema = z.object({
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const currentValid = await verifyHash(parsed.data.currentPin, user.pinHash);
+  const currentValid = await verifyPin(parsed.data.currentPin, user.pinHash);
   if (!currentValid) {
     return NextResponse.json({ error: "Current PIN is incorrect." }, { status: 403 });
   }
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const newPinHash = await hash(parsed.data.newPin);
+  const newPinHash = await hashPin(parsed.data.newPin);
   await prisma.user.update({ where: { id: user.id }, data: { pinHash: newPinHash } });
 
   return NextResponse.json({ success: true });

@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { verifyHash } from "@/lib/credentials";
+import { verifyPin } from "@/lib/credentials";
 import { getClientIp, isRateLimited } from "@/lib/rateLimit";
 import { haversineDistanceMeters } from "@/lib/geofence";
 import { resolveGeofenceTarget } from "@/lib/geofenceTarget";
 import { getSettings } from "@/lib/settings";
+import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
+import { PayloadTooLargeError, readJsonWithLimit } from "@/lib/readJsonBody";
 
 const scanSchema = z.object({
   employeeCode: z.string().min(1),
@@ -58,7 +60,11 @@ function computeLateness(
 }
 
 const PHOTO_RETENTION_DAYS = 45;
-const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
+// A base64-encoded MAX_PHOTO_BYTES photo inflates to ~4/3 of its raw size —
+// this caps the raw *request* body (checked before it's ever parsed as
+// JSON), so it needs enough headroom above MAX_PHOTO_BYTES for that base64
+// overhead plus the other small JSON fields, not just the decoded photo cap.
+const MAX_REQUEST_BYTES = 6 * 1024 * 1024;
 
 /** Best-effort cleanup: clear photo bytes (and the hasPhoto flag) once they're past retention. */
 async function expireOldPhotos() {
@@ -74,18 +80,6 @@ async function expireOldPhotos() {
   }
 }
 
-function decodePhoto(dataUrl: string): Uint8Array<ArrayBuffer> | null {
-  const match = /^data:image\/(jpeg|jpg|png|webp);base64,([a-zA-Z0-9+/=]+)$/.exec(dataUrl);
-  if (!match) return null;
-  try {
-    // Copy into a plain ArrayBuffer-backed Uint8Array — Prisma's Bytes type
-    // rejects Buffer's wider ArrayBufferLike (which also allows SharedArrayBuffer).
-    return new Uint8Array(Buffer.from(match[2], "base64")) as Uint8Array<ArrayBuffer>;
-  } catch {
-    return null;
-  }
-}
-
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req);
   if (isRateLimited(`scan:${ip}`)) {
@@ -95,7 +89,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const json = await req.json().catch(() => null);
+  let json: unknown;
+  try {
+    json = await readJsonWithLimit(req, MAX_REQUEST_BYTES);
+  } catch (err) {
+    if (err instanceof PayloadTooLargeError) {
+      return NextResponse.json({ error: "Request is too large." }, { status: 413 });
+    }
+    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+  }
   const parsed = scanSchema.safeParse(json);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
@@ -116,7 +118,7 @@ export async function POST(req: NextRequest) {
       const verb = parsed.data.action === "CHECK_IN" ? "check in" : "check out";
       return NextResponse.json({ error: `A photo is required to ${verb}.` }, { status: 400 });
     }
-    photoBuffer = decodePhoto(parsed.data.photo);
+    photoBuffer = await decodePhoto(parsed.data.photo);
     if (!photoBuffer) {
       return NextResponse.json({ error: "Invalid photo data." }, { status: 400 });
     }
@@ -130,7 +132,7 @@ export async function POST(req: NextRequest) {
     include: { shift: { select: { startTime: true } } },
   });
   const user =
-    candidate?.pinHash && (await verifyHash(parsed.data.pin, candidate.pinHash)) ? candidate : null;
+    candidate?.pinHash && (await verifyPin(parsed.data.pin, candidate.pinHash)) ? candidate : null;
 
   if (!user || user.role !== "EMPLOYEE" || !user.active) {
     return NextResponse.json(

@@ -1,13 +1,14 @@
 import Link from "next/link";
-import { Building2, Fingerprint, LogIn, ShieldCheck } from "lucide-react";
+import { Fingerprint, LogIn, ShieldCheck } from "lucide-react";
+import { Logo } from "@/components/Logo";
 
 export default function HomePage() {
   return (
     <main className="min-h-screen flex flex-col bg-background">
       <div className="flex items-center gap-2 px-6 sm:px-9 h-14 sm:h-[68px] shrink-0">
-        <Building2 className="w-5 h-5 text-primary" />
+        <Logo variant="animated" size={22} className="text-foreground" />
         <span className="text-[13px] font-medium tracking-[0.12em] uppercase text-muted">
-          Qube Space
+          Inzivo
         </span>
         <span className="ml-auto text-[13px] text-muted hidden sm:inline">
           Internal use only
@@ -87,7 +88,7 @@ export default function HomePage() {
       </div>
 
       <p className="text-center text-xs text-muted pb-6">
-        Qube Space &middot; Employee Portal
+        Inzivo &middot; Employee Portal
       </p>
     </main>
   );

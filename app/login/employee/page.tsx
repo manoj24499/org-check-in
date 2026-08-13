@@ -5,6 +5,7 @@ import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, User } from "lucide-react";
+import { Logo } from "@/components/Logo";
 
 export default function EmployeeLoginPage() {
   const [loading, setLoading] = useState(false);
@@ -36,6 +37,7 @@ export default function EmployeeLoginPage() {
   return (
     <main className="min-h-screen flex items-center justify-center bg-background p-6">
       <div className="w-full max-w-[420px] rounded-lg border border-border bg-surface flex flex-col p-7 sm:p-8">
+        <Logo variant="static" size={20} className="text-foreground mb-5" />
         <Link
           href="/login"
           className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-foreground transition-colors self-start"

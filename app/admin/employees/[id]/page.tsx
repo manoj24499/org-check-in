@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import EmployeeActions from "@/components/EmployeeActions";
 import AttendanceCalendar from "@/components/AttendanceCalendar";
+import { RecentActivityList } from "@/components/RecentActivityList";
 import { ArrowLeft, Clock } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -137,6 +138,13 @@ export default async function EmployeeDetailPage({
           >
             Manage shifts &amp; assignments →
           </Link>
+        </div>
+
+        <div className="rounded-lg border border-border bg-surface-2 shadow-[0_1px_2px_rgba(41,43,49,0.05)] p-6">
+          <h2 className="text-lg font-medium text-foreground mb-4">
+            Recent Activity
+          </h2>
+          <RecentActivityList records={attendances} />
         </div>
 
         <div className="rounded-lg border border-border bg-surface-2 shadow-[0_1px_2px_rgba(41,43,49,0.05)] p-6">
