@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import DashboardWorkspace from "@/components/DashboardWorkspace";
+import PendingPermissionsPanel from "@/components/PendingPermissionsPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +59,18 @@ export default async function AdminDashboard() {
   const currentlyIn = employees.filter((e) => e.checkInAt && !e.checkOutAt).length;
   const lateToday = employees.filter((e) => e.lateMinutes !== null && e.lateMinutes > 0).length;
 
+  const pendingPermissionsRaw = await prisma.timedPermission.findMany({
+    where: { approvalStatus: "PENDING" },
+    orderBy: { createdAt: "asc" },
+    include: { attendance: { select: { user: { select: { id: true, employeeCode: true, name: true } } } } },
+  });
+  const pendingPermissions = pendingPermissionsRaw.map((p) => ({
+    id: p.id,
+    startTime: p.startTime.toISOString(),
+    endTime: p.endTime.toISOString(),
+    employee: p.attendance.user,
+  }));
+
   return (
     <div className="flex flex-col">
       <div className="px-5 sm:px-7 pt-6 sm:pt-7">
@@ -66,6 +79,12 @@ export default async function AdminDashboard() {
         </h1>
         <p className="text-sm text-muted mt-1">Live attendance overview</p>
       </div>
+
+      {pendingPermissions.length > 0 ? (
+        <div className="px-5 sm:px-7 pt-5">
+          <PendingPermissionsPanel initialPermissions={pendingPermissions} />
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 px-5 sm:px-7 py-5">
         <div className="rounded-lg border border-border bg-surface-2 p-[17px] shadow-[0_1px_2px_rgba(41,43,49,0.05)]">

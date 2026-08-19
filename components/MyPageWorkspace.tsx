@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import AttendanceCalendar from "./AttendanceCalendar";
+import AttendanceCalendar, { type CalendarSpecialDay } from "./AttendanceCalendar";
 import { RecentActivityList } from "./RecentActivityList";
 
 type AttendanceRecord = {
@@ -20,7 +20,13 @@ const TABS = [
 
 type TabKey = (typeof TABS)[number]["key"];
 
-export default function MyPageWorkspace({ records }: { records: AttendanceRecord[] }) {
+export default function MyPageWorkspace({
+  records,
+  specialDays,
+}: {
+  records: AttendanceRecord[];
+  specialDays?: Record<string, CalendarSpecialDay>;
+}) {
   const [tab, setTab] = useState<TabKey>("activity");
 
   return (
@@ -42,7 +48,9 @@ export default function MyPageWorkspace({ records }: { records: AttendanceRecord
 
       <div className="p-4">
         {tab === "activity" && <RecentActivityList records={records} />}
-        {tab === "calendar" && <AttendanceCalendar attendances={records} layout="split" />}
+        {tab === "calendar" && (
+          <AttendanceCalendar attendances={records} specialDays={specialDays} layout="split" />
+        )}
       </div>
     </div>
   );

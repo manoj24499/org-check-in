@@ -23,6 +23,8 @@ type AttendanceRecord = {
 
 type Event = AttendanceRecord & { date: Date };
 
+export type CalendarSpecialDay = { kind: "holiday" | "leave"; label: string };
+
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function dateKey(d: Date) {
@@ -57,9 +59,15 @@ function dayStatus(list: Event[] | undefined) {
 
 export default function AttendanceCalendar({
   attendances,
+  specialDays = {},
   layout = "stacked",
 }: {
   attendances: AttendanceRecord[];
+  /** Keyed "YYYY-MM-DD" — see lib/timeOff.ts's getCalendarSpecialDays. A day
+   * with no attendance record renders as a bare blank cell unless it has an
+   * entry here, so an approved leave day or a public holiday reads as such
+   * instead of looking like an unexplained gap. */
+  specialDays?: Record<string, CalendarSpecialDay>;
   /** "split" puts the calendar grid on the left and the summary/day-detail on the right — better for a full-width card. Defaults to the original stacked layout. */
   layout?: "stacked" | "split";
 }) {
@@ -116,9 +124,9 @@ export default function AttendanceCalendar({
   ];
   while (cells.length % 7 !== 0) cells.push(null);
 
-  const selectedList = selectedDay
-    ? byDay.get(dateKey(new Date(year, month, selectedDay)))
-    : undefined;
+  const selectedKey = selectedDay ? dateKey(new Date(year, month, selectedDay)) : null;
+  const selectedList = selectedKey ? byDay.get(selectedKey) : undefined;
+  const selectedSpecial = selectedKey && !selectedList?.length ? specialDays[selectedKey] : undefined;
 
   function changeMonth(delta: number) {
     setViewDate(new Date(year, month + delta, 1));
@@ -209,6 +217,9 @@ export default function AttendanceCalendar({
         const isToday = key === todayKey;
         const isSelected = day === selectedDay;
         const isFuture = cellDate > today;
+        // Only relevant when there's no actual attendance record — a real
+        // check-in/out always takes precedence over a leave/holiday label.
+        const special = !list?.length ? specialDays[key] : undefined;
 
         return (
           <button
@@ -220,11 +231,15 @@ export default function AttendanceCalendar({
                 ? "border border-primary text-primary-dark"
                 : isToday
                   ? "bg-primary/10 text-primary"
-                  : "text-muted-2 hover:bg-surface"
+                  : special?.kind === "holiday"
+                    ? "bg-sky-50 text-sky-700"
+                    : special?.kind === "leave"
+                      ? "bg-emerald-50 text-emerald-700"
+                      : "text-muted-2 hover:bg-surface"
             } ${isFuture ? "cursor-not-allowed opacity-30" : "cursor-pointer"}`}
           >
             {day}
-            {list && list.length > 0 && (
+            {list && list.length > 0 ? (
               <span
                 className={`absolute bottom-1 w-1.5 h-1.5 rounded-full ${
                   isSelected
@@ -234,7 +249,13 @@ export default function AttendanceCalendar({
                       : "bg-amber-500"
                 }`}
               />
-            )}
+            ) : special ? (
+              <span
+                className={`absolute bottom-1 w-1.5 h-1.5 rounded-full ${
+                  isSelected ? "bg-white" : special.kind === "holiday" ? "bg-sky-500" : "bg-emerald-500"
+                }`}
+              />
+            ) : null}
           </button>
         );
       })}
@@ -269,11 +290,19 @@ export default function AttendanceCalendar({
             )}
           </div>
 
-          {(!selectedList || selectedList.length === 0) && (
-            <p className="text-sm text-secondary">
-              No attendance recorded for this date.
-            </p>
-          )}
+          {(!selectedList || selectedList.length === 0) &&
+            (selectedSpecial ? (
+              <p
+                className={`text-sm font-medium ${
+                  selectedSpecial.kind === "holiday" ? "text-sky-700" : "text-emerald-700"
+                }`}
+              >
+                {selectedSpecial.kind === "holiday" ? "Public holiday" : "Approved leave"} —{" "}
+                {selectedSpecial.label}
+              </p>
+            ) : (
+              <p className="text-sm text-secondary">No attendance recorded for this date.</p>
+            ))}
 
           <div className="flex flex-col gap-2">
             {(selectedList ?? []).map((e) => (

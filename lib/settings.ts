@@ -10,6 +10,9 @@ export async function getSettings() {
 export async function updateSettings(data: {
   checkOutPhotoRequired?: boolean;
   reimbursementRatePerKm?: number | null;
+  casualLeaveQuota?: number;
+  sickLeaveQuota?: number;
+  earnedLeaveQuota?: number;
 }) {
   const existing = await getSettings();
   return prisma.appSettings.update({ where: { id: existing.id }, data });

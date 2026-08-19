@@ -6,6 +6,9 @@ import { getSettings, updateSettings } from "@/lib/settings";
 const putSchema = z.object({
   checkOutPhotoRequired: z.boolean().optional(),
   reimbursementRatePerKm: z.number().min(0).nullable().optional(),
+  casualLeaveQuota: z.number().int().min(0).optional(),
+  sickLeaveQuota: z.number().int().min(0).optional(),
+  earnedLeaveQuota: z.number().int().min(0).optional(),
 });
 
 export async function GET() {

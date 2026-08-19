@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Search, X, Loader2, Download, MapPin } from "lucide-react";
-import AttendanceCalendar from "./AttendanceCalendar";
+import AttendanceCalendar, { type CalendarSpecialDay } from "./AttendanceCalendar";
 import LocationMapModal from "./LocationMapModal";
 
 type EmployeeLocation = {
@@ -329,6 +329,7 @@ function CalendarPanel({ employees }: { employees: EmployeeSummary[] }) {
   const [attendances, setAttendances] = useState<AttendanceRecord[] | null>(
     null,
   );
+  const [specialDays, setSpecialDays] = useState<Record<string, CalendarSpecialDay>>({});
   const [loading, setLoading] = useState(false);
 
   const filtered = useMemo(() => {
@@ -350,10 +351,15 @@ function CalendarPanel({ employees }: { employees: EmployeeSummary[] }) {
     fetch(`/api/admin/employees/${selected.id}/attendance`)
       .then((res) => res.json())
       .then((data) => {
-        if (!cancelled) setAttendances(Array.isArray(data) ? data : []);
+        if (cancelled) return;
+        setAttendances(Array.isArray(data?.attendances) ? data.attendances : []);
+        setSpecialDays(data?.specialDays ?? {});
       })
       .catch(() => {
-        if (!cancelled) setAttendances([]);
+        if (!cancelled) {
+          setAttendances([]);
+          setSpecialDays({});
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -395,6 +401,7 @@ function CalendarPanel({ employees }: { employees: EmployeeSummary[] }) {
                   setSelected(emp);
                   setQuery("");
                   setAttendances(null);
+                  setSpecialDays({});
                   setLoading(true);
                 }}
                 className="w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-primary/5 transition-colors text-left"
@@ -423,6 +430,7 @@ function CalendarPanel({ employees }: { employees: EmployeeSummary[] }) {
               onClick={() => {
                 setSelected(null);
                 setAttendances(null);
+                setSpecialDays({});
               }}
               className="text-primary/60 hover:text-primary"
               aria-label="Clear selected employee"
@@ -446,7 +454,7 @@ function CalendarPanel({ employees }: { employees: EmployeeSummary[] }) {
           </div>
         )}
         {selected && !loading && attendances && (
-          <AttendanceCalendar attendances={attendances} />
+          <AttendanceCalendar attendances={attendances} specialDays={specialDays} />
         )}
       </div>
     </div>

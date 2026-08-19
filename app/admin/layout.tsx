@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import Providers from "@/components/Providers";
 import SignOutButton from "@/components/SignOutButton";
 import TabSecurity from "@/components/TabSecurity";
@@ -11,6 +12,10 @@ export default async function AdminLayout({
   children: React.ReactNode;
 }) {
   const session = await auth();
+  // Server-rendered once per navigation (no live polling) — same "refresh to
+  // see new state" pattern the rest of the admin panel already uses.
+  const pendingLeaveCount =
+    session?.user?.role === "ADMIN" ? await prisma.timeOffRequest.count({ where: { status: "PENDING" } }) : 0;
 
   return (
     <Providers>
@@ -38,7 +43,7 @@ export default async function AdminLayout({
                 </div>
               </div>
 
-              <AdminNav />
+              <AdminNav pendingLeaveCount={pendingLeaveCount} />
 
               <div className="hidden md:flex items-center gap-3.5 ml-auto text-[13px] text-muted">
                 <span>{session?.user?.name}</span>

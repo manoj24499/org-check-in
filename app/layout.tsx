@@ -20,7 +20,10 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={inter.variable}>
-      <body className="antialiased bg-background min-h-screen text-foreground font-sans">
+      <body
+        className="antialiased bg-background min-h-screen text-foreground font-sans"
+        suppressHydrationWarning
+      >
         <LocationTrackerBoot />
         {children}
       </body>

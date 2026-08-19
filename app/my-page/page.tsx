@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import MyPageWorkspace from "@/components/MyPageWorkspace";
 import { computeWorkedMs } from "@/lib/attendanceHours";
+import { getCalendarSpecialDays } from "@/lib/timeOff";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,7 @@ export default async function MyPage() {
   const session = await auth();
   if (!session) return null;
 
-  const [records, me] = await Promise.all([
+  const [records, me, specialDays] = await Promise.all([
     prisma.attendance.findMany({
       where: { userId: session.user.id },
       orderBy: { timestamp: "desc" },
@@ -33,6 +34,7 @@ export default async function MyPage() {
       where: { id: session.user.id },
       select: { workMode: true },
     }),
+    getCalendarSpecialDays(session.user.id),
   ]);
 
   const last = records[0];
@@ -139,7 +141,7 @@ export default async function MyPage() {
         </div>
       </div>
 
-      <MyPageWorkspace records={serializedRecords} />
+      <MyPageWorkspace records={serializedRecords} specialDays={specialDays} />
     </div>
   );
 }

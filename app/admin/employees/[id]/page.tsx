@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { getCalendarSpecialDays } from "@/lib/timeOff";
 import EmployeeActions from "@/components/EmployeeActions";
 import AttendanceCalendar from "@/components/AttendanceCalendar";
 import { RecentActivityList } from "@/components/RecentActivityList";
@@ -49,6 +50,8 @@ export default async function EmployeeDetailPage({
   });
 
   if (!employee || employee.role !== "EMPLOYEE") notFound();
+
+  const specialDays = await getCalendarSpecialDays(employee.id);
 
   const attendances = employee.attendances.map((r) => ({
     id: r.id,
@@ -151,7 +154,7 @@ export default async function EmployeeDetailPage({
           <h2 className="text-lg font-medium text-foreground mb-4">
             Attendance Calendar
           </h2>
-          <AttendanceCalendar attendances={attendances} layout="split" />
+          <AttendanceCalendar attendances={attendances} specialDays={specialDays} layout="split" />
         </div>
       </div>
     </div>

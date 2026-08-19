@@ -1,6 +1,7 @@
 import { getSettings } from "@/lib/settings";
 import AppSettingsForm from "@/components/AppSettingsForm";
 import ReimbursementRateForm from "@/components/ReimbursementRateForm";
+import LeaveQuotaForm from "@/components/LeaveQuotaForm";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,13 @@ export default async function SettingsPage() {
       <AppSettingsForm checkOutPhotoRequired={settings.checkOutPhotoRequired} />
       <ReimbursementRateForm
         reimbursementRatePerKm={settings.reimbursementRatePerKm}
+      />
+      <LeaveQuotaForm
+        quotas={{
+          casualLeaveQuota: settings.casualLeaveQuota,
+          sickLeaveQuota: settings.sickLeaveQuota,
+          earnedLeaveQuota: settings.earnedLeaveQuota,
+        }}
       />
     </div>
   );

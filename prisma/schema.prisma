@@ -19,6 +19,11 @@ enum AttendanceType {
 enum AttendanceMethod {
   QR // legacy — QR check-in was removed; kept so historical rows stay valid
   PIN
+  // System-generated, not from a PIN entry — currently only used for the
+  // auto-checkout when a TimedPermission runs through an employee's shift
+  // end (see /api/kiosk/location). Kept distinct from PIN so an admin
+  // reviewing history can tell the difference at a glance.
+  AUTO
 }
 
 enum WorkMode {
@@ -77,10 +82,11 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  attendances    Attendance[]
-  locationPings  LocationPing[]
-  pushTokens     PushToken[]
-  reimbursements Reimbursement[]
+  attendances     Attendance[]
+  locationPings   LocationPing[]
+  pushTokens      PushToken[]
+  reimbursements  Reimbursement[]
+  timeOffRequests TimeOffRequest[]
 
   @@index([role])
   @@index([workMode])
@@ -137,8 +143,45 @@ model Attendance {
   pauseWarningAt DateTime?
   pauses         AttendancePause[]
   fieldVisits    FieldVisit[]
+  timedPermissions TimedPermission[]
 
   @@index([userId, timestamp])
+}
+
+enum TimedPermissionApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// A manually-entered request from an employee to pause their work-time
+// tracking for a specific window during an active check-in (e.g. "2pm to
+// 4pm") — distinct from the auto-computed lateMinutes/leaveType above, which
+// only reflects lateness at check-in time, not a mid-day request. Requires
+// admin approval before it can do anything — see /api/kiosk/location's
+// evaluateTimedPermission, which only ever considers APPROVED rows; a
+// PENDING or REJECTED permission never opens a pause. Approving one after
+// its window has already started/ended still applies retroactively, since
+// the pause-opening logic is purely ping-driven off startTime/endTime, not
+// off when the approval happened.
+model TimedPermission {
+  id           String           @id @default(cuid())
+  attendanceId String
+  attendance   Attendance       @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  startTime    DateTime
+  endTime      DateTime
+  createdAt    DateTime         @default(now())
+  pause        AttendancePause?
+
+  approvalStatus TimedPermissionApprovalStatus @default(PENDING)
+  reviewedAt     DateTime?
+  // Snapshot of the reviewing admin's name at review time (same precedent as
+  // Reimbursement.ratePerKm) rather than a live relation — keeps this model
+  // from needing a back-reference on User for what's just an audit note.
+  reviewedByName String?
+
+  @@index([attendanceId])
+  @@index([approvalStatus])
 }
 
 // A manually-logged stop during a Field day (see /api/mobile/field-visits) —
@@ -169,6 +212,13 @@ model AttendancePause {
   pausedAt     DateTime
   resumedAt    DateTime?
   createdAt    DateTime   @default(now())
+
+  // Set only when this pause was opened because of a TimedPermission
+  // request rather than a detected geofence departure — lets
+  // /api/kiosk/location (and any future admin display) tell the two apart.
+  // Null == the ordinary geofence-departure auto-pause.
+  timedPermissionId String?          @unique
+  timedPermission   TimedPermission? @relation(fields: [timedPermissionId], references: [id])
 
   @@index([attendanceId])
 }
@@ -223,7 +273,74 @@ model AppSettings {
   // /api/admin/employees/[id]/reimbursement). Null == no default set yet;
   // admin can still enter an amount manually per day.
   reimbursementRatePerKm Float?
-  updatedAt             DateTime @updatedAt
+
+  // Annual leave quotas — global, same for every employee (see
+  // TimeOffRequest). "Remaining" is always computed on the fly (quota minus
+  // this year's APPROVED days for that type), never stored, so changing a
+  // quota here never has to rewrite anyone's history.
+  casualLeaveQuota Int @default(12)
+  sickLeaveQuota   Int @default(6)
+  earnedLeaveQuota Int @default(15)
+
+  updatedAt DateTime @updatedAt
+}
+
+// A holiday that applies to everyone — excluded from a TimeOffRequest's day
+// count (see TimeOffRequest.days) and shown in the leave calendar so a
+// request spanning one isn't mistaken for a gap in the record.
+model PublicHoliday {
+  id        String   @id @default(cuid())
+  date      DateTime @unique
+  name      String
+  createdAt DateTime @default(now())
+}
+
+enum TimeOffType {
+  CASUAL
+  SICK
+  EARNED
+}
+
+enum TimeOffRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  // Withdrawn by the employee themselves — only ever reachable from PENDING
+  // (see /api/mobile/me/leave-requests/[id]). Kept as its own row, same as
+  // REJECTED, rather than deleted, so it still shows in their history.
+  CANCELLED
+}
+
+// A request for one or more whole calendar days off — distinct from
+// TimedPermission (a same-day, hours-long pause during an active check-in)
+// and unrelated to Attendance.leaveType (an auto-computed lateness
+// classification, despite the similar name — see that field's own comment).
+// Requires admin approval, same review pattern as TimedPermission.
+model TimeOffRequest {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      TimeOffType
+  startDate DateTime
+  endDate   DateTime
+  // Calendar days in [startDate, endDate] minus any PublicHoliday dates,
+  // snapshotted at submission time — a later change to the holiday calendar
+  // must never silently change the cost of an already-decided request.
+  days   Int
+  reason String?
+
+  status         TimeOffRequestStatus @default(PENDING)
+  reviewedAt     DateTime?
+  reviewedByName String?
+  // Only ever set alongside a REJECTED decision — an admin's optional note
+  // on why, surfaced to the employee in the decline notification and in
+  // their own request history.
+  reviewNote String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([status])
+  @@index([userId, startDate, endDate])
 }
 
 // One row per employee per calendar day — admin enters/edits this from the
