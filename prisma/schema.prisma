@@ -73,30 +73,29 @@ model User {
   homeLongitude    Float?
   homeRadiusMeters Float    @default(50)
 
-  // Assigned from the Shifts admin page. Only enforced for OFFICE employees
-  // (see /api/kiosk/scan). Null == lateness isn't tracked for this employee.
-  shiftId String?
-  shift   Shift?  @relation(fields: [shiftId], references: [id], onDelete: SetNull)
-
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  attendances     Attendance[]
-  locationPings   LocationPing[]
-  pushTokens      PushToken[]
-  reimbursements  Reimbursement[]
-  timeOffRequests TimeOffRequest[]
+  attendances      Attendance[]
+  locationPings    LocationPing[]
+  pushTokens       PushToken[]
+  reimbursements   Reimbursement[]
+  timeOffRequests  TimeOffRequest[]
+  // One shift per weekday, at most — see ShiftAssignment. Replaces the old
+  // single `shiftId` scalar so an employee can rotate between shifts across
+  // the week (e.g. General Mon-Wed, Afternoon Thu-Fri) instead of having
+  // exactly one shift for every day.
+  shiftAssignments ShiftAssignment[]
 
   @@index([role])
   @@index([workMode])
-  @@index([shiftId])
 }
 
 // A named time slot (e.g. "General Shift", 09:00–18:00) an OFFICE employee
-// can be assigned to. Managed on the admin Shifts page — startTime drives
-// the lateness classification in /api/kiosk/scan; endTime is captured for
-// future use (e.g. early-checkout tracking) but nothing reads it yet.
+// can be assigned to on any subset of weekdays — see ShiftAssignment.
+// startTime drives the lateness classification in /api/kiosk/scan; endTime
+// is used for the stale-checkin/timed-permission auto-checkout.
 model Shift {
   id        String   @id @default(cuid())
   name      String?
@@ -105,7 +104,29 @@ model Shift {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  employees User[]
+  assignments ShiftAssignment[]
+}
+
+// Which Shift a given employee is on for a given day of the week — the join
+// that replaced User.shiftId. Managed from the employee detail page's weekly
+// schedule editor, one row per (userId, weekday) that actually has a shift
+// assigned; a weekday with no row means no shift that day (lateness isn't
+// tracked, same meaning as the old null shiftId). Resolving "today's shift"
+// for a user is always `weekday = referenceDate.getDay()` — see
+// lib/shiftAssignment.ts, the single place that does this lookup.
+model ShiftAssignment {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shiftId   String
+  shift     Shift    @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  // JS Date.getDay() convention: 0 = Sunday ... 6 = Saturday.
+  weekday   Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, weekday])
+  @@index([shiftId])
 }
 
 model Attendance {
@@ -144,6 +165,7 @@ model Attendance {
   pauses         AttendancePause[]
   fieldVisits    FieldVisit[]
   timedPermissions TimedPermission[]
+  workSegments     WorkSegment[]
 
   @@index([userId, timestamp])
 }
@@ -182,6 +204,37 @@ model TimedPermission {
 
   @@index([attendanceId])
   @@index([approvalStatus])
+}
+
+enum WorkSegmentStartMethod {
+  // The mode the employee picked at check-in — always the first segment.
+  CHECKIN
+  // Confirmed geofence arrival/departure (see /api/kiosk/location's
+  // evaluateWorkSegment) — same 3-consecutive-ping streak standard used
+  // elsewhere, so a single stray GPS reading near the office never flips this.
+  AUTO
+  // The employee corrected it themselves — for when GPS detection is late,
+  // wrong, or unavailable (e.g. indoors).
+  MANUAL
+}
+
+// One entry in a FIELD-workMode employee's within-day timeline of Office vs
+// Field time — replaces treating Attendance.checkInMode as fixed for the
+// whole day. Only ever created for FIELD-profile employees; OFFICE/WFH
+// employees have no concept of switching and never get one of these. Exactly
+// one row per attendanceId has endedAt: null (the current, still-open
+// segment) until checkout closes it. See /api/kiosk/location and
+// /api/mobile/me/work-segment.
+model WorkSegment {
+  id           String                 @id @default(cuid())
+  attendanceId String
+  attendance   Attendance             @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  mode         CheckInMode
+  startedAt    DateTime
+  endedAt      DateTime?
+  startMethod  WorkSegmentStartMethod
+
+  @@index([attendanceId])
 }
 
 // A manually-logged stop during a Field day (see /api/mobile/field-visits) —

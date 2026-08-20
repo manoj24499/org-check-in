@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import VisitDatePicker from "./VisitDatePicker";
 
 const VisitedPlacesMap = dynamic(() => import("./VisitedPlacesMap"), {
   ssr: false,
   loading: () => (
-    <div className="h-[320px] w-full flex items-center justify-center bg-surface text-sm text-secondary rounded-lg">
+    <div className="h-full w-full flex items-center justify-center bg-surface text-sm text-secondary rounded-lg">
       Loading map…
     </div>
   ),
@@ -36,9 +36,17 @@ interface ReimbursementRecord {
   note: string | null;
 }
 
+interface HoursSplit {
+  fieldHours: number;
+  officeHours: number;
+}
+
 interface VisitedPlacesResponse {
   date: string;
   totalDistanceMeters: number;
+  // Only set once the day is complete (checked in and out) — see
+  // /api/admin/employees/[id]/visited-places.
+  hoursSplit: HoursSplit | null;
   pings: { latitude: number; longitude: number; timestamp: string }[];
   visits: Visit[];
   fieldVisits: FieldVisit[];
@@ -52,12 +60,10 @@ function formatDistance(meters: number) {
   return `${(meters / 1000).toFixed(1)} km`;
 }
 
-function formatDuration(startIso: string, endIso: string) {
-  const ms = new Date(endIso).getTime() - new Date(startIso).getTime();
-  const totalMinutes = Math.round(ms / 60_000);
-  const h = Math.floor(totalMinutes / 60);
-  const m = totalMinutes % 60;
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+function formatHours(hours: number) {
+  const h = Math.floor(hours);
+  const m = Math.round((hours - h) * 60);
+  return `${h}h ${String(m).padStart(2, "0")}m`;
 }
 
 function formatTime(iso: string) {
@@ -67,23 +73,10 @@ function formatTime(iso: string) {
   });
 }
 
-// `.toISOString().slice(0, 10)` converts to UTC first — for any timezone
-// ahead of UTC (e.g. IST), local midnight rolls back to the previous UTC
-// calendar day, silently shifting the date by one. Read the local
-// year/month/day directly instead (same fix as the backend route).
-function shiftDate(dateStr: string, days: number) {
-  const d = new Date(`${dateStr}T00:00:00`);
-  d.setDate(d.getDate() + days);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
 /**
  * Renders bare (no outer card) so it can be embedded as the detail side of
  * a master-detail layout — see components/FieldWorkersPanel.tsx, its only
- * caller. `employeeName` is shown next to the date nav for context, since
+ * caller. `employeeName` is shown above the map/calendar for context, since
  * this component itself carries no heading of its own.
  */
 export default function VisitedPlacesPanel({
@@ -206,44 +199,27 @@ export default function VisitedPlacesPanel({
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        {employeeName ? (
+    <div className="flex flex-col h-full">
+      <div className="mb-3 shrink-0">
+        {employeeName && (
           <h3 className="text-base font-medium text-foreground">
             {employeeName}
           </h3>
-        ) : (
-          <span />
         )}
         {data && (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => loadDate(shiftDate(data.date, -1))}
-              className="p-1.5 rounded-lg hover:bg-surface transition"
-              aria-label="Previous day"
-            >
-              <ChevronLeft className="w-4 h-4 text-muted" />
-            </button>
-            <span className="text-sm font-medium text-muted-2 min-w-[120px] text-center">
-              {new Date(`${data.date}T00:00:00`).toLocaleDateString("en-US", {
-                weekday: "short",
-                month: "short",
-                day: "numeric",
-              })}
-            </span>
-            <button
-              onClick={() => loadDate(shiftDate(data.date, 1))}
-              className="p-1.5 rounded-lg hover:bg-surface transition"
-              aria-label="Next day"
-            >
-              <ChevronRight className="w-4 h-4 text-muted" />
-            </button>
-          </div>
+          <p className="text-xs text-secondary mt-0.5">
+            Viewing{" "}
+            {new Date(`${data.date}T00:00:00`).toLocaleDateString("en-US", {
+              weekday: "long",
+              month: "short",
+              day: "numeric",
+            })}
+          </p>
         )}
       </div>
 
       {error && (
-        <div className="rounded-lg bg-red-50 text-red-600 p-3 text-sm border border-red-100 mb-4">
+        <div className="rounded-lg bg-red-50 text-red-600 p-3 text-sm border border-red-100 mb-3 shrink-0">
           {error}
         </div>
       )}
@@ -253,184 +229,198 @@ export default function VisitedPlacesPanel({
           Loading…
         </div>
       ) : data ? (
-        <>
-          <div className="mb-4">
-            <p className="text-xs font-medium text-secondary uppercase tracking-wider">
-              Distance traveled
-            </p>
-            <p className="text-2xl font-medium tracking-tight mt-1 text-foreground">
-              {formatDistance(data.totalDistanceMeters)}
-            </p>
-          </div>
-
-          <div className="rounded-lg overflow-hidden border border-border mb-4">
-            <VisitedPlacesMap
-              pings={data.pings}
-              visits={data.visits}
-              fieldVisits={data.fieldVisits}
-            />
-          </div>
-
-          {data.fieldVisits.length > 0 && (
-            <div className="mb-5">
-              <p className="text-xs font-medium text-secondary uppercase tracking-wider mb-2">
-                Logged by {employeeName ?? "employee"}
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          {/* Auto-detected stops (data.visits) still feed the map's pin
+              markers below — only the standalone list of them was removed
+              from this UI; the clustering/reverse-geocoding stays server-side. */}
+          <div className="mb-3 flex flex-wrap gap-6 shrink-0">
+            <div>
+              <p className="text-xs font-medium text-secondary uppercase tracking-wider">
+                Distance traveled
               </p>
-              <div className="flex flex-col gap-2">
-                {data.fieldVisits.map((v) => (
-                  <div key={v.id} className="flex items-center gap-3 py-2">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={`/api/admin/field-visits/${v.id}/photo`}
-                      alt={v.name}
-                      className="w-11 h-11 rounded-lg object-cover border border-border shrink-0"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-foreground truncate">
-                        {v.name}
-                      </p>
-                      <p className="text-xs text-secondary mt-0.5">
-                        Reached {formatTime(v.reachedAt)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <p className="text-xl font-medium tracking-tight mt-1 text-foreground">
+                {formatDistance(data.totalDistanceMeters)}
+              </p>
             </div>
-          )}
-
-          <div>
-            <p className="text-xs font-medium text-secondary uppercase tracking-wider mb-2">
-              Auto-detected stops
-            </p>
-            {data.visits.length === 0 ? (
-              <p className="text-sm text-secondary text-center py-6">
-                No visits recorded for this day.
-              </p>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {data.visits.map((v, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between gap-3 py-2.5 border-b border-border-soft last:border-0"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-foreground truncate">
-                        {v.placeName ?? "Unknown place"}
-                      </p>
-                      <p className="text-xs text-secondary mt-0.5">
-                        {formatTime(v.arrivedAt)} – {formatTime(v.departedAt)}
-                      </p>
-                    </div>
-                    <span className="text-xs font-medium text-muted shrink-0">
-                      {formatDuration(v.arrivedAt, v.departedAt)}
-                    </span>
-                  </div>
-                ))}
-              </div>
+            {data.hoursSplit && (
+              <>
+                <div>
+                  <p className="text-xs font-medium text-secondary uppercase tracking-wider">
+                    Field hours
+                  </p>
+                  <p className="text-xl font-medium tracking-tight mt-1 text-foreground">
+                    {formatHours(data.hoursSplit.fieldHours)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-secondary uppercase tracking-wider">
+                    Office hours
+                  </p>
+                  <p className="text-xl font-medium tracking-tight mt-1 text-foreground">
+                    {formatHours(data.hoursSplit.officeHours)}
+                  </p>
+                </div>
+              </>
             )}
           </div>
 
-          <div className="mt-6 rounded-lg border border-border bg-surface p-4">
-            <p className="text-xs font-medium text-secondary uppercase tracking-wider mb-3">
-              Reimbursement for this day
-            </p>
-
-            <div className="flex flex-wrap items-end gap-3">
-              <div>
-                <label className="text-xs font-medium text-muted">
-                  Rate (₹/km)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  step="0.5"
-                  value={rateInput}
-                  onChange={(e) => setRateInput(e.target.value)}
-                  className="mt-1 w-24 rounded-lg border border-border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted">
-                  Amount to pay (₹)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  step="1"
-                  value={amountInput}
-                  onChange={(e) => setAmountInput(e.target.value)}
-                  className="mt-1 w-28 rounded-lg border border-border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
-                />
-              </div>
-              {rateInput.trim() !== "" && !Number.isNaN(Number(rateInput)) && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    setAmountInput(
-                      String(
-                        Math.round(
-                          (data.totalDistanceMeters / 1000) *
-                            Number(rateInput) *
-                            100,
-                        ) / 100,
-                      ),
-                    )
-                  }
-                  className="text-xs font-semibold text-primary hover:text-primary-dark transition mb-2"
-                >
-                  Use {(data.totalDistanceMeters / 1000).toFixed(1)} km × ₹
-                  {rateInput} = ₹
-                  {(
-                    Math.round(
-                      (data.totalDistanceMeters / 1000) *
-                        Number(rateInput) *
-                        100,
-                    ) / 100
-                  ).toFixed(2)}
-                </button>
-              )}
-            </div>
-
-            <div className="mt-3">
-              <label className="text-xs font-medium text-muted">
-                Note (optional)
-              </label>
-              <input
-                type="text"
-                value={noteInput}
-                onChange={(e) => setNoteInput(e.target.value)}
-                placeholder="e.g. includes toll charges"
-                className="mt-1 w-full rounded-lg border border-border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+          {/* Map takes the left half, the date-picker calendar the right
+              half — replaces the old full-width map + prev/next-day arrows. */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4 lg:h-[42vh] lg:min-h-[320px]">
+            {/* lg:min-h-0 overrides the grid item's default min-height:auto —
+                without it, a tall child (the calendar) refuses to shrink to
+                the row's explicit height and spills out below it. */}
+            <div className="rounded-lg overflow-hidden border border-border h-[280px] lg:h-full lg:min-h-0">
+              <VisitedPlacesMap
+                pings={data.pings}
+                visits={data.visits}
+                fieldVisits={data.fieldVisits}
               />
             </div>
+            <div className="rounded-lg border border-border p-3 lg:h-full lg:min-h-0 overflow-y-auto">
+              <VisitDatePicker
+                selectedDate={data.date}
+                onSelect={(date) => loadDate(date)}
+              />
+            </div>
+          </div>
 
-            {reimbursementError && (
-              <div className="mt-3 rounded-lg bg-red-50 text-red-600 p-2.5 text-sm border border-red-100">
-                {reimbursementError}
+          {/* "Logged by" and "Reimbursement" sit side by side — reimbursement
+              takes the full row on days with no manually-logged stops. */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4 items-start">
+            {data.fieldVisits.length > 0 && (
+              <div className="rounded-lg border border-border p-4">
+                <p className="text-xs font-medium text-secondary uppercase tracking-wider mb-2">
+                  Logged by {employeeName ?? "employee"}
+                </p>
+                <div className="flex flex-col gap-2">
+                  {data.fieldVisits.map((v) => (
+                    <div key={v.id} className="flex items-center gap-3 py-2">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`/api/admin/field-visits/${v.id}/photo`}
+                        alt={v.name}
+                        className="w-11 h-11 rounded-lg object-cover border border-border shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-foreground truncate">
+                          {v.name}
+                        </p>
+                        <p className="text-xs text-secondary mt-0.5">
+                          Reached {formatTime(v.reachedAt)}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
-            <div className="mt-3 flex items-center gap-3">
-              <button
-                onClick={handleSaveReimbursement}
-                disabled={savingReimbursement}
-                className="rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary-dark hover:bg-primary/5 transition disabled:opacity-50"
-              >
-                {savingReimbursement
-                  ? "Saving…"
-                  : data.reimbursement
-                    ? "Update"
-                    : "Save"}
-              </button>
-              {reimbursementSaved && !reimbursementError && (
-                <span className="text-sm text-emerald-600 font-medium">
-                  Saved.
-                </span>
+            <div
+              className={`rounded-lg border border-border bg-surface p-4 ${
+                data.fieldVisits.length === 0 ? "lg:col-span-2" : ""
+              }`}
+            >
+              <p className="text-xs font-medium text-secondary uppercase tracking-wider mb-3">
+                Reimbursement for this day
+              </p>
+
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="text-xs font-medium text-muted">
+                    Rate (₹/km)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.5"
+                    value={rateInput}
+                    onChange={(e) => setRateInput(e.target.value)}
+                    className="mt-1 w-24 rounded-lg border border-border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted">
+                    Amount to pay (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="1"
+                    value={amountInput}
+                    onChange={(e) => setAmountInput(e.target.value)}
+                    className="mt-1 w-28 rounded-lg border border-border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+                  />
+                </div>
+                {rateInput.trim() !== "" && !Number.isNaN(Number(rateInput)) && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAmountInput(
+                        String(
+                          Math.round(
+                            (data.totalDistanceMeters / 1000) *
+                              Number(rateInput) *
+                              100,
+                          ) / 100,
+                        ),
+                      )
+                    }
+                    className="text-xs font-semibold text-primary hover:text-primary-dark transition mb-2"
+                  >
+                    Use {(data.totalDistanceMeters / 1000).toFixed(1)} km × ₹
+                    {rateInput} = ₹
+                    {(
+                      Math.round(
+                        (data.totalDistanceMeters / 1000) *
+                          Number(rateInput) *
+                          100,
+                      ) / 100
+                    ).toFixed(2)}
+                  </button>
+                )}
+              </div>
+
+              <div className="mt-3">
+                <label className="text-xs font-medium text-muted">
+                  Note (optional)
+                </label>
+                <input
+                  type="text"
+                  value={noteInput}
+                  onChange={(e) => setNoteInput(e.target.value)}
+                  placeholder="e.g. includes toll charges"
+                  className="mt-1 w-full rounded-lg border border-border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+                />
+              </div>
+
+              {reimbursementError && (
+                <div className="mt-3 rounded-lg bg-red-50 text-red-600 p-2.5 text-sm border border-red-100">
+                  {reimbursementError}
+                </div>
               )}
+
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  onClick={handleSaveReimbursement}
+                  disabled={savingReimbursement}
+                  className="rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary-dark hover:bg-primary/5 transition disabled:opacity-50"
+                >
+                  {savingReimbursement
+                    ? "Saving…"
+                    : data.reimbursement
+                      ? "Update"
+                      : "Save"}
+                </button>
+                {reimbursementSaved && !reimbursementError && (
+                  <span className="text-sm text-emerald-600 font-medium">
+                    Saved.
+                  </span>
+                )}
+              </div>
             </div>
           </div>
-        </>
+        </div>
       ) : null}
     </div>
   );

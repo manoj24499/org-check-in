@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/requireAdmin";
 import { computeTotalDistanceMeters, clusterPings } from "@/lib/locationClustering";
 import { reverseGeocode } from "@/lib/geocoding";
 import { getSettings } from "@/lib/settings";
+import { computeFieldOfficeSplit } from "@/lib/attendanceHours";
 
 function startOfDay(date: Date) {
   const d = new Date(date);
@@ -41,7 +42,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const day = parseDateParam(req.nextUrl.searchParams.get("date"));
 
-  const [pings, mostRecentPing, todaysCheckIns, settings, existingReimbursement] = await Promise.all([
+  const [pings, mostRecentPing, dayRecords, settings, existingReimbursement] = await Promise.all([
     prisma.locationPing.findMany({
       where: { userId: id, timestamp: { gte: startOfDay(day), lte: endOfDay(day) } },
       orderBy: { timestamp: "asc" },
@@ -51,12 +52,31 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       orderBy: { timestamp: "desc" },
     }),
     prisma.attendance.findMany({
-      where: { userId: id, type: "CHECK_IN", timestamp: { gte: startOfDay(day), lte: endOfDay(day) } },
-      select: { id: true },
+      where: { userId: id, timestamp: { gte: startOfDay(day), lte: endOfDay(day) } },
+      orderBy: { timestamp: "asc" },
+      include: { pauses: true, workSegments: true },
     }),
     getSettings(),
     prisma.reimbursement.findUnique({ where: { userId_date: { userId: id, date: startOfDay(day) } } }),
   ]);
+
+  const todaysCheckIns = dayRecords.filter((r) => r.type === "CHECK_IN");
+  const checkIn = todaysCheckIns[0];
+  const checkOut = dayRecords.find((r) => r.type === "CHECK_OUT" && r.timestamp > (checkIn?.timestamp ?? day));
+
+  // Field/Office hour split — only meaningful once the day has actually
+  // ended (checked out); a still-open segment would otherwise keep growing
+  // every time this is viewed, which isn't a "today's totals so far" view
+  // anywhere else in the app either.
+  const hoursSplit =
+    checkIn && checkOut
+      ? computeFieldOfficeSplit(
+          checkIn.timestamp,
+          checkOut.timestamp,
+          checkIn.workSegments.map((s) => ({ mode: s.mode, startedAt: s.startedAt, endedAt: s.endedAt })),
+          checkIn.pauses,
+        )
+      : null;
 
   // Manually-logged stops (see /api/mobile/field-visits) — distinct from the
   // auto-clustered `visits` below, which infers stops from raw GPS pings.
@@ -88,6 +108,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   return NextResponse.json({
     date: formatDateKey(day),
     totalDistanceMeters,
+    hoursSplit: hoursSplit
+      ? { fieldHours: hoursSplit.fieldMs / 3_600_000, officeHours: hoursSplit.officeMs / 3_600_000 }
+      : null,
     pings: pings.map((p) => ({ latitude: p.latitude, longitude: p.longitude, timestamp: p.timestamp })),
     visits,
     fieldVisits: fieldVisits.map((v) => ({

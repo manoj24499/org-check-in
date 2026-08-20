@@ -3,8 +3,11 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getClientIp, isRateLimited } from "@/lib/rateLimit";
 import { haversineDistanceMeters } from "@/lib/geofence";
-import { resolveGeofenceTarget } from "@/lib/geofenceTarget";
+import { resolveGeofenceTarget, resolveOfficeLocationTarget, type GeofenceTarget } from "@/lib/geofenceTarget";
+import type { CheckInMode } from "@prisma/client";
 import { sendPushNotification } from "@/lib/pushNotifications";
+import { combineDateAndShiftTime } from "@/lib/shiftTime";
+import { loadShiftAssignments, shiftForDate } from "@/lib/shiftAssignment";
 
 // A ping streak only counts as "consecutive" if readings are this close
 // together — otherwise irregular/throttled background delivery (the app was
@@ -59,10 +62,33 @@ async function evaluateRangeStreak(
 }
 
 /**
- * Auto-pause/resume evaluation, run on every ping for OFFICE/WFH employees
- * with a resolved geofence target (FIELD, or no target configured, skip
- * entirely — same precedent as the check-in geofence gate). Best-effort:
- * never throws, so a bug here can never break ping ingestion itself.
+ * The geofence target for a WFH/OFFICE employee's session — not just at
+ * check-in. A WFH employee who chose "Office" for the day (see
+ * /api/kiosk/scan's effectiveWorkMode) needs to keep being checked against
+ * the office location for every ping afterward too, not just the initial
+ * check-in gate; otherwise the very next ping would see them "away from
+ * home" and start the auto-pause countdown despite them having said they'd
+ * be in the office. FIELD is resolved separately via its own segment-based
+ * target and never calls this.
+ */
+async function resolveSessionTarget(
+  user: Parameters<typeof resolveGeofenceTarget>[0],
+  checkInMode: CheckInMode | null,
+): Promise<GeofenceTarget | null> {
+  if (user.workMode === "WFH" && checkInMode === "OFFICE") {
+    return resolveOfficeLocationTarget();
+  }
+  return resolveGeofenceTarget(user);
+}
+
+/**
+ * Auto-pause/resume evaluation, run on every ping against whichever target
+ * (if any) applies right now — the caller resolves that, since it's no
+ * longer a static per-profile decision: an OFFICE/WFH employee's target is
+ * fixed for the whole day, but a FIELD employee's is null or the office
+ * target depending on their *current* WorkSegment (see evaluateWorkSegment
+ * below). No target == not enforced, same precedent as the check-in gate.
+ * Best-effort: never throws, so a bug here can never break ping ingestion.
  *
  * Only manages geofence-departure pauses (`timedPermissionId: null`) —
  * a pause opened by evaluateTimedPermission below is resolved on its own
@@ -71,11 +97,10 @@ async function evaluateRangeStreak(
  */
 async function evaluatePauseState(
   checkIn: { id: string; userId: string; timestamp: Date; pauseWarningAt: Date | null },
-  user: Parameters<typeof resolveGeofenceTarget>[0],
+  target: GeofenceTarget | null,
   ping: { latitude: number; longitude: number; timestamp: Date },
 ) {
   try {
-    const target = await resolveGeofenceTarget(user);
     if (!target) return;
 
     const { inRange, confirmed } = await evaluateRangeStreak(checkIn.userId, checkIn.timestamp, target, ping);
@@ -134,16 +159,67 @@ async function evaluatePauseState(
   }
 }
 
-const SHIFT_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
+/**
+ * Field/Office segment-switch detection for FIELD-workMode employees only —
+ * OFFICE/WFH employees have no WorkSegment timeline at all (see
+ * /api/kiosk/scan) and never reach this. Runs on every ping regardless of
+ * whether a timed-permission or geofence pause is currently active — where
+ * someone physically is doesn't depend on whether their time is paused.
+ *
+ * Symmetric in both directions, using the same 3-consecutive-ping streak
+ * standard as the geofence auto-pause: confirmed arrival at the office
+ * closes the current FIELD segment and opens an OFFICE one (which then
+ * behaves exactly like a normal office day for evaluatePauseState above —
+ * geofenced, auto-pause-on-departure applies); confirmed departure does the
+ * reverse. A single stray reading near the office boundary never flips this
+ * on its own. A manual correction (see /api/mobile/me/work-segment) can
+ * always override the current segment directly, independent of this.
+ *
+ * Returns the *current* segment's mode after this ping, plus the office
+ * target already resolved along the way (so the caller doesn't need to
+ * re-fetch it) — or null if this employee somehow has no open segment yet
+ * (shouldn't happen once checked in; the caller just skips geofencing for
+ * this ping if so, same fail-open precedent as everywhere else here).
+ */
+async function evaluateWorkSegment(
+  checkIn: { id: string; userId: string },
+  ping: { latitude: number; longitude: number; timestamp: Date },
+): Promise<{ mode: "OFFICE" | "FIELD"; officeTarget: GeofenceTarget | null } | null> {
+  try {
+    const current = await prisma.workSegment.findFirst({
+      where: { attendanceId: checkIn.id, endedAt: null },
+      orderBy: { startedAt: "desc" },
+    });
+    if (!current) return null;
 
-/** Combines an "HH:mm" shift time with the calendar date of `referenceDate`. */
-function combineDateAndShiftTime(referenceDate: Date, hhmm: string): Date | null {
-  const match = SHIFT_TIME_PATTERN.exec(hhmm);
-  if (!match) return null;
-  const result = new Date(referenceDate);
-  result.setHours(Number(match[1]), Number(match[2]), 0, 0);
-  return result;
+    const officeTarget = await resolveOfficeLocationTarget();
+    if (!officeTarget) return { mode: current.mode, officeTarget: null };
+
+    const { inRange, confirmed } = await evaluateRangeStreak(
+      checkIn.userId,
+      current.startedAt,
+      officeTarget,
+      ping,
+    );
+    if (!confirmed) return { mode: current.mode, officeTarget };
+
+    const shouldSwitch = current.mode === "FIELD" ? inRange : !inRange;
+    if (!shouldSwitch) return { mode: current.mode, officeTarget };
+
+    const nextMode = current.mode === "FIELD" ? "OFFICE" : "FIELD";
+    await prisma.$transaction([
+      prisma.workSegment.update({ where: { id: current.id }, data: { endedAt: ping.timestamp } }),
+      prisma.workSegment.create({
+        data: { attendanceId: checkIn.id, mode: nextMode, startedAt: ping.timestamp, startMethod: "AUTO" },
+      }),
+    ]);
+    return { mode: nextMode, officeTarget };
+  } catch (error) {
+    console.error("[evaluateWorkSegment] failed:", error);
+    return null;
+  }
 }
+
 
 /**
  * Timed-permission evaluation, run on every ping *before* the geofence
@@ -171,8 +247,9 @@ function combineDateAndShiftTime(referenceDate: Date, hhmm: string): Date | null
  * doesn't matter when the approval itself happened.
  */
 async function evaluateTimedPermission(
-  checkIn: { id: string; userId: string; timestamp: Date },
-  user: Parameters<typeof resolveGeofenceTarget>[0] & { shift: { endTime: string } | null },
+  checkIn: { id: string; userId: string; timestamp: Date; checkInMode: CheckInMode | null },
+  user: Parameters<typeof resolveGeofenceTarget>[0],
+  shiftThatDay: { endTime: string } | null,
   ping: { latitude: number; longitude: number; timestamp: Date },
 ): Promise<{ active: boolean; autoCheckedOut: boolean }> {
   try {
@@ -203,7 +280,7 @@ async function evaluateTimedPermission(
 
     // Requested end time has passed. If it runs through the employee's
     // shift end, there's no shift left to resume into — auto-checkout.
-    const shiftEnd = user.shift ? combineDateAndShiftTime(checkIn.timestamp, user.shift.endTime) : null;
+    const shiftEnd = shiftThatDay ? combineDateAndShiftTime(checkIn.timestamp, shiftThatDay.endTime) : null;
     if (shiftEnd && permission.endTime >= shiftEnd) {
       await prisma.$transaction([
         prisma.attendancePause.update({
@@ -225,7 +302,7 @@ async function evaluateTimedPermission(
     // FIELD employees have no fixed geofence to return to (same precedent
     // as the geofence auto-pause skipping them entirely) — resume on the
     // clock alone, no presence check.
-    const target = user.workMode === "FIELD" ? null : await resolveGeofenceTarget(user);
+    const target = user.workMode === "FIELD" ? null : await resolveSessionTarget(user, checkIn.checkInMode);
     if (!target) {
       await prisma.attendancePause.update({
         where: { id: permission.pause.id },
@@ -288,11 +365,15 @@ export async function POST(req: NextRequest) {
 
   const user = await prisma.user.findUnique({
     where: { id: checkIn.userId },
-    include: { shift: { select: { endTime: true } } },
   });
   if (!user || !user.active) {
     return NextResponse.json({ tracking: false });
   }
+
+  // Whatever shift applies on the check-in's own weekday — an employee can
+  // be on a different shift on different days (see lib/shiftAssignment.ts).
+  const shiftMap = await loadShiftAssignments(user.id);
+  const shiftThatDay = shiftForDate(shiftMap, checkIn.timestamp);
 
   // If the employee has since checked out (from any device), the session is
   // over — tell the client to stop, without recording a stray ping.
@@ -311,12 +392,28 @@ export async function POST(req: NextRequest) {
   const timestamp = new Date(parsed.data.timestamp);
   const ping = { latitude: parsed.data.latitude, longitude: parsed.data.longitude, timestamp };
 
-  const permissionResult = await evaluateTimedPermission(checkIn, user, ping);
+  const permissionResult = await evaluateTimedPermission(checkIn, user, shiftThatDay, ping);
+
+  // Field/office segment tracking runs regardless of pause state — where
+  // someone physically is doesn't depend on whether their time is paused.
+  // Not applicable at all outside FIELD-workMode profiles.
+  const segmentResult = user.workMode === "FIELD" ? await evaluateWorkSegment(checkIn, ping) : null;
+
   // A timed permission's pause is managed on its own timeline — skip the
   // geofence auto-pause entirely while one is open, so the two never both
   // try to act on the same session's pause state for the same ping.
   if (!permissionResult.active) {
-    await evaluatePauseState(checkIn, user, ping);
+    // For a FIELD profile, geofencing only applies while their *current*
+    // segment is OFFICE — reusing the office target evaluateWorkSegment
+    // already resolved, rather than fetching it again. Non-FIELD profiles
+    // are unaffected: same fixed-for-the-day target as before.
+    const target =
+      user.workMode === "FIELD"
+        ? segmentResult?.mode === "OFFICE"
+          ? segmentResult.officeTarget
+          : null
+        : await resolveSessionTarget(user, checkIn.checkInMode);
+    await evaluatePauseState(checkIn, target, ping);
   }
 
   await prisma.locationPing.create({

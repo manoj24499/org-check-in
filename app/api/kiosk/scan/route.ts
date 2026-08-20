@@ -8,6 +8,8 @@ import { resolveGeofenceTarget } from "@/lib/geofenceTarget";
 import { getSettings } from "@/lib/settings";
 import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
 import { PayloadTooLargeError, readJsonWithLimit } from "@/lib/readJsonBody";
+import { combineDateAndShiftTime, computeLateness } from "@/lib/shiftTime";
+import { loadShiftAssignments, shiftForDate, type WeekdayShiftMap } from "@/lib/shiftAssignment";
 
 const scanSchema = z.object({
   employeeCode: z.string().min(1),
@@ -20,9 +22,11 @@ const scanSchema = z.object({
   // location provider (Android only). Rejected outright wherever the
   // geofence would otherwise be enforced — see below.
   mocked: z.boolean().optional(),
-  // Only meaningful for FIELD-workMode employees on CHECK_IN — the choice
-  // they made for today. Defaults to "FIELD" when omitted, preserving the
-  // kiosk's existing behavior (it has no UI for this choice).
+  // Only meaningful on CHECK_IN, for FIELD or WFH-workMode employees — the
+  // choice they made for today. "OFFICE" geofences the check-in against the
+  // shared office location instead of the employee's usual target (no fixed
+  // location for FIELD, home for WFH). Omitted preserves each profile's
+  // default (FIELD stays ungeofenced, WFH stays geofenced against home).
   checkInMode: z.enum(["OFFICE", "FIELD"]).optional(),
 });
 
@@ -32,31 +36,61 @@ function startOfToday() {
   return d;
 }
 
-const SHIFT_START_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
+function endOfDay(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
 
 /**
- * Late-arrival classification for OFFICE employees with a configured
- * shiftStartTime: up to 1 hour late is treated as Permission, more than 1
- * hour is Half-day leave. WFH/FIELD employees and anyone without a
- * shiftStartTime set are never classified — leaveType stays NONE.
+ * Auto-closes any earlier day's check-in the employee simply forgot to
+ * check out of. Nothing else in this app ever does this on its own — there's
+ * no midnight sweep — so a forgotten check-in otherwise stays open forever:
+ * every hours calculation for that day requires a real checkout to compute
+ * anything (see lib/attendanceHours.ts and the mobile app's identical
+ * attendanceGrouping.ts), so it silently shows blank/zero, and the weekly
+ * total does too if enough days are affected. Runs right before a new
+ * CHECK_IN and sweeps the *entire* backlog in one pass, not just the
+ * immediately preceding day, so it also repairs however many days have
+ * already piled up. The auto-checkout time is the employee's shift end *for
+ * that check-in's own weekday* if they had one assigned (same precedent as
+ * the Timed Permission auto-checkout in /api/kiosk/location) — resolved per
+ * iteration since a backlog can span several different weekdays — otherwise
+ * the end of that day.
  */
-function computeLateness(
-  user: { workMode: string; shift: { startTime: string } | null },
-  checkInAt: Date,
-): { lateMinutes: number | null; leaveType: "NONE" | "PERMISSION" | "HALF_DAY" } {
-  if (user.workMode !== "OFFICE" || !user.shift) {
-    return { lateMinutes: null, leaveType: "NONE" };
+async function autoCloseStaleCheckIns(user: { id: string }, shiftMap: WeekdayShiftMap, before: Date) {
+  const staleCheckIns = await prisma.attendance.findMany({
+    where: { userId: user.id, type: "CHECK_IN", timestamp: { lt: before } },
+    orderBy: { timestamp: "asc" },
+  });
+
+  for (const checkIn of staleCheckIns) {
+    const dayEnd = endOfDay(checkIn.timestamp);
+
+    const hasCheckOutThatDay = await prisma.attendance.findFirst({
+      where: { userId: user.id, type: "CHECK_OUT", timestamp: { gt: checkIn.timestamp, lte: dayEnd } },
+    });
+    if (hasCheckOutThatDay) continue;
+
+    const shiftThatDay = shiftForDate(shiftMap, checkIn.timestamp);
+    const shiftEnd = shiftThatDay ? combineDateAndShiftTime(checkIn.timestamp, shiftThatDay.endTime) : null;
+    const checkoutAt = shiftEnd && shiftEnd > checkIn.timestamp ? shiftEnd : dayEnd;
+
+    await prisma.$transaction([
+      prisma.attendance.create({
+        data: { userId: user.id, type: "CHECK_OUT", method: "AUTO", timestamp: checkoutAt },
+      }),
+      prisma.attendancePause.updateMany({
+        where: { attendanceId: checkIn.id, resumedAt: null },
+        data: { resumedAt: checkoutAt },
+      }),
+      prisma.attendance.update({ where: { id: checkIn.id }, data: { pauseWarningAt: null } }),
+      prisma.workSegment.updateMany({
+        where: { attendanceId: checkIn.id, endedAt: null },
+        data: { endedAt: checkoutAt },
+      }),
+    ]);
   }
-  const match = SHIFT_START_PATTERN.exec(user.shift.startTime);
-  if (!match) return { lateMinutes: null, leaveType: "NONE" };
-
-  const shiftStart = new Date(checkInAt);
-  shiftStart.setHours(Number(match[1]), Number(match[2]), 0, 0);
-
-  const lateMinutes = Math.round((checkInAt.getTime() - shiftStart.getTime()) / 60_000);
-  if (lateMinutes <= 0) return { lateMinutes: 0, leaveType: "NONE" };
-  if (lateMinutes <= 60) return { lateMinutes, leaveType: "PERMISSION" };
-  return { lateMinutes, leaveType: "HALF_DAY" };
 }
 
 const PHOTO_RETENTION_DAYS = 45;
@@ -129,7 +163,6 @@ export async function POST(req: NextRequest) {
 
   const candidate = await prisma.user.findUnique({
     where: { employeeCode: parsed.data.employeeCode },
-    include: { shift: { select: { startTime: true } } },
   });
   const user =
     candidate?.pinHash && (await verifyPin(parsed.data.pin, candidate.pinHash)) ? candidate : null;
@@ -141,16 +174,51 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // A FIELD-workMode employee picks their mode for the day at check-in — if
-  // they chose "Office", they're geofenced against the shared office
-  // location exactly like a regular OFFICE employee; otherwise (the default)
-  // they're never geofenced, same as before this choice existed.
+  // Loaded once and reused below — an employee can be on a different shift
+  // on different weekdays (see lib/shiftAssignment.ts).
+  const shiftMap = await loadShiftAssignments(user.id);
+
+  // Sweep up any forgotten check-in from a previous day before doing
+  // anything else — see autoCloseStaleCheckIns for why this can't wait.
+  if (parsed.data.action === "CHECK_IN") {
+    await autoCloseStaleCheckIns(user, shiftMap, startOfToday());
+  }
+
+  // An approved leave day blocks check-in outright — being on paid leave and
+  // still checking in for work is a contradiction the system shouldn't
+  // silently allow (see /api/mobile/me/leave-requests). Check-out is left
+  // alone: if someone's already checked in (e.g. leave was approved after
+  // the fact), they still need a way to close out their day normally.
+  if (parsed.data.action === "CHECK_IN") {
+    const today = startOfToday();
+    const onApprovedLeaveToday = await prisma.timeOffRequest.findFirst({
+      where: { userId: user.id, status: "APPROVED", startDate: { lte: today }, endDate: { gte: today } },
+    });
+    if (onApprovedLeaveToday) {
+      return NextResponse.json(
+        { error: "You have approved leave today — check-in is disabled." },
+        { status: 409 },
+      );
+    }
+  }
+
+  // A FIELD or WFH-workMode employee picks their mode for the day at
+  // check-in — if they chose "Office", they're geofenced against the shared
+  // office location exactly like a regular OFFICE employee (covers a WFH
+  // employee coming in for the day, who'd otherwise be geofenced against
+  // their home address and rejected); otherwise (the default) FIELD stays
+  // ungeofenced and WFH stays geofenced against home, same as before this
+  // choice existed.
   const effectiveWorkMode: typeof user.workMode =
     user.workMode === "FIELD"
       ? parsed.data.checkInMode === "OFFICE"
         ? "OFFICE"
         : "FIELD"
-      : user.workMode;
+      : user.workMode === "WFH"
+        ? parsed.data.checkInMode === "OFFICE"
+          ? "OFFICE"
+          : "WFH"
+        : user.workMode;
 
   // Geofence the check-in against whichever location applies to this
   // employee. No location configured yet (office or home) == not enforced.
@@ -208,22 +276,56 @@ export async function POST(req: NextRequest) {
   const now = new Date();
   const lateness =
     parsed.data.action === "CHECK_IN"
-      ? computeLateness(user, now)
+      ? computeLateness({ workMode: user.workMode, shift: shiftForDate(shiftMap, now) }, now)
       : { lateMinutes: null, leaveType: "NONE" as const };
 
-  const record = await prisma.attendance.create({
-    data: {
-      userId: user.id,
-      type: parsed.data.action,
-      method: "PIN",
-      timestamp: now,
-      lateMinutes: lateness.lateMinutes,
-      leaveType: lateness.leaveType,
-      ...(parsed.data.action === "CHECK_IN" && user.workMode === "FIELD"
-        ? { checkInMode: effectiveWorkMode === "OFFICE" ? "OFFICE" : "FIELD" }
-        : {}),
-      ...(photoBuffer ? { photo: photoBuffer, hasPhoto: true } : {}),
-    },
+  // Attendance + its first WorkSegment are created atomically — the segment
+  // depends on the new record's id, so this needs the interactive
+  // transaction form rather than a plain batch. Without this, a failure
+  // partway through would leave a check-in with no segment at all, silently
+  // breaking Field/Office tracking for that entire day.
+  const record = await prisma.$transaction(async (tx) => {
+    const created = await tx.attendance.create({
+      data: {
+        userId: user.id,
+        type: parsed.data.action,
+        method: "PIN",
+        timestamp: now,
+        lateMinutes: lateness.lateMinutes,
+        leaveType: lateness.leaveType,
+        ...(parsed.data.action === "CHECK_IN" && user.workMode === "FIELD"
+          ? { checkInMode: effectiveWorkMode === "OFFICE" ? "OFFICE" : "FIELD" }
+          : // For WFH, only record a value when they actually chose Office
+            // that day — CheckInMode has no "HOME" value, and leaving the
+            // field null for an ordinary WFH-from-home day (the vast
+            // majority) preserves its existing meaning everywhere else that
+            // reads it, which all assume it's FIELD-specific.
+            parsed.data.action === "CHECK_IN" &&
+              user.workMode === "WFH" &&
+              effectiveWorkMode === "OFFICE"
+            ? { checkInMode: "OFFICE" }
+            : {}),
+        ...(photoBuffer ? { photo: photoBuffer, hasPhoto: true } : {}),
+      },
+    });
+
+    // FIELD-workMode employees get a WorkSegment timeline, starting with
+    // whatever they picked here — see /api/kiosk/location's
+    // evaluateWorkSegment for how it evolves (auto-detected or manually
+    // switched) over the day. OFFICE/WFH employees never get one; their
+    // mode never changes mid-day.
+    if (parsed.data.action === "CHECK_IN" && user.workMode === "FIELD") {
+      await tx.workSegment.create({
+        data: {
+          attendanceId: created.id,
+          mode: effectiveWorkMode === "OFFICE" ? "OFFICE" : "FIELD",
+          startedAt: created.timestamp,
+          startMethod: "CHECKIN",
+        },
+      });
+    }
+
+    return created;
   });
 
   // Closing the loop on auto-pause (see /api/kiosk/location): don't leave a
@@ -240,6 +342,12 @@ export async function POST(req: NextRequest) {
         prisma.attendance.update({
           where: { id: todaysCheckIn.id },
           data: { pauseWarningAt: null },
+        }),
+        // Same closing-the-loop treatment for the work-segment timeline —
+        // don't leave the last segment dangling open past checkout.
+        prisma.workSegment.updateMany({
+          where: { attendanceId: todaysCheckIn.id, endedAt: null },
+          data: { endedAt: record.timestamp },
         }),
       ]);
     }

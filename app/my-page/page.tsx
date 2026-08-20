@@ -85,6 +85,7 @@ export default async function MyPage() {
     pauses: r.pauses.map((p) => ({
       pausedAt: p.pausedAt.toISOString(),
       resumedAt: p.resumedAt?.toISOString() ?? null,
+      reason: p.timedPermissionId ? ("permission" as const) : ("geofence" as const),
     })),
   }));
 

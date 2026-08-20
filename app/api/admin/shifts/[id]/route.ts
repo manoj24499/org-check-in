@@ -9,12 +9,7 @@ const updateSchema = z.object({
   name: z.string().trim().max(60).nullable().optional(),
   startTime: z.string().regex(TIME_PATTERN, "Use 24-hour HH:mm.").optional(),
   endTime: z.string().regex(TIME_PATTERN, "Use 24-hour HH:mm.").optional(),
-  // Full replace when present — employees left out are unassigned
-  // (shiftId set to null), matching the "add/remove in one save" UI.
-  employeeIds: z.array(z.string()).optional(),
 });
-
-const employeeSelect = { id: true, employeeCode: true, name: true } as const;
 
 export async function PATCH(
   req: NextRequest,
@@ -39,11 +34,12 @@ export async function PATCH(
       ...(parsed.data.name !== undefined ? { name: parsed.data.name || null } : {}),
       ...(parsed.data.startTime !== undefined ? { startTime: parsed.data.startTime } : {}),
       ...(parsed.data.endTime !== undefined ? { endTime: parsed.data.endTime } : {}),
-      ...(parsed.data.employeeIds !== undefined
-        ? { employees: { set: parsed.data.employeeIds.map((employeeId) => ({ id: employeeId })) } }
-        : {}),
     },
-    include: { employees: { select: employeeSelect, orderBy: { name: "asc" } } },
+    include: {
+      assignments: {
+        select: { weekday: true, user: { select: { id: true, employeeCode: true, name: true } } },
+      },
+    },
   });
 
   return NextResponse.json({ shift });
@@ -60,8 +56,10 @@ export async function DELETE(
   const existing = await prisma.shift.findUnique({ where: { id } });
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  // Employees assigned to this shift are unassigned, not deleted — see
-  // User.shift's onDelete: SetNull in schema.prisma.
+  // Every ShiftAssignment referencing this shift is cascade-deleted (see
+  // ShiftAssignment.shift's onDelete: Cascade) — those employees simply have
+  // no shift on the days that pointed here, same meaning as the old
+  // shiftId-set-to-null unassignment.
   await prisma.shift.delete({ where: { id } });
 
   return NextResponse.json({ ok: true });

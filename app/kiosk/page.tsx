@@ -13,6 +13,8 @@ import {
   MapPin,
   Lock,
   Delete,
+  Home,
+  Building2,
 } from "lucide-react";
 import CameraCapture, { CameraCaptureHandle } from "@/components/CameraCapture";
 import { startTracking, stopTracking } from "@/lib/locationTracker";
@@ -55,6 +57,11 @@ export default function KioskPage() {
   const [trackingPopupId, setTrackingPopupId] = useState<string | null>(null);
   const [officeLocation, setOfficeLocation] = useState<OfficeLocationInfo>(null);
   const [geofenceStatus, setGeofenceStatus] = useState<GeofenceStatus>(null);
+  // A WFH employee's choice for today — "Where are you today?" (see the
+  // toggle rendered below). Defaults to Home, preserving today's behavior
+  // for anyone who never touches it. Reset whenever the typed employee code
+  // changes so it can't carry over from whoever was there before.
+  const [wfhCheckInMode, setWfhCheckInMode] = useState<"HOME" | "OFFICE">("HOME");
   const [kioskCoords, setKioskCoords] = useState<{ latitude: number; longitude: number } | null>(
     null,
   );
@@ -170,6 +177,10 @@ export default function KioskPage() {
             photo,
             latitude: coords?.latitude,
             longitude: coords?.longitude,
+            // Only meaningful to the server for CHECK_IN, and only when the
+            // employee actually chose Office — omitting it otherwise keeps
+            // every other profile's default behavior untouched.
+            checkInMode: action === "CHECK_IN" && wfhCheckInMode === "OFFICE" ? "OFFICE" : undefined,
           }),
         });
 
@@ -215,14 +226,18 @@ export default function KioskPage() {
         setTimeout(() => setResult({ status: "idle" }), 4000);
       }
     },
-    [employeeCode, pin, router],
+    [employeeCode, pin, router, wfhCheckInMode],
   );
 
   // Unknown / not-yet-looked-up employees default to a fresh state: Check In
   // open, Check Out closed — the common case for someone arriving for the day.
-  // Check In additionally requires a working camera, since a photo is mandatory.
   const checkOutPhotoRequired = Boolean(empStatus?.checkOutPhotoRequired);
-  const canCheckIn = (!empStatus?.exists || !empStatus.checkedIn) && cameraReady;
+  // Whether checking in is still a live option today, independent of the
+  // camera — used to gate the WFH mode toggle below, which is a decision an
+  // employee can make before the camera's even warmed up. Check In itself
+  // additionally requires a working camera, since a photo is mandatory.
+  const notYetCheckedIn = !empStatus?.exists || !empStatus.checkedIn;
+  const canCheckIn = notYetCheckedIn && cameraReady;
   const canCheckOut =
     Boolean(empStatus?.exists && empStatus.checkedIn && !empStatus.checkedOut) &&
     (!checkOutPhotoRequired || cameraReady);
@@ -293,11 +308,16 @@ export default function KioskPage() {
     }
 
     const coords = { latitude: position.coords.latitude, longitude: position.coords.longitude };
-    // WFH employees are checked against their home location, which is
-    // personal data — never fetched to the client, so no pill is shown for
-    // them. FIELD employees aren't geofenced at all. The server-side
-    // check-in gate still applies regardless.
-    if (officeLocation && empStatus?.workMode !== "WFH" && empStatus?.workMode !== "FIELD") {
+    // WFH employees are normally checked against their home location, which
+    // is personal data never fetched to the client, so no pill is shown for
+    // them — unless they picked "Office" for today (the toggle below), in
+    // which case they're geofenced against the office same as anyone else
+    // and the distance pill is just as useful. FIELD employees aren't
+    // geofenced at all. The server-side check-in gate still applies
+    // regardless of what this pill shows.
+    const checkingAgainstOffice =
+      empStatus?.workMode === "OFFICE" || (empStatus?.workMode === "WFH" && wfhCheckInMode === "OFFICE");
+    if (officeLocation && checkingAgainstOffice) {
       const distanceMeters = haversineDistanceMeters(
         coords.latitude,
         coords.longitude,
@@ -447,7 +467,13 @@ export default function KioskPage() {
             <div className="relative mt-0.5">
               <input
                 value={employeeCode}
-                onChange={(e) => setEmployeeCode(e.target.value.toUpperCase())}
+                onChange={(e) => {
+                  setEmployeeCode(e.target.value.toUpperCase());
+                  // A new employee code means a possibly different person at
+                  // the kiosk — don't carry over whatever the last person
+                  // picked for "Where are you today?".
+                  setWfhCheckInMode("HOME");
+                }}
                 placeholder="EMP001"
                 autoCapitalize="characters"
                 autoFocus
@@ -496,6 +522,42 @@ export default function KioskPage() {
               </button>
             ))}
           </div>
+
+          {empStatus?.workMode === "WFH" && notYetCheckedIn && (
+            <div>
+              <label className="text-[11px] font-medium tracking-[0.14em] uppercase text-muted">
+                Where are you today?
+              </label>
+              <div className="flex gap-2 mt-1.5">
+                <button
+                  type="button"
+                  onClick={() => setWfhCheckInMode("HOME")}
+                  disabled={busy}
+                  className={`flex-1 flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors disabled:opacity-50 ${
+                    wfhCheckInMode === "HOME"
+                      ? "border-primary bg-primary/[0.08] text-primary-dark"
+                      : "border-border text-muted hover:bg-black/[0.03]"
+                  }`}
+                >
+                  <Home className="w-4 h-4" />
+                  Home
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWfhCheckInMode("OFFICE")}
+                  disabled={busy}
+                  className={`flex-1 flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors disabled:opacity-50 ${
+                    wfhCheckInMode === "OFFICE"
+                      ? "border-primary bg-primary/[0.08] text-primary-dark"
+                      : "border-border text-muted hover:bg-black/[0.03]"
+                  }`}
+                >
+                  <Building2 className="w-4 h-4" />
+                  Office
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-col gap-2">
             <button

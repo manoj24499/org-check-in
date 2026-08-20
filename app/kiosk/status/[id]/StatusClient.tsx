@@ -11,6 +11,10 @@ type StatusClientProps = {
   timestamp: Date;
   workHours: number;
   checkInTime: Date | null;
+  // Only set for FIELD-workMode employees with a WorkSegment timeline (see
+  // lib/attendanceHours.ts's computeFieldOfficeSplit) — null for everyone else.
+  fieldHours: number | null;
+  officeHours: number | null;
 };
 
 const INSPIRING_MESSAGES = [
@@ -22,7 +26,15 @@ const INSPIRING_MESSAGES = [
   "Make today your masterpiece!",
 ];
 
-export default function StatusClient({ name, type, timestamp, workHours, checkInTime }: StatusClientProps) {
+export default function StatusClient({
+  name,
+  type,
+  timestamp,
+  workHours,
+  checkInTime,
+  fieldHours,
+  officeHours,
+}: StatusClientProps) {
   const router = useRouter();
   const [timeLeft, setTimeLeft] = useState(30);
   // Lazy initialisers run once on mount — no effect needed, no cascading render.
@@ -73,7 +85,7 @@ export default function StatusClient({ name, type, timestamp, workHours, checkIn
 
         {isCheckIn ? (
           <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-6 w-full mb-8">
-            <p className="text-xl font-medium text-emerald-800 italic">"{message}"</p>
+            <p className="text-xl font-medium text-emerald-800 italic">&quot;{message}&quot;</p>
           </div>
         ) : (
           <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 w-full mb-8 flex flex-col gap-4">
@@ -89,6 +101,14 @@ export default function StatusClient({ name, type, timestamp, workHours, checkIn
                 {workHours > 0 ? `${workHours.toFixed(2)} hrs` : "N/A"}
               </span>
             </div>
+            {fieldHours !== null && officeHours !== null && (
+              <div className="flex justify-between items-center pt-4 border-t border-slate-200">
+                <span className="text-slate-500 font-medium">Field / Office</span>
+                <span className="text-slate-900 font-bold">
+                  {fieldHours.toFixed(2)} / {officeHours.toFixed(2)} hrs
+                </span>
+              </div>
+            )}
           </div>
         )}
 

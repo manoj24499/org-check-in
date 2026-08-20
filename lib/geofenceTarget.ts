@@ -38,3 +38,21 @@ export async function resolveGeofenceTarget(
     radiusMeters: officeLocation.radiusMeters,
   };
 }
+
+/**
+ * The shared office location, regardless of the caller's workMode — unlike
+ * resolveGeofenceTarget above, which deliberately returns null for FIELD
+ * profiles. Used by /api/kiosk/location's evaluateWorkSegment to ask "has
+ * this FIELD employee physically reached the office", a different question
+ * from "should this profile be geofenced at all". Returns null only if no
+ * OfficeLocation has been configured yet.
+ */
+export async function resolveOfficeLocationTarget(): Promise<GeofenceTarget | null> {
+  const officeLocation = await prisma.officeLocation.findFirst({ orderBy: { createdAt: "asc" } });
+  if (!officeLocation) return null;
+  return {
+    latitude: officeLocation.latitude,
+    longitude: officeLocation.longitude,
+    radiusMeters: officeLocation.radiusMeters,
+  };
+}

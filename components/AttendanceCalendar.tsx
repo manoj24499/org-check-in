@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
   ChevronRight,
@@ -9,6 +10,8 @@ import {
   Clock,
   CalendarDays,
   X,
+  Pencil,
+  Check,
 } from "lucide-react";
 import { computeWorkedMs } from "@/lib/attendanceHours";
 
@@ -18,7 +21,11 @@ type AttendanceRecord = {
   method: string;
   timestamp: string;
   hasPhoto?: boolean;
-  pauses?: { pausedAt: string; resumedAt: string | null }[];
+  // "permission": this pause was opened by an approved TimedPermission
+  // request, not a detected geofence departure — see AttendancePause.
+  // timedPermissionId. Falls back to "geofence" for older serialized data
+  // that predates this field.
+  pauses?: { pausedAt: string; resumedAt: string | null; reason?: "geofence" | "permission" }[];
 };
 
 type Event = AttendanceRecord & { date: Date };
@@ -50,6 +57,12 @@ function hoursForDay(list: Event[] | undefined) {
   return total;
 }
 
+function formatTimeOfDay(d: Date) {
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+const PAUSE_REASON_LABEL = { geofence: "Geofence", permission: "Permission" } as const;
+
 function dayStatus(list: Event[] | undefined) {
   if (!list || list.length === 0) return "none" as const;
   const hasIn = list.some((e) => e.type === "CHECK_IN");
@@ -61,6 +74,7 @@ export default function AttendanceCalendar({
   attendances,
   specialDays = {},
   layout = "stacked",
+  editable = false,
 }: {
   attendances: AttendanceRecord[];
   /** Keyed "YYYY-MM-DD" — see lib/timeOff.ts's getCalendarSpecialDays. A day
@@ -70,7 +84,17 @@ export default function AttendanceCalendar({
   specialDays?: Record<string, CalendarSpecialDay>;
   /** "split" puts the calendar grid on the left and the summary/day-detail on the right — better for a full-width card. Defaults to the original stacked layout. */
   layout?: "stacked" | "split";
+  /** Lets an admin correct a record's time (see /api/admin/attendance/[id])
+   * — e.g. a stale-checkin auto-checkout's estimate was wrong. Off by
+   * default: an employee viewing their own history (my-page) must never be
+   * able to edit their own attendance, only an admin viewing someone else's. */
+  editable?: boolean;
 }) {
+  const router = useRouter();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const events = useMemo<Event[]>(
     () =>
       attendances
@@ -136,6 +160,48 @@ export default function AttendanceCalendar({
   function goToToday() {
     setViewDate(new Date(today.getFullYear(), today.getMonth(), 1));
     setSelectedDay(today.getDate());
+  }
+
+  function startEdit(e: Event) {
+    setEditingId(e.id);
+    setEditValue(
+      `${String(e.date.getHours()).padStart(2, "0")}:${String(e.date.getMinutes()).padStart(2, "0")}`,
+    );
+    setEditError(null);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditError(null);
+  }
+
+  async function saveEdit(e: Event) {
+    const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(editValue);
+    if (!match) {
+      setEditError("Enter a valid time.");
+      return;
+    }
+    const newTimestamp = new Date(e.date);
+    newTimestamp.setHours(Number(match[1]), Number(match[2]), 0, 0);
+
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      const res = await fetch(`/api/admin/attendance/${e.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ timestamp: newTimestamp.toISOString() }),
+      });
+      const data = await res.json().catch(() => ({ error: "Unexpected server response." }));
+      if (!res.ok) {
+        setEditError(data.error ?? "Something went wrong.");
+        return;
+      }
+      setEditingId(null);
+      router.refresh();
+    } finally {
+      setSavingEdit(false);
+    }
   }
 
   const monthNav = (
@@ -338,20 +404,95 @@ export default function AttendanceCalendar({
                     {e.type === "CHECK_IN" ? "Check In" : "Check Out"}
                   </span>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-sm text-muted">
-                    {e.date.toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
-                  <span className="inline-flex items-center rounded-md bg-surface px-2 py-0.5 text-xs font-medium text-muted border border-border">
-                    {e.method}
-                  </span>
-                </div>
+                {editable && editingId === e.id ? (
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <input
+                      type="time"
+                      value={editValue}
+                      onChange={(ev) => setEditValue(ev.target.value)}
+                      className="rounded-md border border-border px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+                      autoFocus
+                    />
+                    <button
+                      onClick={() => saveEdit(e)}
+                      disabled={savingEdit}
+                      className="p-1.5 rounded-md text-primary hover:bg-primary/10 transition disabled:opacity-50"
+                      aria-label="Save time"
+                    >
+                      <Check className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={cancelEdit}
+                      disabled={savingEdit}
+                      className="p-1.5 rounded-md text-muted hover:bg-surface transition disabled:opacity-50"
+                      aria-label="Cancel"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-sm text-muted">
+                      {e.date.toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                    <span className="inline-flex items-center rounded-md bg-surface px-2 py-0.5 text-xs font-medium text-muted border border-border">
+                      {e.method}
+                    </span>
+                    {editable && (
+                      <button
+                        onClick={() => startEdit(e)}
+                        className="p-1 rounded-md text-muted hover:text-foreground hover:bg-surface transition"
+                        aria-label="Edit time"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
+          {editable && editError && <p className="text-xs text-red-600">{editError}</p>}
+
+          {(() => {
+            const checkIn = (selectedList ?? []).find((e) => e.type === "CHECK_IN");
+            const pauses = checkIn?.pauses ?? [];
+            if (pauses.length === 0) return null;
+            return (
+              <div className="flex flex-col gap-1.5">
+                <p className="text-xs font-medium text-secondary uppercase tracking-wide">
+                  Paused time
+                </p>
+                {pauses.map((p, i) => {
+                  const pausedAt = new Date(p.pausedAt);
+                  const resumedAt = p.resumedAt ? new Date(p.resumedAt) : null;
+                  const reason = p.reason ?? "geofence";
+                  return (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between gap-3 rounded-lg bg-white border border-border px-3 py-2"
+                    >
+                      <span className="text-sm text-muted-2">
+                        {formatTimeOfDay(pausedAt)} – {resumedAt ? formatTimeOfDay(resumedAt) : "still paused"}
+                      </span>
+                      <span
+                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border ${
+                          reason === "permission"
+                            ? "bg-surface text-muted-2 border-border"
+                            : "bg-amber-50 text-amber-700 border-amber-200"
+                        }`}
+                      >
+                        {PAUSE_REASON_LABEL[reason]}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>

@@ -9,18 +9,24 @@ const createSchema = z.object({
   name: z.string().trim().max(60).optional(),
   startTime: z.string().regex(TIME_PATTERN, "Use 24-hour HH:mm."),
   endTime: z.string().regex(TIME_PATTERN, "Use 24-hour HH:mm."),
-  employeeIds: z.array(z.string()).default([]),
 });
 
-const employeeSelect = { id: true, employeeCode: true, name: true } as const;
-
+// Who's on a shift, and which weekdays, is now assigned from the employee
+// detail page's weekly schedule editor (see
+// /api/admin/employees/[id]/shift-schedule) rather than here — this route
+// only manages the shift's own name/start/end. GET still reports the
+// resulting roster (read-only) so this page can show it.
 export async function GET() {
   const session = await requireAdmin();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const shifts = await prisma.shift.findMany({
     orderBy: { startTime: "asc" },
-    include: { employees: { select: employeeSelect, orderBy: { name: "asc" } } },
+    include: {
+      assignments: {
+        select: { weekday: true, user: { select: { id: true, employeeCode: true, name: true } } },
+      },
+    },
   });
 
   return NextResponse.json({ shifts });
@@ -41,9 +47,12 @@ export async function POST(req: NextRequest) {
       name: parsed.data.name || null,
       startTime: parsed.data.startTime,
       endTime: parsed.data.endTime,
-      employees: { connect: parsed.data.employeeIds.map((id) => ({ id })) },
     },
-    include: { employees: { select: employeeSelect, orderBy: { name: "asc" } } },
+    include: {
+      assignments: {
+        select: { weekday: true, user: { select: { id: true, employeeCode: true, name: true } } },
+      },
+    },
   });
 
   return NextResponse.json({ shift });

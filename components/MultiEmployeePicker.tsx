@@ -16,7 +16,9 @@ interface MultiEmployeePickerProps {
   emptyLabel?: string;
 }
 
-/** Search-and-select multiple employees at once — used by the Shifts admin page to assign a name list to a shift in one save. */
+/** Search-and-select multiple employees at once — used by the Shifts admin
+ * page's bulk-assign modal (see BulkAssignModal.tsx) to pick who a shift
+ * applies to in one save. */
 export default function MultiEmployeePicker({
   employees,
   selectedIds,

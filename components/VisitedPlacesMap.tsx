@@ -87,7 +87,7 @@ export default function VisitedPlacesMap({
 }) {
   if (pings.length === 0) {
     return (
-      <div className="h-[320px] w-full flex items-center justify-center bg-surface text-sm text-secondary rounded-lg">
+      <div className="h-full w-full flex items-center justify-center bg-surface text-sm text-secondary rounded-lg">
         No location data for this day.
       </div>
     );
@@ -100,7 +100,7 @@ export default function VisitedPlacesMap({
       center={path[0]}
       zoom={13}
       scrollWheelZoom
-      style={{ height: "320px", width: "100%" }}
+      style={{ height: "100%", width: "100%" }}
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'

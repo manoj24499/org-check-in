@@ -21,8 +21,13 @@ export default function FieldWorkersPanel({
   const selected = employees.find((e) => e.id === selectedId) ?? null;
 
   return (
-    <div className="rounded-lg border border-border bg-surface-2 shadow-[0_1px_2px_rgba(41,43,49,0.05)] p-6">
-      <div className="flex items-center gap-2.5 mb-4">
+    // `md:h-[calc(100vh-200px)]` approximates "fill the viewport" below the
+    // admin header + page title (both outside this component) — not pixel
+    // exact, but enough to give the map/calendar a real height instead of
+    // the old short, mostly-whitespace card. The employee list keeps its
+    // own scroll so a long roster doesn't push the detail panel off-screen.
+    <div className="rounded-lg border border-border bg-surface-2 shadow-[0_1px_2px_rgba(41,43,49,0.05)] p-6 md:h-[calc(100vh-200px)] md:min-h-[520px] md:flex md:flex-col">
+      <div className="flex items-center gap-2.5 mb-4 shrink-0">
         <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
           <MapPin className="w-4 h-4" />
         </div>
@@ -35,8 +40,8 @@ export default function FieldWorkersPanel({
           &quot;Anywhere&quot; from Office Location to see them here.
         </p>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)] gap-6">
-          <div className="flex flex-col gap-1">
+        <div className="grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)] gap-6 md:flex-1 md:min-h-0">
+          <div className="flex flex-col gap-1 md:overflow-y-auto md:pr-1">
             {employees.map((e) => (
               <button
                 key={e.id}
@@ -53,7 +58,7 @@ export default function FieldWorkersPanel({
             ))}
           </div>
 
-          <div className="min-w-0 border-t md:border-t-0 md:border-l border-border pt-6 md:pt-0 md:pl-6">
+          <div className="min-w-0 border-t md:border-t-0 md:border-l border-border pt-6 md:pt-0 md:pl-6 md:h-full md:min-h-0">
             {selected ? (
               <VisitedPlacesPanel
                 key={selected.id}

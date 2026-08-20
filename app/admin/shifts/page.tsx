@@ -8,11 +8,13 @@ export default async function ShiftsPage() {
     prisma.shift.findMany({
       orderBy: { startTime: "asc" },
       include: {
-        employees: { select: { id: true, employeeCode: true, name: true }, orderBy: { name: "asc" } },
+        assignments: {
+          select: { weekday: true, user: { select: { id: true, employeeCode: true, name: true } } },
+        },
       },
     }),
     // Shift-based lateness only applies to OFFICE employees (see
-    // /api/kiosk/scan) — WFH/Anywhere workers aren't offered here.
+    // /api/kiosk/scan) — WFH/Anywhere workers aren't offered in bulk assign.
     prisma.user.findMany({
       where: { role: "EMPLOYEE", active: true, workMode: "OFFICE" },
       orderBy: { name: "asc" },
