@@ -44,19 +44,18 @@ export default function AppSettingsForm({
   }
 
   return (
-    <div className="rounded-lg bg-surface-2 border border-white/60 shadow-[0_1px_2px_rgba(41,43,49,0.05)] p-6 max-w-xl">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-0.5">
-            <Camera className="w-4 h-4" />
+    <div className="rounded-lg bg-surface-2 border border-white/60 shadow-[0_1px_2px_rgba(41,43,49,0.05)] p-4 flex flex-col h-full">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+            <Camera className="w-3.5 h-3.5" />
           </div>
           <div>
             <p className="text-sm font-semibold text-foreground">
               Require photo on check-out
             </p>
             <p className="text-xs text-secondary mt-1">
-              When enabled, employees must take a presence photo to check out,
-              the same as check-in — on both the kiosk and the mobile app.
+              Employees must take a presence photo to check out, same as check-in — kiosk and mobile.
             </p>
           </div>
         </div>
@@ -80,12 +79,12 @@ export default function AppSettingsForm({
       </div>
 
       {error && (
-        <div className="mt-4 rounded-lg bg-red-50 text-red-600 p-3 text-sm border border-red-100">
+        <div className="mt-3 rounded-lg bg-red-50 text-red-600 p-2.5 text-xs border border-red-100">
           {error}
         </div>
       )}
       {saved && (
-        <div className="mt-4 rounded-lg bg-emerald-50 text-emerald-700 p-3 text-sm border border-emerald-100">
+        <div className="mt-3 rounded-lg bg-emerald-50 text-emerald-700 p-2.5 text-xs border border-emerald-100">
           Setting saved.
         </div>
       )}

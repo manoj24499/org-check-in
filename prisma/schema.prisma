@@ -74,6 +74,12 @@ model User {
   homeRadiusMeters Float    @default(50)
 
   active    Boolean  @default(true)
+  // Set the moment an admin deactivates this employee (PATCH .../set-active)
+  // — null while active. lib/employeeCleanup.ts's daily job uses this to
+  // find who's been deactivated 7+ days and is due for archival + permanent
+  // deletion (see DeletedEmployeeArchive). Cleared back to null on
+  // reactivation, so the 7-day countdown restarts if deactivated again later.
+  deactivatedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -335,6 +341,15 @@ model AppSettings {
   sickLeaveQuota   Int @default(6)
   earnedLeaveQuota Int @default(15)
 
+  // The cutoff lib/shiftTime.ts's computeLateness uses to tell "Permission"
+  // (minor lateness) apart from "Half-day leave" (major): a check-in up to
+  // this many minutes after shift start is Permission; beyond it, Half-day.
+  // Only ever read at the moment of check-in or when an admin edits a
+  // check-in's time (see /api/kiosk/scan, /api/admin/attendance/[id]) —
+  // changing this has no effect on already-computed leaveType/lateMinutes
+  // on existing records, same precedent as the leave quotas above.
+  lateThresholdMinutes Int @default(60)
+
   updatedAt DateTime @updatedAt
 }
 
@@ -428,4 +443,29 @@ model PlaceNameCache {
   createdAt DateTime @default(now())
 
   @@unique([latitude, longitude])
+}
+
+// The only surviving record of an employee once lib/employeeCleanup.ts
+// permanently deletes them (7+ days after deactivation) — the delete itself
+// cascades away their User row and everything under it (Attendance,
+// Reimbursement, TimeOffRequest, ShiftAssignment, LocationPing, FieldVisit,
+// ...), so this snapshot is taken and saved in the *same transaction* as
+// that delete, never after. CSV text, not a live relation, on purpose: it
+// must keep meaning something even though the rows it describes are gone.
+// See app/admin/employees/deleted/page.tsx for where an admin can still
+// read/download this.
+model DeletedEmployeeArchive {
+  id            String   @id @default(cuid())
+  employeeCode  String
+  name          String
+  email         String
+  workMode      WorkMode
+  deactivatedAt DateTime
+  deletedAt     DateTime @default(now())
+
+  attendanceCsv    String
+  reimbursementCsv String
+  leaveRequestsCsv String
+
+  @@index([deletedAt])
 }

@@ -35,6 +35,7 @@ export async function GET(
       name: true,
       email: true,
       active: true,
+      deactivatedAt: true,
       createdAt: true,
     },
   });
@@ -70,9 +71,13 @@ export async function PATCH(
   }
 
   if (parsed.data.action === "set-active") {
+    const active = parsed.data.active ?? true;
     await prisma.user.update({
       where: { id },
-      data: { active: parsed.data.active ?? true },
+      // Stamping/clearing deactivatedAt here is what lib/employeeCleanup.ts's
+      // 7-day countdown is based on — reactivating (active: true) clears it,
+      // so the countdown restarts from scratch if deactivated again later.
+      data: { active, deactivatedAt: active ? null : new Date() },
     });
     return NextResponse.json({ ok: true });
   }

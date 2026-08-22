@@ -196,7 +196,7 @@ export default function WfhLocationTable({
                   key={emp.id}
                   className="hover:bg-primary/5 transition-colors duration-200"
                 >
-                  <td className="px-6 py-4 text-foreground font-semibold">
+                  <td className="px-6 py-4 text-foreground font-semibold max-w-[200px] truncate">
                     {emp.name}
                   </td>
                   <td className="px-6 py-4 font-medium text-muted-2">
@@ -266,10 +266,10 @@ export default function WfhLocationTable({
           onClick={() => setEditing(null)}
         >
           <div
-            className="w-full max-w-lg bg-surface-2 rounded-lg shadow-2xl border border-white/50 overflow-hidden"
+            className="w-full max-w-lg bg-surface-2 rounded-lg shadow-2xl border border-white/50 overflow-hidden max-h-[90vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
               <h2 className="text-lg font-medium text-foreground">
                 {editing.homeLatitude === null ? "Set" : "Edit"} home location —{" "}
                 {editing.name}
@@ -283,79 +283,81 @@ export default function WfhLocationTable({
               </button>
             </div>
 
-            <OfficeLocationMap
-              latitude={latitude}
-              longitude={longitude}
-              radiusMeters={radiusMeters}
-              onChange={(lat, lng) => {
-                setLatitude(lat);
-                setLongitude(lng);
-              }}
-            />
+            <div className="overflow-y-auto">
+              <OfficeLocationMap
+                latitude={latitude}
+                longitude={longitude}
+                radiusMeters={radiusMeters}
+                onChange={(lat, lng) => {
+                  setLatitude(lat);
+                  setLongitude(lng);
+                }}
+              />
 
-            <div className="p-6 flex flex-col gap-4">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="p-6 flex flex-col gap-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm font-medium text-muted-2">
+                      Latitude
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={latitude}
+                      onChange={(e) => setLatitude(Number(e.target.value))}
+                      className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-muted-2">
+                      Longitude
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={longitude}
+                      onChange={(e) => setLongitude(Number(e.target.value))}
+                      className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <label className="text-sm font-medium text-muted-2">
-                    Latitude
+                    Allowed radius (meters)
                   </label>
                   <input
                     type="number"
-                    step="any"
-                    value={latitude}
-                    onChange={(e) => setLatitude(Number(e.target.value))}
+                    min={1}
+                    step="1"
+                    value={radiusMeters}
+                    onChange={(e) => setRadiusMeters(Number(e.target.value))}
                     className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
                   />
                 </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-2">
-                    Longitude
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={longitude}
-                    onChange={(e) => setLongitude(Number(e.target.value))}
-                    className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
-                  />
+
+                {error && (
+                  <div className="rounded-lg bg-red-50 text-red-600 p-3 text-sm border border-red-100">
+                    {error}
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setEditing(null)}
+                    className="flex-1 rounded-lg bg-white border border-border py-2.5 text-sm font-medium text-muted hover:bg-surface transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSave}
+                    disabled={loading}
+                    className="flex-1 rounded-lg border border-primary bg-transparent text-primary-dark py-2.5 text-sm font-medium hover:bg-primary/5 transition disabled:opacity-50"
+                  >
+                    {loading ? "Saving…" : "Save"}
+                  </button>
                 </div>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-muted-2">
-                  Allowed radius (meters)
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  step="1"
-                  value={radiusMeters}
-                  onChange={(e) => setRadiusMeters(Number(e.target.value))}
-                  className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
-                />
-              </div>
-
-              {error && (
-                <div className="rounded-lg bg-red-50 text-red-600 p-3 text-sm border border-red-100">
-                  {error}
-                </div>
-              )}
-
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setEditing(null)}
-                  className="flex-1 rounded-lg bg-white border border-border py-2.5 text-sm font-medium text-muted hover:bg-surface transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSave}
-                  disabled={loading}
-                  className="flex-1 rounded-lg border border-primary bg-transparent text-primary-dark py-2.5 text-sm font-medium hover:bg-primary/5 transition disabled:opacity-50"
-                >
-                  {loading ? "Saving…" : "Save"}
-                </button>
               </div>
             </div>
           </div>
@@ -368,10 +370,10 @@ export default function WfhLocationTable({
           onClick={() => setPickerOpen(false)}
         >
           <div
-            className="w-full max-w-md bg-surface-2 rounded-lg shadow-2xl border border-white/50 overflow-hidden"
+            className="w-full max-w-md bg-surface-2 rounded-lg shadow-2xl border border-white/50 overflow-hidden max-h-[90vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
               <h2 className="text-lg font-medium text-foreground">
                 Add a WFH employee
               </h2>
@@ -383,7 +385,7 @@ export default function WfhLocationTable({
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-6">
+            <div className="p-6 overflow-y-auto">
               <EmployeePicker
                 employees={candidates}
                 onSelect={openAdd}

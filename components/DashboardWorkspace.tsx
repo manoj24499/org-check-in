@@ -244,7 +244,7 @@ function CurrentStatusPanel({ employees }: { employees: EmployeeSummary[] }) {
                   className="hover:bg-primary/5 transition-colors duration-200"
                 >
                   <td className="px-4 py-3 text-muted-2">{emp.employeeCode}</td>
-                  <td className="px-3 py-3 text-foreground font-medium">
+                  <td className="px-3 py-3 text-foreground font-medium max-w-[160px] truncate">
                     {emp.name}
                   </td>
                   <td className="px-3 py-3">
@@ -279,7 +279,7 @@ function CurrentStatusPanel({ employees }: { employees: EmployeeSummary[] }) {
                       <button
                         onClick={() => setViewing(emp)}
                         disabled={!emp.location}
-                        className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-muted-2 hover:bg-black/[0.03] transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                        className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1.5 text-xs font-medium text-muted-2 hover:bg-black/[0.03] transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                       >
                         <MapPin className="w-3 h-3" />
                         View

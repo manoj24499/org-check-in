@@ -52,8 +52,14 @@ export default async function LeavePage() {
         </Link>
       </div>
 
-      <LeaveRequestsPanel initialRequests={pending} />
-      <HolidayManager holidays={holidays} />
+      {/* Side by side, each capped to roughly the viewport height so neither
+          section's list can push the page into a long scroll — see
+          LeaveRequestsPanel/HolidayManager's own internal overflow-y-auto
+          for what happens once a list is taller than that. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:h-[calc(100vh-220px)] lg:min-h-[420px]">
+        <LeaveRequestsPanel initialRequests={pending} />
+        <HolidayManager holidays={holidays} />
+      </div>
     </div>
   );
 }

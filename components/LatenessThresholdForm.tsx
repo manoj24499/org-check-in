@@ -2,25 +2,23 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { IndianRupee } from "lucide-react";
+import { Clock } from "lucide-react";
 
-export default function ReimbursementRateForm({
-  reimbursementRatePerKm: initialValue,
+export default function LatenessThresholdForm({
+  lateThresholdMinutes: initialValue,
 }: {
-  reimbursementRatePerKm: number | null;
+  lateThresholdMinutes: number;
 }) {
   const router = useRouter();
-  const [value, setValue] = useState(
-    initialValue !== null ? String(initialValue) : "",
-  );
+  const [value, setValue] = useState(String(initialValue));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
   async function handleSave() {
-    const parsed = value.trim() === "" ? null : Number(value);
-    if (parsed !== null && (Number.isNaN(parsed) || parsed < 0)) {
-      setError("Enter a rate of 0 or more.");
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 480) {
+      setError("Enter a whole number of minutes between 1 and 480.");
       return;
     }
 
@@ -31,7 +29,7 @@ export default function ReimbursementRateForm({
     const res = await fetch("/api/admin/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reimbursementRatePerKm: parsed }),
+      body: JSON.stringify({ lateThresholdMinutes: parsed }),
     });
     const data = await res
       .json()
@@ -52,31 +50,32 @@ export default function ReimbursementRateForm({
     <div className="rounded-lg bg-surface-2 border border-white/60 shadow-[0_1px_2px_rgba(41,43,49,0.05)] p-4 flex flex-col h-full">
       <div className="flex items-start gap-2.5">
         <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
-          <IndianRupee className="w-3.5 h-3.5" />
+          <Clock className="w-3.5 h-3.5" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-foreground">
-            Field reimbursement rate
+            Lateness cutoff
           </p>
           <p className="text-xs text-secondary mt-1">
-            Default ₹/km suggestion on the Field workers panel — editable per employee, per day, before saving.
+            A check-in this many minutes past shift start is marked Permission; beyond it, Half-day leave. Applies at
+            check-in and when an admin edits a check-in time — existing records are unaffected.
           </p>
 
           <div className="flex flex-wrap items-center gap-2 mt-3">
-            <span className="text-sm font-medium text-muted">₹</span>
             <input
               type="number"
-              min={0}
-              step="0.5"
+              min={1}
+              max={480}
+              step="1"
               value={value}
               onChange={(e) => {
                 setValue(e.target.value);
                 setSaved(false);
               }}
-              placeholder="e.g. 8"
+              placeholder="e.g. 60"
               className="w-20 rounded-lg border border-border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
             />
-            <span className="text-sm text-secondary">/ km</span>
+            <span className="text-sm text-secondary">minutes</span>
             <button
               onClick={handleSave}
               disabled={loading}

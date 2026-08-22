@@ -13,6 +13,7 @@ export async function updateSettings(data: {
   casualLeaveQuota?: number;
   sickLeaveQuota?: number;
   earnedLeaveQuota?: number;
+  lateThresholdMinutes?: number;
 }) {
   const existing = await getSettings();
   return prisma.appSettings.update({ where: { id: existing.id }, data });

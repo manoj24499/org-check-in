@@ -276,7 +276,11 @@ export async function POST(req: NextRequest) {
   const now = new Date();
   const lateness =
     parsed.data.action === "CHECK_IN"
-      ? computeLateness({ workMode: user.workMode, shift: shiftForDate(shiftMap, now) }, now)
+      ? computeLateness(
+          { workMode: user.workMode, shift: shiftForDate(shiftMap, now) },
+          now,
+          settings.lateThresholdMinutes,
+        )
       : { lateMinutes: null, leaveType: "NONE" as const };
 
   // Attendance + its first WorkSegment are created atomically — the segment

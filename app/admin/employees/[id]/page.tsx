@@ -6,9 +6,14 @@ import EmployeeActions from "@/components/EmployeeActions";
 import AttendanceCalendar from "@/components/AttendanceCalendar";
 import ShiftScheduleEditor from "@/components/ShiftScheduleEditor";
 import { RecentActivityList } from "@/components/RecentActivityList";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, AlertTriangle } from "lucide-react";
 
 export const dynamic = "force-dynamic";
+
+// Must match lib/employeeCleanup.ts's RETENTION_DAYS — duplicated here as a
+// plain constant rather than importing it, since it's just one integer and
+// this keeps the page from depending on the cleanup module's internals.
+const DELETION_RETENTION_DAYS = 7;
 
 function initials(name: string) {
   return (
@@ -39,6 +44,8 @@ export default async function EmployeeDetailPage({
       },
     },
   });
+  // `include` above already brings back every scalar column (deactivatedAt
+  // included) alongside the relation — no separate select needed.
 
   if (!employee || employee.role !== "EMPLOYEE") notFound();
 
@@ -102,6 +109,26 @@ export default async function EmployeeDetailPage({
             </p>
           </div>
         </div>
+
+        {!employee.active && employee.deactivatedAt && (
+          <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <p>
+              Deactivated on{" "}
+              {employee.deactivatedAt.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })}.
+              Unless reactivated first, this employee and their attendance/reimbursement/leave history will be{" "}
+              <strong>permanently deleted</strong> on{" "}
+              {new Date(
+                employee.deactivatedAt.getTime() + DELETION_RETENTION_DAYS * 24 * 60 * 60 * 1000,
+              ).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" })}{" "}
+              (a CSV snapshot is kept — see{" "}
+              <Link href="/admin/employees/deleted" className="font-semibold underline hover:no-underline">
+                Deleted employees
+              </Link>
+              ).
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col gap-8">

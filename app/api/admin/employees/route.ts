@@ -7,6 +7,12 @@ import { generatePin, hashPin, nextEmployeeCode } from "@/lib/credentials";
 const createSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
+  // Optional convenience — assigns this shift for all 7 weekdays right away
+  // (see ShiftAssignment) so a new OFFICE employee doesn't start with no
+  // shift at all. An admin who needs a mixed weekly schedule instead can
+  // still fine-tune individual days afterward from the employee's own page
+  // (see ShiftScheduleEditor) — this is just a faster starting point.
+  shiftId: z.string().min(1).optional(),
 });
 
 export async function GET() {
@@ -46,6 +52,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Email already in use." }, { status: 409 });
     }
 
+    let shift: { id: string; name: string | null; startTime: string; endTime: string } | null = null;
+    if (parsed.data.shiftId) {
+      shift = await prisma.shift.findUnique({
+        where: { id: parsed.data.shiftId },
+        select: { id: true, name: true, startTime: true, endTime: true },
+      });
+      if (!shift) {
+        return NextResponse.json({ error: "Selected shift no longer exists." }, { status: 400 });
+      }
+    }
+
     // Find the highest existing employee code number to avoid collisions
     // when employees have been deleted (count would be lower than max code).
     const lastEmployee = await prisma.user.findFirst({
@@ -71,6 +88,13 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // All 7 weekdays, same shift — the quick-start default described above.
+    if (shift) {
+      await prisma.shiftAssignment.createMany({
+        data: Array.from({ length: 7 }, (_, weekday) => ({ userId: user.id, shiftId: shift!.id, weekday })),
+      });
+    }
+
     // Return the plaintext PIN once, at creation time, so the admin can hand it
     // to the employee. It is never retrievable again after this response.
     return NextResponse.json({
@@ -79,6 +103,7 @@ export async function POST(req: NextRequest) {
       name: user.name,
       email: user.email,
       pin,
+      shift: shift ? { name: shift.name, startTime: shift.startTime, endTime: shift.endTime } : null,
     });
   } catch (err) {
     console.error("[POST /api/admin/employees] Unhandled error:", err);

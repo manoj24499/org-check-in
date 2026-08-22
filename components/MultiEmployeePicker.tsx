@@ -68,7 +68,7 @@ export default function MultiEmployeePicker({
               <button
                 type="button"
                 onClick={() => toggle(emp.id)}
-                className="rounded-full hover:bg-primary/20 p-0.5 transition-colors"
+                className="rounded-full hover:bg-primary/20 p-1.5 -m-1 transition-colors"
                 aria-label={`Remove ${emp.name}`}
               >
                 <X className="w-3 h-3" />

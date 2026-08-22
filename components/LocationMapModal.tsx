@@ -33,10 +33,10 @@ export default function LocationMapModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg bg-white rounded-lg shadow-2xl overflow-hidden"
+        className="w-full max-w-lg bg-white rounded-lg shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
               <MapPin className="w-4 h-4" />
@@ -63,18 +63,20 @@ export default function LocationMapModal({
           </button>
         </div>
 
-        <LocationMap
-          latitude={latitude}
-          longitude={longitude}
-          accuracy={accuracy}
-          label={employeeName}
-        />
+        <div className="overflow-y-auto">
+          <LocationMap
+            latitude={latitude}
+            longitude={longitude}
+            accuracy={accuracy}
+            label={employeeName}
+          />
 
-        <div className="px-6 py-3 bg-surface text-xs text-secondary flex items-center justify-between">
-          <span>
-            Lat {latitude.toFixed(5)}, Lng {longitude.toFixed(5)}
-          </span>
-          <span>±{Math.round(accuracy)}m accuracy</span>
+          <div className="px-6 py-3 bg-surface text-xs text-secondary flex items-center justify-between">
+            <span>
+              Lat {latitude.toFixed(5)}, Lng {longitude.toFixed(5)}
+            </span>
+            <span>±{Math.round(accuracy)}m accuracy</span>
+          </div>
         </div>
       </div>
     </div>

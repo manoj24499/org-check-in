@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
 import { computeLateness } from "@/lib/shiftTime";
 import { loadShiftAssignments, shiftForDate } from "@/lib/shiftAssignment";
+import { getSettings } from "@/lib/settings";
 
 function startOfDay(date: Date) {
   const d = new Date(date);
@@ -71,7 +72,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const oldTimestamp = record.timestamp;
 
   if (record.type === "CHECK_IN") {
-    const user = await prisma.user.findUnique({ where: { id: record.userId } });
+    const [user, settings] = await Promise.all([
+      prisma.user.findUnique({ where: { id: record.userId } }),
+      getSettings(),
+    ]);
     // Resolved for the *new* timestamp's weekday (same calendar day as
     // before per the check above, so same weekday too — this is just the
     // correct, general lookup rather than assuming one fixed shift).
@@ -79,6 +83,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ? computeLateness(
           { workMode: user.workMode, shift: shiftForDate(await loadShiftAssignments(user.id), newTimestamp) },
           newTimestamp,
+          settings.lateThresholdMinutes,
         )
       : { lateMinutes: null, leaveType: "NONE" as const };
 

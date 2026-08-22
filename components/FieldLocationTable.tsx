@@ -143,7 +143,7 @@ export default function FieldLocationTable({
                   key={emp.id}
                   className="hover:bg-primary/5 transition-colors duration-200"
                 >
-                  <td className="px-6 py-4 text-foreground font-semibold">
+                  <td className="px-6 py-4 text-foreground font-semibold max-w-[200px] truncate">
                     {emp.name}
                   </td>
                   <td className="px-6 py-4 font-medium text-muted-2">
@@ -195,10 +195,10 @@ export default function FieldLocationTable({
           onClick={() => setPickerOpen(false)}
         >
           <div
-            className="w-full max-w-md bg-surface-2 rounded-lg shadow-2xl border border-white/50 overflow-hidden"
+            className="w-full max-w-md bg-surface-2 rounded-lg shadow-2xl border border-white/50 overflow-hidden max-h-[90vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
               <h2 className="text-lg font-medium text-foreground">
                 Add to Anywhere
               </h2>
@@ -210,7 +210,7 @@ export default function FieldLocationTable({
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-6">
+            <div className="p-6 overflow-y-auto">
               <EmployeePicker
                 employees={candidates}
                 onSelect={handleAdd}

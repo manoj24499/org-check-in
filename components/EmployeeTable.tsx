@@ -73,10 +73,10 @@ export default function EmployeeTable({
                   <td className="px-6 py-4 font-medium text-muted-2">
                     {emp.employeeCode}
                   </td>
-                  <td className="px-6 py-4 text-foreground font-semibold">
+                  <td className="px-6 py-4 text-foreground font-semibold max-w-[180px] truncate">
                     {emp.name}
                   </td>
-                  <td className="px-6 py-4 text-secondary">{emp.email}</td>
+                  <td className="px-6 py-4 text-secondary max-w-[220px] truncate">{emp.email}</td>
                   <td className="px-6 py-4">
                     <span
                       className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium tracking-wide ${

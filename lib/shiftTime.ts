@@ -16,18 +16,24 @@ export type Lateness = { lateMinutes: number | null; leaveType: "NONE" | "PERMIS
 
 /**
  * Late-arrival classification for OFFICE employees with a configured
- * shiftStartTime: up to 1 hour late is treated as Permission, more than 1
- * hour is Half-day leave. WFH/FIELD employees and anyone without a
+ * shiftStartTime: up to `thresholdMinutes` late is treated as Permission,
+ * beyond it is Half-day leave. WFH/FIELD employees and anyone without a
  * shiftStartTime set are never classified — leaveType stays NONE.
  *
  * `shift` is whatever applies to the *specific day* `checkInAt` falls on —
  * an employee can be on a different shift on different weekdays (see
  * lib/shiftAssignment.ts's shiftForDate), so callers must resolve that
  * first rather than assuming one fixed shift per employee.
+ *
+ * `thresholdMinutes` is the admin-configurable cutoff (AppSettings.
+ * lateThresholdMinutes, see lib/settings.ts) — callers fetch settings
+ * themselves and pass it in, rather than this function reaching for it, so
+ * it stays a pure function of its inputs.
  */
 export function computeLateness(
   user: { workMode: string; shift: { startTime: string } | null },
   checkInAt: Date,
+  thresholdMinutes: number,
 ): Lateness {
   if (user.workMode !== "OFFICE" || !user.shift) {
     return { lateMinutes: null, leaveType: "NONE" };
@@ -37,6 +43,6 @@ export function computeLateness(
 
   const lateMinutes = Math.round((checkInAt.getTime() - shiftStart.getTime()) / 60_000);
   if (lateMinutes <= 0) return { lateMinutes: 0, leaveType: "NONE" };
-  if (lateMinutes <= 60) return { lateMinutes, leaveType: "PERMISSION" };
+  if (lateMinutes <= thresholdMinutes) return { lateMinutes, leaveType: "PERMISSION" };
   return { lateMinutes, leaveType: "HALF_DAY" };
 }

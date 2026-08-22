@@ -2,6 +2,7 @@ import { getSettings } from "@/lib/settings";
 import AppSettingsForm from "@/components/AppSettingsForm";
 import ReimbursementRateForm from "@/components/ReimbursementRateForm";
 import LeaveQuotaForm from "@/components/LeaveQuotaForm";
+import LatenessThresholdForm from "@/components/LatenessThresholdForm";
 
 export const dynamic = "force-dynamic";
 
@@ -19,17 +20,25 @@ export default async function SettingsPage() {
         </p>
       </div>
 
-      <AppSettingsForm checkOutPhotoRequired={settings.checkOutPhotoRequired} />
-      <ReimbursementRateForm
-        reimbursementRatePerKm={settings.reimbursementRatePerKm}
-      />
-      <LeaveQuotaForm
-        quotas={{
-          casualLeaveQuota: settings.casualLeaveQuota,
-          sickLeaveQuota: settings.sickLeaveQuota,
-          earnedLeaveQuota: settings.earnedLeaveQuota,
-        }}
-      />
+      {/* Grid instead of one long stack — each card sizes to its column
+          rather than assuming it owns the full row (see each form's own
+          `h-full flex flex-col` for how they stay equal-height and put
+          their error/saved banner at the bottom regardless of how much
+          description text is above it). */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <AppSettingsForm checkOutPhotoRequired={settings.checkOutPhotoRequired} />
+        <ReimbursementRateForm
+          reimbursementRatePerKm={settings.reimbursementRatePerKm}
+        />
+        <LeaveQuotaForm
+          quotas={{
+            casualLeaveQuota: settings.casualLeaveQuota,
+            sickLeaveQuota: settings.sickLeaveQuota,
+            earnedLeaveQuota: settings.earnedLeaveQuota,
+          }}
+        />
+        <LatenessThresholdForm lateThresholdMinutes={settings.lateThresholdMinutes} />
+      </div>
     </div>
   );
 }

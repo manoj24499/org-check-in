@@ -9,6 +9,10 @@ const putSchema = z.object({
   casualLeaveQuota: z.number().int().min(0).optional(),
   sickLeaveQuota: z.number().int().min(0).optional(),
   earnedLeaveQuota: z.number().int().min(0).optional(),
+  // Upper bound of 8 hours is generous headroom, not a real-world
+  // expectation — just enough to stop an obvious typo (e.g. missing a
+  // digit) from silently taking effect.
+  lateThresholdMinutes: z.number().int().min(1).max(480).optional(),
 });
 
 export async function GET() {

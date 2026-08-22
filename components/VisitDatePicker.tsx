@@ -62,7 +62,7 @@ export default function VisitDatePicker({
       <div className="flex items-center justify-between mb-2">
         <button
           onClick={() => changeMonth(-1)}
-          className="p-1.5 rounded-lg hover:bg-surface-2 transition"
+          className="p-2.5 -m-1 rounded-lg hover:bg-surface-2 transition"
           aria-label="Previous month"
         >
           <ChevronLeft className="w-4 h-4 text-muted" />
@@ -75,7 +75,7 @@ export default function VisitDatePicker({
         </span>
         <button
           onClick={() => changeMonth(1)}
-          className="p-1.5 rounded-lg hover:bg-surface-2 transition"
+          className="p-2.5 -m-1 rounded-lg hover:bg-surface-2 transition"
           aria-label="Next month"
         >
           <ChevronRight className="w-4 h-4 text-muted" />

@@ -4,7 +4,21 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Copy, Check } from "lucide-react";
 
-export default function AddEmployeeForm() {
+export interface ShiftOption {
+  id: string;
+  name: string | null;
+  startTime: string;
+  endTime: string;
+}
+
+function formatTimeLabel(value: string) {
+  const [h, m] = value.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hour12}:${String(m).padStart(2, "0")} ${period}`;
+}
+
+export default function AddEmployeeForm({ shifts }: { shifts: ShiftOption[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -14,6 +28,7 @@ export default function AddEmployeeForm() {
     name: string;
     employeeCode: string;
     pin: string;
+    shift: { name: string | null; startTime: string; endTime: string } | null;
   } | null>(null);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -21,6 +36,7 @@ export default function AddEmployeeForm() {
     setLoading(true);
     setError(null);
     const form = new FormData(e.currentTarget);
+    const shiftId = form.get("shiftId");
 
     const res = await fetch("/api/admin/employees", {
       method: "POST",
@@ -28,6 +44,7 @@ export default function AddEmployeeForm() {
       body: JSON.stringify({
         name: form.get("name"),
         email: form.get("email"),
+        shiftId: shiftId ? shiftId : undefined,
       }),
     });
     const data = await res
@@ -81,6 +98,13 @@ export default function AddEmployeeForm() {
                   shown again. You can always issue a new one from their
                   profile.
                 </p>
+                {created.shift && (
+                  <p className="text-xs text-secondary -mt-2">
+                    Assigned to {created.shift.name || "shift"} (
+                    {formatTimeLabel(created.shift.startTime)}–{formatTimeLabel(created.shift.endTime)}) every day —
+                    fine-tune specific days anytime from their profile.
+                  </p>
+                )}
                 <div className="rounded-lg bg-primary/5 border border-primary/20 p-4 text-center">
                   <p className="text-xs text-secondary font-medium">
                     {created.employeeCode}
@@ -132,6 +156,30 @@ export default function AddEmployeeForm() {
                     required
                     className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
                   />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-2">
+                    Shift (optional)
+                  </label>
+                  <select
+                    name="shiftId"
+                    defaultValue=""
+                    disabled={shifts.length === 0}
+                    className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all disabled:opacity-50"
+                  >
+                    <option value="">No shift for now</option>
+                    {shifts.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name || formatTimeLabel(s.startTime)} ({formatTimeLabel(s.startTime)}–
+                        {formatTimeLabel(s.endTime)})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-secondary mt-1">
+                    {shifts.length === 0
+                      ? "No shifts exist yet — create one from Shifts first if needed."
+                      : "Applies to every day of the week — adjust individual days later from their profile."}
+                  </p>
                 </div>
                 {error && (
                   <div className="rounded-lg bg-red-50 text-red-600 p-3 text-sm border border-red-100">

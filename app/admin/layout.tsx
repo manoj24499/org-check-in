@@ -1,10 +1,8 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import Providers from "@/components/Providers";
-import SignOutButton from "@/components/SignOutButton";
 import TabSecurity from "@/components/TabSecurity";
-import AdminNav from "@/components/AdminNav";
-import { Logo } from "@/components/Logo";
+import AdminHeader from "@/components/AdminHeader";
 
 export default async function AdminLayout({
   children,
@@ -20,7 +18,10 @@ export default async function AdminLayout({
   return (
     <Providers>
       <TabSecurity />
-      <div className="min-h-screen bg-background py-3 sm:py-6 md:py-9">
+      {/* Fixed-height app shell, not a page that scrolls natively — `main`
+          below is the only thing that scrolls, so the header (and its nav)
+          stays put no matter how long a given admin page's content gets. */}
+      <div className="h-screen overflow-hidden bg-background py-3 sm:py-6 md:py-9">
         {/*
           The whole page — nav and content — lives inside one bordered,
           8px-radius panel on the light background, per the Nocturne mock:
@@ -28,31 +29,9 @@ export default async function AdminLayout({
           page-wide bar outside it. Panel is 95% of the viewport width
           rather than a fixed max-width, so it scales with the screen.
         */}
-        <div className="w-[95%] mx-auto rounded-lg border border-border bg-surface overflow-hidden">
-          <header className="bg-surface-2">
-            <div className="flex flex-col gap-3 px-5 py-3 sm:px-7 md:flex-row md:items-center md:gap-6 md:py-0 md:h-14">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2 shrink-0">
-                  <Logo variant="static" size={18} className="text-foreground" />
-                  <span className="text-xs font-medium tracking-[0.12em] uppercase text-muted">
-                    Admin
-                  </span>
-                </div>
-                <div className="flex items-center gap-4 md:hidden">
-                  <SignOutButton />
-                </div>
-              </div>
-
-              <AdminNav pendingLeaveCount={pendingLeaveCount} />
-
-              <div className="hidden md:flex items-center gap-3.5 ml-auto text-[13px] text-muted">
-                <span>{session?.user?.name}</span>
-                <SignOutButton />
-              </div>
-            </div>
-            <div className="fade-rule" />
-          </header>
-          <main>{children}</main>
+        <div className="w-[95%] mx-auto h-full rounded-lg border border-border bg-surface overflow-hidden flex flex-col">
+          <AdminHeader userName={session?.user?.name} pendingLeaveCount={pendingLeaveCount} />
+          <main className="flex-1 overflow-y-auto">{children}</main>
         </div>
       </div>
     </Providers>

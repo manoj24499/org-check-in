@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2 } from "lucide-react";
+import { CalendarDays, Plus, Trash2, X } from "lucide-react";
 
 export interface Holiday {
   id: string;
@@ -12,7 +12,6 @@ export interface Holiday {
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
-    weekday: "short",
     day: "numeric",
     month: "short",
   });
@@ -20,15 +19,31 @@ function formatDate(iso: string) {
 
 /** The public-holiday calendar — excluded from every leave request's day
  * count (see lib/timeOff.ts's countLeaveDays), so this is the one place that
- * needs editing when the holiday list changes. */
+ * needs editing when the holiday list changes. The add-holiday form stays
+ * tucked behind the header's "Add" button rather than always shown, so this
+ * panel's list gets the same compact treatment as LeaveRequestsPanel next
+ * to it. */
 export default function HolidayManager({ holidays: initialHolidays }: { holidays: Holiday[] }) {
   const router = useRouter();
   const [holidays, setHolidays] = useState(initialHolidays);
+  const [adding, setAdding] = useState(false);
   const [date, setDate] = useState("");
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  function openAdd() {
+    setAdding(true);
+    setError(null);
+  }
+
+  function closeAdd() {
+    setAdding(false);
+    setDate("");
+    setName("");
+    setError(null);
+  }
 
   async function handleAdd() {
     if (!date || !name.trim()) {
@@ -52,8 +67,7 @@ export default function HolidayManager({ holidays: initialHolidays }: { holidays
     }
 
     setHolidays((prev) => [...prev, data.holiday].sort((a, b) => a.date.localeCompare(b.date)));
-    setDate("");
-    setName("");
+    closeAdd();
     router.refresh();
   }
 
@@ -67,69 +81,83 @@ export default function HolidayManager({ holidays: initialHolidays }: { holidays
   }
 
   return (
-    <div className="rounded-lg border border-border bg-surface-2 shadow-[0_1px_2px_rgba(41,43,49,0.05)] overflow-hidden">
-      <div className="px-6 py-4 border-b border-border">
-        <p className="text-sm font-semibold text-foreground">Public holidays — {new Date().getFullYear()}</p>
-        <p className="text-xs text-secondary mt-1">
-          These days are excluded from every leave request&apos;s day count and shown as holidays, not gaps, in
-          attendance calendars.
-        </p>
+    <div className="rounded-lg border border-border bg-surface-2 shadow-[0_1px_2px_rgba(41,43,49,0.05)] overflow-hidden flex flex-col lg:h-full lg:min-h-0">
+      <div className="px-4 py-3 border-b border-border-soft flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-2">
+          <CalendarDays className="w-4 h-4 text-primary" />
+          <p className="text-sm font-medium text-foreground">Public holidays · {new Date().getFullYear()}</p>
+        </div>
+        {!adding && (
+          <button
+            type="button"
+            onClick={openAdd}
+            className="inline-flex items-center gap-1 rounded-lg border border-primary px-2.5 py-1 text-xs font-semibold text-primary-dark hover:bg-primary/5 transition"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add
+          </button>
+        )}
       </div>
 
-      <div className="flex flex-wrap items-end gap-3 px-6 py-4 border-b border-border-soft bg-surface">
-        <div className="flex flex-col gap-1">
-          <span className="text-xs text-muted">Date</span>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
-          />
-        </div>
-        <div className="flex flex-col gap-1 flex-1 min-w-[180px]">
-          <span className="text-xs text-muted">Name</span>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Independence Day"
-            className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
-          />
-        </div>
-        <button
-          type="button"
-          onClick={handleAdd}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary-dark hover:bg-primary/5 transition disabled:opacity-50"
-        >
-          <Plus className="w-4 h-4" />
-          {loading ? "Adding…" : "Add"}
-        </button>
-      </div>
-
-      {error && (
-        <div className="mx-6 mt-4 rounded-lg bg-red-50 text-red-600 p-3 text-sm border border-red-100">{error}</div>
-      )}
-
-      <div className="divide-y divide-border-soft">
-        {holidays.map((h) => (
-          <div key={h.id} className="flex items-center gap-3 px-6 py-3">
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-foreground">{h.name}</p>
-              <p className="text-xs text-muted mt-0.5">{formatDate(h.date)}</p>
-            </div>
+      {adding && (
+        <div className="px-4 py-3 border-b border-border-soft bg-surface shrink-0">
+          <div className="flex flex-wrap items-end gap-2">
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="rounded-lg border border-border px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+            />
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Independence Day"
+              className="flex-1 min-w-[140px] rounded-lg border border-border px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+              autoFocus
+            />
             <button
-              onClick={() => handleDelete(h)}
-              disabled={deletingId === h.id}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 shadow-sm hover:bg-red-600 hover:text-white hover:border-red-600 transition-all duration-200 disabled:opacity-50 shrink-0"
+              type="button"
+              onClick={handleAdd}
+              disabled={loading}
+              className="rounded-lg border border-primary bg-transparent text-primary-dark hover:bg-primary/5 px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50"
             >
-              <Trash2 className="w-3.5 h-3.5" />
-              {deletingId === h.id ? "Removing…" : "Remove"}
+              {loading ? "Adding…" : "Save"}
+            </button>
+            <button
+              type="button"
+              onClick={closeAdd}
+              disabled={loading}
+              className="rounded-lg border border-border text-muted hover:bg-surface p-1.5 transition disabled:opacity-50"
+              aria-label="Cancel"
+            >
+              <X className="w-3.5 h-3.5" />
             </button>
           </div>
-        ))}
-        {holidays.length === 0 && (
-          <p className="px-6 py-10 text-center text-secondary text-sm">No holidays added for this year yet.</p>
+          {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
+        </div>
+      )}
+
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {holidays.length === 0 ? (
+          <p className="px-4 py-10 text-center text-secondary text-sm">No holidays added for this year yet.</p>
+        ) : (
+          <div className="flex flex-col">
+            {holidays.map((h) => (
+              <div key={h.id} className="flex items-center gap-3 px-4 py-2 border-b border-border-soft last:border-b-0">
+                <span className="text-xs text-secondary w-12 shrink-0 tabular-nums">{formatDate(h.date)}</span>
+                <p className="text-sm font-medium text-foreground flex-1 truncate">{h.name}</p>
+                <button
+                  onClick={() => handleDelete(h)}
+                  disabled={deletingId === h.id}
+                  className="text-muted hover:text-red-600 transition disabled:opacity-50 shrink-0 p-2 -m-1"
+                  aria-label={`Remove ${h.name}`}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>

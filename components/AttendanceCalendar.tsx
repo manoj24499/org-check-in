@@ -416,7 +416,7 @@ export default function AttendanceCalendar({
                     <button
                       onClick={() => saveEdit(e)}
                       disabled={savingEdit}
-                      className="p-1.5 rounded-md text-primary hover:bg-primary/10 transition disabled:opacity-50"
+                      className="p-2.5 -m-1 rounded-md text-primary hover:bg-primary/10 transition disabled:opacity-50"
                       aria-label="Save time"
                     >
                       <Check className="w-4 h-4" />
@@ -424,7 +424,7 @@ export default function AttendanceCalendar({
                     <button
                       onClick={cancelEdit}
                       disabled={savingEdit}
-                      className="p-1.5 rounded-md text-muted hover:bg-surface transition disabled:opacity-50"
+                      className="p-2.5 -m-1 rounded-md text-muted hover:bg-surface transition disabled:opacity-50"
                       aria-label="Cancel"
                     >
                       <X className="w-4 h-4" />
@@ -444,7 +444,7 @@ export default function AttendanceCalendar({
                     {editable && (
                       <button
                         onClick={() => startEdit(e)}
-                        className="p-1 rounded-md text-muted hover:text-foreground hover:bg-surface transition"
+                        className="p-2 -m-1 rounded-md text-muted hover:text-foreground hover:bg-surface transition"
                         aria-label="Edit time"
                       >
                         <Pencil className="w-3.5 h-3.5" />
