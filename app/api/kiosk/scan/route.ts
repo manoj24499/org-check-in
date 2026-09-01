@@ -7,6 +7,7 @@ import { haversineDistanceMeters } from "@/lib/geofence";
 import { resolveGeofenceTarget } from "@/lib/geofenceTarget";
 import { getSettings } from "@/lib/settings";
 import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
+import { verifyFace } from "@/lib/faceVerify";
 import { PayloadTooLargeError, readJsonWithLimit } from "@/lib/readJsonBody";
 import { combineDateAndShiftTime, computeLateness } from "@/lib/shiftTime";
 import { loadShiftAssignments, shiftForDate, type WeekdayShiftMap } from "@/lib/shiftAssignment";
@@ -174,6 +175,29 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Face verification only runs for employees an admin has explicitly
+  // enabled it for (i.e. whose reference photo has actually been enrolled
+  // on the face-verification server — see lib/faceVerify.ts). A mismatch
+  // blocks the check-in outright; the service being unreachable fails open
+  // (recorded as UNAVAILABLE, not silently treated as a real match) so a
+  // network hiccup on that server never locks the whole office out.
+  let faceVerifyStatus: "NOT_CHECKED" | "MATCHED" | "MISMATCH" | "UNAVAILABLE" = "NOT_CHECKED";
+  let faceSimilarity: number | null = null;
+
+  if (user.faceVerificationEnabled && photoBuffer) {
+    const result = await verifyFace(user.employeeCode, photoBuffer);
+    if (result.outcome === "matched") {
+      faceVerifyStatus = "MATCHED";
+      faceSimilarity = result.similarity;
+    } else if (result.outcome === "mismatch") {
+      faceVerifyStatus = "MISMATCH";
+      faceSimilarity = result.similarity;
+      return NextResponse.json({ error: result.message }, { status: 401 });
+    } else {
+      faceVerifyStatus = "UNAVAILABLE";
+    }
+  }
+
   // Loaded once and reused below — an employee can be on a different shift
   // on different weekdays (see lib/shiftAssignment.ts).
   const shiftMap = await loadShiftAssignments(user.id);
@@ -310,6 +334,8 @@ export async function POST(req: NextRequest) {
             ? { checkInMode: "OFFICE" }
             : {}),
         ...(photoBuffer ? { photo: photoBuffer, hasPhoto: true } : {}),
+        faceVerifyStatus,
+        faceSimilarity,
       },
     });
 

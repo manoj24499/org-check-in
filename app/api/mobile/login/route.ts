@@ -52,6 +52,11 @@ export async function POST(req: NextRequest) {
       email: user.email,
       role: user.role,
       workMode: user.workMode,
+      // Lets the client decide whether to show the mandatory "take a
+      // selfie" enrollment screen (see /api/mobile/me/face-enroll) right
+      // after login — false means this employee has no reference face
+      // enrolled with the face-verification service yet.
+      faceVerificationEnabled: user.faceVerificationEnabled,
     },
   });
 }

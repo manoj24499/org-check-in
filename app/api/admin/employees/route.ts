@@ -3,6 +3,9 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
 import { generatePin, hashPin, nextEmployeeCode } from "@/lib/credentials";
+import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
+import { embedFace } from "@/lib/faceVerify";
+import { PayloadTooLargeError, readJsonWithLimit } from "@/lib/readJsonBody";
 
 const createSchema = z.object({
   name: z.string().min(1),
@@ -13,7 +16,19 @@ const createSchema = z.object({
   // still fine-tune individual days afterward from the employee's own page
   // (see ShiftScheduleEditor) — this is just a faster starting point.
   shiftId: z.string().min(1).optional(),
+  // Optional reference photo (data URL, same convention as /api/kiosk/scan)
+  // — when supplied, it's forwarded to the face-verification service's
+  // /embed endpoint (see lib/faceVerify.ts) to enroll this employee, and
+  // faceVerificationEnabled is turned on automatically once that succeeds.
+  // Never stored here: this app only relays it, the service is the sole
+  // owner of enrolled reference photos.
+  photo: z.string().optional(),
 });
+
+// Same cap as /api/kiosk/scan's request-body limit, for the same reason: a
+// base64 photo inflates the body well past MAX_PHOTO_BYTES, so this needs
+// enough headroom for that encoding overhead plus the other form fields.
+const MAX_REQUEST_BYTES = 6 * 1024 * 1024;
 
 export async function GET() {
   const session = await requireAdmin();
@@ -41,10 +56,29 @@ export async function POST(req: NextRequest) {
     const session = await requireAdmin();
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const json = await req.json().catch(() => null);
+    let json: unknown;
+    try {
+      json = await readJsonWithLimit(req, MAX_REQUEST_BYTES);
+    } catch (err) {
+      if (err instanceof PayloadTooLargeError) {
+        return NextResponse.json({ error: "Request is too large." }, { status: 413 });
+      }
+      return NextResponse.json({ error: "Invalid input." }, { status: 400 });
+    }
     const parsed = createSchema.safeParse(json);
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid input." }, { status: 400 });
+    }
+
+    let photoBuffer: Uint8Array<ArrayBuffer> | null = null;
+    if (parsed.data.photo) {
+      photoBuffer = await decodePhoto(parsed.data.photo);
+      if (!photoBuffer) {
+        return NextResponse.json({ error: "Invalid photo data." }, { status: 400 });
+      }
+      if (photoBuffer.length > MAX_PHOTO_BYTES) {
+        return NextResponse.json({ error: "Photo is too large." }, { status: 413 });
+      }
     }
 
     const existing = await prisma.user.findUnique({ where: { email: parsed.data.email } });
@@ -95,6 +129,30 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Enroll the reference photo with the face-verification service (see
+    // lib/faceVerify.ts) and flip faceVerificationEnabled on once that
+    // succeeds. A failed/unavailable embed never fails employee creation
+    // itself — the employee still exists, just without face verification
+    // until an admin retries with a better photo from the employee's
+    // profile page (see the "set-face-verification" action in
+    // app/api/admin/employees/[id]/route.ts).
+    let faceEnrollment: { status: "enrolled" | "failed" | "unavailable"; message?: string } | null =
+      null;
+    if (photoBuffer) {
+      const result = await embedFace(employeeCode, photoBuffer);
+      if (result.outcome === "enrolled") {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { faceVerificationEnabled: true },
+        });
+        faceEnrollment = { status: "enrolled" };
+      } else if (result.outcome === "failed") {
+        faceEnrollment = { status: "failed", message: result.message };
+      } else {
+        faceEnrollment = { status: "unavailable", message: result.reason };
+      }
+    }
+
     // Return the plaintext PIN once, at creation time, so the admin can hand it
     // to the employee. It is never retrievable again after this response.
     return NextResponse.json({
@@ -104,6 +162,7 @@ export async function POST(req: NextRequest) {
       email: user.email,
       pin,
       shift: shift ? { name: shift.name, startTime: shift.startTime, endTime: shift.endTime } : null,
+      faceEnrollment,
     });
   } catch (err) {
     console.error("[POST /api/admin/employees] Unhandled error:", err);

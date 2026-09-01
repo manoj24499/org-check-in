@@ -4,6 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
 import { generatePin, hashPin } from "@/lib/credentials";
 import { DEFAULT_GEOFENCE_RADIUS_METERS } from "@/lib/geofence";
+import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
+import { embedFace } from "@/lib/faceVerify";
+import { PayloadTooLargeError, readJsonWithLimit } from "@/lib/readJsonBody";
 
 const actionSchema = z.object({
   action: z.enum([
@@ -12,12 +15,26 @@ const actionSchema = z.object({
     "update-wfh-location",
     "clear-wfh-location",
     "set-field-mode",
+    "set-face-verification",
   ]),
   active: z.boolean().optional(),
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
   radiusMeters: z.number().min(1).max(100_000).optional(),
+  enabled: z.boolean().optional(),
+  // Optional (re-)enrollment photo for "set-face-verification" — same data
+  // URL convention as /api/admin/employees. When supplied, it's sent to the
+  // face-verification service's /embed endpoint (see lib/faceVerify.ts) and
+  // faceVerificationEnabled only flips on if that succeeds. Omitting it
+  // preserves the original behavior: just flip the flag, trusting
+  // enrollment already happened out-of-band.
+  photo: z.string().optional(),
 });
+
+// Same cap as /api/admin/employees's identical constant, for the same
+// reason: a base64 photo inflates the request body well past
+// MAX_PHOTO_BYTES.
+const MAX_REQUEST_BYTES = 6 * 1024 * 1024;
 
 export async function GET(
   _req: NextRequest,
@@ -37,6 +54,7 @@ export async function GET(
       active: true,
       deactivatedAt: true,
       createdAt: true,
+      faceVerificationEnabled: true,
     },
   });
 
@@ -52,7 +70,15 @@ export async function PATCH(
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const json = await req.json().catch(() => null);
+  let json: unknown;
+  try {
+    json = await readJsonWithLimit(req, MAX_REQUEST_BYTES);
+  } catch (err) {
+    if (err instanceof PayloadTooLargeError) {
+      return NextResponse.json({ error: "Request is too large." }, { status: 413 });
+    }
+    return NextResponse.json({ error: "Invalid input." }, { status: 400 });
+  }
   const parsed = actionSchema.safeParse(json);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input." }, { status: 400 });
@@ -120,6 +146,48 @@ export async function PATCH(
       },
     });
     return NextResponse.json({ ok: true });
+  }
+
+  if (parsed.data.action === "set-face-verification") {
+    const enabled = parsed.data.enabled ?? true;
+
+    // A photo means "(re-)enroll now" — decode, embed, and only flip the
+    // flag on if the service actually accepts it. Turning verification off,
+    // or turning it on with no photo, keeps the original behavior: just
+    // flip the flag, trusting enrollment already happened out-of-band.
+    if (enabled && parsed.data.photo) {
+      const photoBuffer = await decodePhoto(parsed.data.photo);
+      if (!photoBuffer) {
+        return NextResponse.json({ error: "Invalid photo data." }, { status: 400 });
+      }
+      if (photoBuffer.length > MAX_PHOTO_BYTES) {
+        return NextResponse.json({ error: "Photo is too large." }, { status: 413 });
+      }
+
+      const result = await embedFace(user.employeeCode, photoBuffer);
+      if (result.outcome !== "enrolled") {
+        const message = result.outcome === "failed" ? result.message : result.reason;
+        return NextResponse.json({
+          faceVerificationEnabled: user.faceVerificationEnabled,
+          faceEnrollment: { status: result.outcome, message },
+        });
+      }
+
+      const updated = await prisma.user.update({
+        where: { id },
+        data: { faceVerificationEnabled: true },
+      });
+      return NextResponse.json({
+        faceVerificationEnabled: updated.faceVerificationEnabled,
+        faceEnrollment: { status: "enrolled" },
+      });
+    }
+
+    const updated = await prisma.user.update({
+      where: { id },
+      data: { faceVerificationEnabled: enabled },
+    });
+    return NextResponse.json({ faceVerificationEnabled: updated.faceVerificationEnabled });
   }
 
   if (parsed.data.action === "set-field-mode") {

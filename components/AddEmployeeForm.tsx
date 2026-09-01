@@ -18,6 +18,16 @@ function formatTimeLabel(value: string) {
   return `${hour12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
+/** Reads a File as a `data:image/...;base64,...` URL — same format lib/photoUpload.ts's decodePhoto expects. */
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read file."));
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function AddEmployeeForm({ shifts }: { shifts: ShiftOption[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -29,6 +39,7 @@ export default function AddEmployeeForm({ shifts }: { shifts: ShiftOption[] }) {
     employeeCode: string;
     pin: string;
     shift: { name: string | null; startTime: string; endTime: string } | null;
+    faceEnrollment: { status: "enrolled" | "failed" | "unavailable"; message?: string } | null;
   } | null>(null);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -37,6 +48,18 @@ export default function AddEmployeeForm({ shifts }: { shifts: ShiftOption[] }) {
     setError(null);
     const form = new FormData(e.currentTarget);
     const shiftId = form.get("shiftId");
+    const photoFile = form.get("photo") as File | null;
+
+    let photo: string | undefined;
+    if (photoFile && photoFile.size > 0) {
+      try {
+        photo = await readFileAsDataUrl(photoFile);
+      } catch {
+        setError("Couldn't read the selected photo. Please try another file.");
+        setLoading(false);
+        return;
+      }
+    }
 
     const res = await fetch("/api/admin/employees", {
       method: "POST",
@@ -45,6 +68,7 @@ export default function AddEmployeeForm({ shifts }: { shifts: ShiftOption[] }) {
         name: form.get("name"),
         email: form.get("email"),
         shiftId: shiftId ? shiftId : undefined,
+        photo,
       }),
     });
     const data = await res
@@ -105,6 +129,23 @@ export default function AddEmployeeForm({ shifts }: { shifts: ShiftOption[] }) {
                     fine-tune specific days anytime from their profile.
                   </p>
                 )}
+                {created.faceEnrollment?.status === "enrolled" && (
+                  <p className="text-xs text-green-700 -mt-2">
+                    Face verification enrolled — this employee can now use face check-in.
+                  </p>
+                )}
+                {created.faceEnrollment?.status === "failed" && (
+                  <p className="text-xs text-red-600 -mt-2">
+                    Face enrollment failed{created.faceEnrollment.message ? `: ${created.faceEnrollment.message}` : "."} Face
+                    verification stays off for this employee until enrollment succeeds.
+                  </p>
+                )}
+                {created.faceEnrollment?.status === "unavailable" && (
+                  <p className="text-xs text-amber-600 -mt-2">
+                    Couldn&apos;t reach the face-verification service, so enrollment was skipped. Face verification
+                    stays off for this employee until enrollment succeeds.
+                  </p>
+                )}
                 <div className="rounded-lg bg-primary/5 border border-primary/20 p-4 text-center">
                   <p className="text-xs text-secondary font-medium">
                     {created.employeeCode}
@@ -156,6 +197,21 @@ export default function AddEmployeeForm({ shifts }: { shifts: ShiftOption[] }) {
                     required
                     className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
                   />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-2">
+                    Photo for face verification (optional)
+                  </label>
+                  <input
+                    name="photo"
+                    type="file"
+                    accept="image/jpeg,image/jpg,image/png,image/webp"
+                    className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-primary/10 file:text-primary-dark file:px-3 file:py-1.5 file:text-sm file:font-medium focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+                  />
+                  <p className="text-xs text-secondary mt-1">
+                    A clear front-facing photo enrolls this employee for face check-in. Leave blank to skip — you can
+                    enroll later.
+                  </p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-muted-2">

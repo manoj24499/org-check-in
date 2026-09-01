@@ -52,6 +52,21 @@ enum CheckInMode {
   FIELD
 }
 
+// Outcome of calling the external face-verification service at check-in
+// (see lib/faceVerify.ts) — recorded regardless of whether it blocked the
+// check-in, so an admin reviewing history can see whether verification even
+// ran. NOT_CHECKED covers both "employee isn't enrolled" and "no photo was
+// submitted"; UNAVAILABLE means the service was unreachable/timed out, which
+// (per /api/kiosk/scan) fails *open* — the check-in still goes through, but
+// this makes that fact visible instead of silently indistinguishable from a
+// real MATCHED.
+enum FaceVerifyStatus {
+  NOT_CHECKED
+  MATCHED
+  MISMATCH
+  UNAVAILABLE
+}
+
 model User {
   id           String @id @default(cuid())
   employeeCode String @unique // human-friendly ID, e.g. EMP001 / ADM001
@@ -72,6 +87,14 @@ model User {
   homeLatitude     Float?
   homeLongitude    Float?
   homeRadiusMeters Float    @default(50)
+
+  // Per-employee opt-in for face verification at check-in (see
+  // /api/kiosk/scan and lib/faceVerify.ts). Off by default and only worth
+  // switching on once this employee's reference photo has actually been
+  // enrolled on the face-verification server — that enrollment happens
+  // out-of-band (manually, on that server) rather than through this app, so
+  // this flag is admin-set, not auto-derived.
+  faceVerificationEnabled Boolean @default(false)
 
   active    Boolean  @default(true)
   // Set the moment an admin deactivates this employee (PATCH .../set-active)
@@ -157,6 +180,14 @@ model Attendance {
   // configured (lateness isn't tracked for them).
   lateMinutes Int?
   leaveType   LeaveType @default(NONE)
+
+  // Result of the external face-verification call at check-in, when this
+  // employee has faceVerificationEnabled — see lib/faceVerify.ts and
+  // /api/kiosk/scan. faceSimilarity is the raw score the service returned
+  // (kept for later threshold tuning), null whenever verification didn't
+  // actually run.
+  faceVerifyStatus   FaceVerifyStatus @default(NOT_CHECKED)
+  faceSimilarity     Float?
 
   // Set only on CHECK_IN records for FIELD-workMode employees — the choice
   // they made that day (see /api/kiosk/scan). Null for OFFICE/WFH employees,

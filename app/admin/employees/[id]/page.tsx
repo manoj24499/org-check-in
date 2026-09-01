@@ -136,7 +136,11 @@ export default async function EmployeeDetailPage({
           <h2 className="text-lg font-medium text-foreground mb-4">
             Credentials
           </h2>
-          <EmployeeActions employeeId={employee.id} active={employee.active} />
+          <EmployeeActions
+            employeeId={employee.id}
+            active={employee.active}
+            faceVerificationEnabled={employee.faceVerificationEnabled}
+          />
         </div>
 
         <div className="rounded-lg border border-border bg-surface-2 p-6 shadow-[0_1px_2px_rgba(41,43,49,0.05)] ">

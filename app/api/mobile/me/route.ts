@@ -21,5 +21,8 @@ export async function GET(req: NextRequest) {
     homeLatitude: user.homeLatitude,
     homeLongitude: user.homeLongitude,
     homeRadiusMeters: user.homeRadiusMeters,
+    // See /api/mobile/login's identical field — lets the client re-check
+    // this on app resume (a token refresh alone doesn't re-fetch it).
+    faceVerificationEnabled: user.faceVerificationEnabled,
   });
 }
