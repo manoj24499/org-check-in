@@ -10,7 +10,28 @@ const bodySchema = z.object({
   pin: z.string().min(4).max(10),
 });
 
+// TEMPORARY DIAGNOSTIC WRAPPER — remove once the production 500 on this
+// route is root-caused. See the identical wrapper in
+// app/api/kiosk/scan/route.ts for why this exists; delete both once the
+// cause is confirmed.
 export async function POST(req: NextRequest) {
+  try {
+    return await handlePost(req);
+  } catch (err) {
+    const e = err as Error;
+    return NextResponse.json(
+      {
+        error: "TEMP_DIAGNOSTIC",
+        name: e?.name,
+        message: e?.message,
+        stack: e?.stack?.split("\n").slice(0, 8),
+      },
+      { status: 500 },
+    );
+  }
+}
+
+async function handlePost(req: NextRequest) {
   const ip = getClientIp(req);
   if (isRateLimited(`mobile-login:${ip}`, 60_000, 10)) {
     return NextResponse.json(
