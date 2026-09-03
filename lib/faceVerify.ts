@@ -35,6 +35,10 @@ export type FaceEmbedResult =
   | { outcome: "failed"; message: string }
   | { outcome: "unavailable"; reason: string };
 
+export type FaceDeleteResult =
+  | { outcome: "deleted" }
+  | { outcome: "unavailable"; reason: string };
+
 interface FaceVerifyResponse {
   success?: boolean;
   status?: string;
@@ -160,6 +164,59 @@ export async function embedFace(
     // No explicit `success: false` (including no `success` field at all,
     // which /embed may just omit on the happy path) is treated as enrolled.
     return { outcome: "enrolled" };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : "Unknown error";
+    return { outcome: "unavailable", reason };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Removes one employee's enrolled reference face from the service (DELETE
+ * /employees/{employee_id}) — called from lib/employeeCleanup.ts once an
+ * employee's User row has been permanently deleted, so a stale enrollment
+ * never lingers on the service (and, if their employeeCode is ever reissued —
+ * it isn't, see allocateNextEmployeeCode, but this is cheap insurance either
+ * way — it can't inherit a stranger's stale face data). Unlike /verify and
+ * /embed, this endpoint requires an `x-api-key` header (FACE_VERIFY_API_KEY)
+ * — its OpenAPI schema marks that header optional, but the service actually
+ * 401s without a valid one.
+ *
+ * A 404 (never enrolled — e.g. this employee never had a photo, or a
+ * duplicate cleanup pass) is treated the same as a successful delete: either
+ * way there's nothing left enrolled for this employeeCode. Same fail-open,
+ * never-throws contract as verifyFace/embedFace — this always runs after the
+ * employee is already deleted from this app's own DB, so a failure here must
+ * never be treated as blocking; the caller just logs it.
+ */
+export async function deleteFaceEnrollment(employeeCode: string): Promise<FaceDeleteResult> {
+  const baseUrl = process.env.FACE_VERIFY_URL;
+  if (!baseUrl) {
+    return { outcome: "unavailable", reason: "FACE_VERIFY_URL is not configured" };
+  }
+  const apiKey = process.env.FACE_VERIFY_API_KEY;
+  if (!apiKey) {
+    return { outcome: "unavailable", reason: "FACE_VERIFY_API_KEY is not configured" };
+  }
+
+  const timeoutMs = Number(process.env.FACE_VERIFY_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(new URL(`/employees/${encodeURIComponent(employeeCode)}`, baseUrl), {
+      method: "DELETE",
+      headers: { "x-api-key": apiKey },
+      signal: controller.signal,
+    });
+    if (!res.ok && res.status !== 404) {
+      return {
+        outcome: "unavailable",
+        reason: `Face delete service returned ${res.status}`,
+      };
+    }
+    return { outcome: "deleted" };
   } catch (err) {
     const reason = err instanceof Error ? err.message : "Unknown error";
     return { outcome: "unavailable", reason };

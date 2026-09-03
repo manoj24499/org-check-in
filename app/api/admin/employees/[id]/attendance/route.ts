@@ -28,6 +28,7 @@ export async function GET(
       method: r.method,
       timestamp: r.timestamp.toISOString(),
       hasPhoto: r.hasPhoto,
+      faceVerifyStatus: r.faceVerifyStatus,
       pauses: r.pauses.map((p) => ({
         pausedAt: p.pausedAt.toISOString(),
         resumedAt: p.resumedAt?.toISOString() ?? null,

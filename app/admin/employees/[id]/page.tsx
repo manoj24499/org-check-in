@@ -67,6 +67,7 @@ export default async function EmployeeDetailPage({
     method: r.method,
     timestamp: r.timestamp.toISOString(),
     hasPhoto: r.hasPhoto,
+    faceVerifyStatus: r.faceVerifyStatus,
     pauses: r.pauses.map((p) => ({
       pausedAt: p.pausedAt.toISOString(),
       resumedAt: p.resumedAt?.toISOString() ?? null,
@@ -140,6 +141,7 @@ export default async function EmployeeDetailPage({
             employeeId={employee.id}
             active={employee.active}
             faceVerificationEnabled={employee.faceVerificationEnabled}
+            faceVerificationExempt={employee.faceVerificationExempt}
           />
         </div>
 

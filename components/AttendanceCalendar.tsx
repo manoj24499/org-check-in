@@ -12,6 +12,8 @@ import {
   X,
   Pencil,
   Check,
+  ScanFace,
+  ScanEye,
 } from "lucide-react";
 import { computeWorkedMs } from "@/lib/attendanceHours";
 
@@ -21,6 +23,9 @@ type AttendanceRecord = {
   method: string;
   timestamp: string;
   hasPhoto?: boolean;
+  // Absent on older serialized data that predates this field, same as
+  // pauses[].reason below — treated identically to "NOT_CHECKED" (no badge).
+  faceVerifyStatus?: "NOT_CHECKED" | "MATCHED" | "MISMATCH" | "UNAVAILABLE";
   // "permission": this pause was opened by an approved TimedPermission
   // request, not a detected geofence departure — see AttendancePause.
   // timedPermissionId. Falls back to "geofence" for older serialized data
@@ -62,6 +67,15 @@ function formatTimeOfDay(d: Date) {
 }
 
 const PAUSE_REASON_LABEL = { geofence: "Geofence", permission: "Permission" } as const;
+
+// NOT_CHECKED (or missing, for older data) renders no badge at all — it just
+// means face verification wasn't enabled for this employee/record, which
+// isn't worth calling out on every single row.
+const FACE_STATUS_BADGE = {
+  MATCHED: { label: "Face verified", icon: ScanFace, className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  MISMATCH: { label: "Face mismatch", icon: ScanEye, className: "bg-red-50 text-red-600 border-red-200" },
+  UNAVAILABLE: { label: "Face check unavailable", icon: ScanEye, className: "bg-amber-50 text-amber-700 border-amber-200" },
+} as const;
 
 function dayStatus(list: Event[] | undefined) {
   if (!list || list.length === 0) return "none" as const;
@@ -431,7 +445,7 @@ export default function AttendanceCalendar({
                     </button>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
                     <span className="text-sm text-muted">
                       {e.date.toLocaleTimeString([], {
                         hour: "2-digit",
@@ -441,6 +455,18 @@ export default function AttendanceCalendar({
                     <span className="inline-flex items-center rounded-md bg-surface px-2 py-0.5 text-xs font-medium text-muted border border-border">
                       {e.method}
                     </span>
+                    {e.faceVerifyStatus && e.faceVerifyStatus !== "NOT_CHECKED" && (() => {
+                      const badge = FACE_STATUS_BADGE[e.faceVerifyStatus];
+                      const Icon = badge.icon;
+                      return (
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium border ${badge.className}`}
+                        >
+                          <Icon className="w-3 h-3" />
+                          {badge.label}
+                        </span>
+                      );
+                    })()}
                     {editable && (
                       <button
                         onClick={() => startEdit(e)}

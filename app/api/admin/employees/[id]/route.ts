@@ -16,12 +16,15 @@ const actionSchema = z.object({
     "clear-wfh-location",
     "set-field-mode",
     "set-face-verification",
+    "set-face-verification-exempt",
   ]),
   active: z.boolean().optional(),
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
   radiusMeters: z.number().min(1).max(100_000).optional(),
   enabled: z.boolean().optional(),
+  // For "set-face-verification-exempt" only.
+  exempt: z.boolean().optional(),
   // Optional (re-)enrollment photo for "set-face-verification" — same data
   // URL convention as /api/admin/employees. When supplied, it's sent to the
   // face-verification service's /embed endpoint (see lib/faceVerify.ts) and
@@ -55,6 +58,7 @@ export async function GET(
       deactivatedAt: true,
       createdAt: true,
       faceVerificationEnabled: true,
+      faceVerificationExempt: true,
     },
   });
 
@@ -188,6 +192,21 @@ export async function PATCH(
       data: { faceVerificationEnabled: enabled },
     });
     return NextResponse.json({ faceVerificationEnabled: updated.faceVerificationEnabled });
+  }
+
+  if (parsed.data.action === "set-face-verification-exempt") {
+    // Deliberately never touches faceVerificationEnabled — see that field's
+    // schema comment for why conflating the two would be dangerous (it
+    // would turn on check-in *enforcement* for someone who was never
+    // actually enrolled, hard-blocking every check-in as a MISMATCH instead
+    // of skipping the check). This only ever bypasses the mobile app's own
+    // mandatory-enrollment gate.
+    const exempt = parsed.data.exempt ?? true;
+    const updated = await prisma.user.update({
+      where: { id },
+      data: { faceVerificationExempt: exempt },
+    });
+    return NextResponse.json({ faceVerificationExempt: updated.faceVerificationExempt });
   }
 
   if (parsed.data.action === "set-field-mode") {

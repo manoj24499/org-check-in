@@ -89,12 +89,29 @@ model User {
   homeRadiusMeters Float    @default(50)
 
   // Per-employee opt-in for face verification at check-in (see
-  // /api/kiosk/scan and lib/faceVerify.ts). Off by default and only worth
-  // switching on once this employee's reference photo has actually been
-  // enrolled on the face-verification server — that enrollment happens
-  // out-of-band (manually, on that server) rather than through this app, so
-  // this flag is admin-set, not auto-derived.
+  // /api/kiosk/scan and lib/faceVerify.ts). Normally flipped on
+  // automatically once a photo (admin-supplied at creation/re-enrollment,
+  // or the mobile app's own mandatory first-login selfie) is successfully
+  // embedded on the face-verification server — see embedFace() and every
+  // caller of it. Can also be flipped on directly with no photo (the
+  // "set-face-verification" admin action with no `photo` in the request),
+  // trusting an enrollment that happened out-of-band on that server
+  // directly; don't do this for an employee who was never actually
+  // enrolled anywhere — every check-in would then be rejected as a face
+  // MISMATCH (the service has nothing to compare against) rather than
+  // skipped. To unblock an employee stuck on the mobile app's mandatory
+  // enrollment screen without turning verification on, use
+  // faceVerificationExempt below instead.
   faceVerificationEnabled Boolean @default(false)
+  // Admin escape hatch for the mobile app's mandatory first-login face
+  // enrollment (see RootNavigator.tsx in the mobile repo) — e.g. an
+  // employee whose device camera can't get a photo the service will
+  // accept, or who's exempt from the policy entirely. Deliberately a
+  // separate field from faceVerificationEnabled, not just another way to
+  // set it to true: exemption only bypasses the mobile app's *gate*, it
+  // must never also enable verification *enforcement* at check-in for
+  // someone who was never actually enrolled (see the warning above).
+  faceVerificationExempt  Boolean @default(false)
 
   active    Boolean  @default(true)
   // Set the moment an admin deactivates this employee (PATCH .../set-active)
@@ -119,6 +136,11 @@ model User {
 
   @@index([role])
   @@index([workMode])
+  // Serves the recurring "active employees, optionally filtered to one
+  // workMode" list pages (admin dashboard, shifts, field-workers, employee
+  // list) and lib/employeeCleanup.ts's deactivated-employee sweep — all of
+  // them filter on some leftmost prefix of this exact combination.
+  @@index([role, active, workMode])
 }
 
 // A named time slot (e.g. "General Shift", 09:00–18:00) an OFFICE employee
@@ -205,6 +227,11 @@ model Attendance {
   workSegments     WorkSegment[]
 
   @@index([userId, timestamp])
+  // The admin CSV export (app/api/admin/attendance/export/route.ts) is the
+  // one query against this ever-growing, never-purged table with no `where`
+  // at all — it sorts the entire table by timestamp. This lets that ORDER
+  // BY be served by an index scan instead of a full sort.
+  @@index([timestamp])
 }
 
 enum TimedPermissionApprovalStatus {
@@ -240,7 +267,12 @@ model TimedPermission {
   reviewedByName String?
 
   @@index([attendanceId])
-  @@index([approvalStatus])
+  // Replaces a plain approvalStatus-only index — the admin dashboard's
+  // pending-permissions widget and the admin permissions list both filter
+  // on approvalStatus and sort by createdAt, so the composite serves the
+  // ORDER BY too, not just the filter. Still serves any approvalStatus-only
+  // lookup via its leftmost prefix.
+  @@index([approvalStatus, createdAt])
 }
 
 enum WorkSegmentStartMethod {
@@ -271,7 +303,12 @@ model WorkSegment {
   endedAt      DateTime?
   startMethod  WorkSegmentStartMethod
 
-  @@index([attendanceId])
+  // Replaces a plain attendanceId-only index — every ping/mode-switch/
+  // checkout for a FIELD employee looks up "the currently open segment"
+  // (endedAt: null) for one attendanceId; the composite serves that filter
+  // directly instead of narrowing by attendanceId then re-checking endedAt
+  // per row. Still serves any attendanceId-only lookup via its prefix.
+  @@index([attendanceId, endedAt])
 }
 
 // A manually-logged stop during a Field day (see /api/mobile/field-visits) —
@@ -284,12 +321,24 @@ model FieldVisit {
   attendance   Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
   name         String
   reachedAt    DateTime   @default(now())
-  photo        Bytes
+  // Same retention convention as Attendance.photo/hasPhoto: always set at
+  // creation (a photo is mandatory to log a visit — see the mobile route),
+  // then opportunistically cleared once past PHOTO_RETENTION_DAYS (see
+  // expireOldPhotos in app/api/kiosk/scan/route.ts, which now sweeps this
+  // table too) so old site photos don't accumulate in the DB forever.
+  // `hasPhoto` lets the admin UI skip requesting a photo it knows is gone
+  // instead of hitting the dedicated photo route and getting a 404.
+  photo        Bytes?
+  hasPhoto     Boolean    @default(true)
   latitude     Float
   longitude    Float
   createdAt    DateTime   @default(now())
 
-  @@index([attendanceId])
+  // Composite so the reachedAt-ordered per-attendance lists (field-visits,
+  // field-summary, admin visited-places) don't need a separate sort step —
+  // low-priority since visits-per-checkin is naturally small, but free
+  // alongside the other attendanceId-keyed indexes in this schema.
+  @@index([attendanceId, reachedAt])
 }
 
 // A paused interval within one CHECK_IN session — resumedAt null means still
@@ -310,7 +359,12 @@ model AttendancePause {
   timedPermissionId String?          @unique
   timedPermission   TimedPermission? @relation(fields: [timedPermissionId], references: [id])
 
-  @@index([attendanceId])
+  // Replaces a plain attendanceId-only index — every location ping and
+  // kiosk status poll for a checked-in employee looks up "the currently
+  // open pause" (resumedAt: null) for one attendanceId; this composite
+  // serves that filter directly. Still serves any attendanceId-only lookup
+  // via its prefix.
+  @@index([attendanceId, resumedAt])
 }
 
 // One row per device's Expo push token, used to warn an employee before
@@ -380,6 +434,14 @@ model AppSettings {
   // changing this has no effect on already-computed leaveType/lateMinutes
   // on existing records, same precedent as the leave quotas above.
   lateThresholdMinutes Int @default(60)
+
+  // Persistent counter backing allocateNextEmployeeCode() (lib/credentials.ts)
+  // — deliberately separate from MAX(User.employeeCode), which silently
+  // reuses a deleted employee's code once lib/employeeCleanup.ts hard-deletes
+  // them. Only ever written by that function; never exposed to
+  // updateSettings()/the admin settings UI, since letting it be set backward
+  // would reintroduce the exact collision this exists to prevent.
+  lastEmployeeCodeNumber Int @default(0)
 
   updatedAt DateTime @updatedAt
 }

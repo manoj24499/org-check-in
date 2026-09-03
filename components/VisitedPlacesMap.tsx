@@ -53,6 +53,8 @@ export interface FieldVisitMarker {
   reachedAt: string;
   latitude: number;
   longitude: number;
+  // False once the photo has passed retention and been cleared server-side.
+  hasPhoto: boolean;
 }
 
 function timeLabel(iso: string) {
@@ -131,17 +133,21 @@ export default function VisitedPlacesMap({
             <br />
             Reached {timeLabel(v.reachedAt)}
             <br />
-            <img
-              src={`/api/admin/field-visits/${v.id}/photo`}
-              alt={v.name}
-              style={{
-                width: 140,
-                height: 105,
-                objectFit: "cover",
-                marginTop: 6,
-                borderRadius: 6,
-              }}
-            />
+            {v.hasPhoto ? (
+              <img
+                src={`/api/admin/field-visits/${v.id}/photo`}
+                alt={v.name}
+                style={{
+                  width: 140,
+                  height: 105,
+                  objectFit: "cover",
+                  marginTop: 6,
+                  borderRadius: 6,
+                }}
+              />
+            ) : (
+              <span style={{ fontSize: 12, color: "#75798c" }}>Photo no longer available</span>
+            )}
           </Popup>
         </Marker>
       ))}

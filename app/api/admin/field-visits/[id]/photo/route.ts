@@ -20,7 +20,7 @@ export async function GET(
     omit: { photo: false },
   });
 
-  if (!visit) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!visit || !visit.photo) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   return new NextResponse(new Uint8Array(visit.photo), {
     headers: {

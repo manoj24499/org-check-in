@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
-
-function csvField(value: string) {
-  return `"${value.replace(/"/g, '""')}"`;
-}
+import { csvField } from "@/lib/csv";
 
 export async function GET() {
   const session = await requireAdmin();

@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
     prisma.fieldVisit.findMany({
       where: { attendanceId: todaysCheckIn.id },
       orderBy: { reachedAt: "asc" },
-      select: { id: true, name: true, reachedAt: true, latitude: true, longitude: true },
+      select: { id: true, name: true, reachedAt: true, latitude: true, longitude: true, hasPhoto: true },
     }),
   ]);
 
@@ -64,6 +64,7 @@ export async function GET(req: NextRequest) {
       reachedAt: v.reachedAt.toISOString(),
       latitude: v.latitude,
       longitude: v.longitude,
+      hasPhoto: v.hasPhoto,
     })),
   });
 }

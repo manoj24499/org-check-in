@@ -31,6 +31,7 @@ type AttendanceRecord = {
   method: string;
   timestamp: string;
   hasPhoto: boolean;
+  faceVerifyStatus?: "NOT_CHECKED" | "MATCHED" | "MISMATCH" | "UNAVAILABLE";
   pauses?: { pausedAt: string; resumedAt: string | null }[];
 };
 

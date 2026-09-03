@@ -24,5 +24,9 @@ export async function GET(req: NextRequest) {
     // See /api/mobile/login's identical field — lets the client re-check
     // this on app resume (a token refresh alone doesn't re-fetch it).
     faceVerificationEnabled: user.faceVerificationEnabled,
+    // Admin escape hatch for the mandatory first-login enrollment gate (see
+    // RootNavigator.tsx) — lets an employee stuck there get in without
+    // actually turning on check-in enforcement for someone never enrolled.
+    faceVerificationExempt: user.faceVerificationExempt,
   });
 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
-import { generatePin, hashPin, nextEmployeeCode } from "@/lib/credentials";
+import { generatePin, hashPin, allocateNextEmployeeCode } from "@/lib/credentials";
 import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
 import { embedFace } from "@/lib/faceVerify";
 import { PayloadTooLargeError, readJsonWithLimit } from "@/lib/readJsonBody";
@@ -97,17 +97,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Find the highest existing employee code number to avoid collisions
-    // when employees have been deleted (count would be lower than max code).
-    const lastEmployee = await prisma.user.findFirst({
-      where: { role: "EMPLOYEE" },
-      orderBy: { employeeCode: "desc" },
-      select: { employeeCode: true },
-    });
-    const currentMax = lastEmployee
-      ? parseInt(lastEmployee.employeeCode.replace("EMP", ""), 10)
-      : 0;
-    const employeeCode = nextEmployeeCode("EMP", currentMax);
+    // Atomically allocated, persistent counter — see allocateNextEmployeeCode's
+    // own comment for why this can't just be MAX(employeeCode).
+    const employeeCode = await allocateNextEmployeeCode();
 
     const pin = generatePin();
     const pinHash = await hashPin(pin);
@@ -122,10 +114,15 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // All 7 weekdays, same shift — the quick-start default described above.
+    // Monday–Saturday, same shift — the quick-start default described
+    // above. Sunday (weekday 0, JS Date.getDay() convention — see
+    // ShiftScheduleEditor) is deliberately left unassigned so it defaults
+    // to "No shift" (the usual weekly off day) rather than a workday; an
+    // admin can still assign one from the employee's profile if this
+    // particular employee does work Sundays.
     if (shift) {
       await prisma.shiftAssignment.createMany({
-        data: Array.from({ length: 7 }, (_, weekday) => ({ userId: user.id, shiftId: shift!.id, weekday })),
+        data: Array.from({ length: 6 }, (_, i) => ({ userId: user.id, shiftId: shift!.id, weekday: i + 1 })),
       });
     }
 

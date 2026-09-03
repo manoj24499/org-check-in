@@ -27,6 +27,10 @@ interface FieldVisit {
   reachedAt: string;
   latitude: number;
   longitude: number;
+  // False once the photo has passed retention and been cleared server-side
+  // (see PHOTO_RETENTION_DAYS in app/api/kiosk/scan/route.ts) — the visit
+  // itself is kept, just without its photo.
+  hasPhoto: boolean;
 }
 
 interface ReimbursementRecord {
@@ -296,12 +300,21 @@ export default function VisitedPlacesPanel({
                 <div className="flex flex-col gap-2">
                   {data.fieldVisits.map((v) => (
                     <div key={v.id} className="flex items-center gap-3 py-2">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={`/api/admin/field-visits/${v.id}/photo`}
-                        alt={v.name}
-                        className="w-11 h-11 rounded-lg object-cover border border-border shrink-0"
-                      />
+                      {v.hasPhoto ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={`/api/admin/field-visits/${v.id}/photo`}
+                          alt={v.name}
+                          className="w-11 h-11 rounded-lg object-cover border border-border shrink-0"
+                        />
+                      ) : (
+                        <span
+                          title="Photo no longer available"
+                          className="w-11 h-11 rounded-lg bg-surface border border-border shrink-0 flex items-center justify-center text-[10px] text-muted text-center leading-tight"
+                        >
+                          No photo
+                        </span>
+                      )}
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-semibold text-foreground truncate">
                           {v.name}

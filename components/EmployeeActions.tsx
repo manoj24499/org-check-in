@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { KeyRound, Power, Copy, Check, ScanFace, Camera } from "lucide-react";
+import { KeyRound, Power, Copy, Check, ScanFace, Camera, ShieldOff } from "lucide-react";
 
 /** Reads a File as a `data:image/...;base64,...` URL — same format lib/photoUpload.ts's decodePhoto expects. */
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -18,10 +18,12 @@ export default function EmployeeActions({
   employeeId,
   active,
   faceVerificationEnabled,
+  faceVerificationExempt,
 }: {
   employeeId: string;
   active: boolean;
   faceVerificationEnabled: boolean;
+  faceVerificationExempt: boolean;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
@@ -156,6 +158,32 @@ export default function EmployeeActions({
           </p>
         )}
       </div>
+
+      {!faceVerificationEnabled && (
+        <div className="flex items-start gap-3 rounded-lg border border-border px-4 py-3">
+          <ShieldOff className="w-4 h-4 mt-0.5 shrink-0 text-secondary" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-foreground">Mobile app enrollment exemption</p>
+            <p className="text-xs text-secondary mt-0.5">
+              The mobile app blocks an unenrolled employee with a mandatory selfie screen on first
+              login. If they&apos;re stuck there (camera trouble, or a policy exception) and
+              enrolling really isn&apos;t an option, exempt them to let them into the app without
+              turning on check-in face verification — that only enrolling actually does.
+            </p>
+          </div>
+          <button
+            onClick={() => call("set-face-verification-exempt", { exempt: !faceVerificationExempt })}
+            disabled={loading !== null}
+            className={`shrink-0 inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition disabled:opacity-50 ${
+              faceVerificationExempt
+                ? "bg-primary/10 text-primary border border-primary/20"
+                : "bg-surface text-muted border border-border"
+            }`}
+          >
+            {loading === "set-face-verification-exempt" ? "…" : faceVerificationExempt ? "Exempt" : "Not exempt"}
+          </button>
+        </div>
+      )}
 
       {newPin && (
         <div className="rounded-lg bg-primary/5 border border-primary/20 p-4 text-center">

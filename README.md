@@ -35,7 +35,7 @@ Then create the database tables and seed the first admin:
 
 ```bash
 npx prisma generate
-npx prisma db push
+npx prisma migrate deploy
 npx prisma db seed
 ```
 
@@ -61,9 +61,9 @@ npm run dev
 1. Push this project to a GitHub repo (keep it **private**, since this is for internal use).
 2. Import it into [Vercel](https://vercel.com/new).
 3. Add the same environment variables from `.env` in the Vercel project settings. Set `NEXTAUTH_URL` to your production URL (e.g. `https://checkin.yourcompany.com`).
-4. After the first deploy, run the schema push once against your production database:
+4. After the first deploy, apply migrations and seed the production database:
    ```bash
-   DATABASE_URL="<your production url>" npx prisma db push
+   DATABASE_URL="<your production url>" npx prisma migrate deploy
    DATABASE_URL="<your production url>" SEED_ADMIN_EMAIL=... SEED_ADMIN_PASSWORD=... npx prisma db seed
    ```
    (Run this from your local machine — it just needs network access to your DB.)
@@ -73,6 +73,7 @@ npm run dev
 
 Built comfortably for ~100 employees / ~10 admins. A couple of things worth knowing as you grow:
 
+- **Changing `prisma/schema.prisma`**: run `npx prisma migrate dev --name <short-description>` (not `db push`) — it generates a new file under `prisma/migrations/`, applies it to your local DB, and regenerates the client. Commit the generated migration folder along with your schema change. `prisma/migrations/` was baselined once against the schema as it stood at that point (a no-op migration recording what was already live, generated the same way `db push` had always kept it in sync) — no data changed, this only replaced how future changes are tracked and rolled out.
 - The kiosk rate-limiter (`app/api/kiosk/scan/route.ts`) is in-memory, which is fine for a single kiosk/serverless instance under light load. If you run multiple kiosks at high volume, swap it for a Redis-backed limiter (e.g. Upstash).
 - PINs and passwords are hashed with bcrypt.
 - Regenerating a PIN immediately invalidates the old one.

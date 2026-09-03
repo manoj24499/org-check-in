@@ -20,9 +20,13 @@ export async function GET(
   });
 
   if (!visit) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  // Ownership is checked before the photo-presence check below, so someone
+  // else's expired-photo visit still reports Forbidden rather than Not
+  // Found — don't let photo retention leak into the access-control response.
   if (visit.attendance.userId !== auth.sub) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  if (!visit.photo) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   return new NextResponse(new Uint8Array(visit.photo), {
     headers: {

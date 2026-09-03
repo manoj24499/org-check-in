@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { verifyPin } from "@/lib/credentials";
-import { getClientIp, isRateLimited } from "@/lib/rateLimit";
+import { getClientIp, isRateLimited, isPinGuessLimited } from "@/lib/rateLimit";
 import { haversineDistanceMeters } from "@/lib/geofence";
 import { resolveGeofenceTarget } from "@/lib/geofenceTarget";
 import { getSettings } from "@/lib/settings";
@@ -101,13 +101,25 @@ const PHOTO_RETENTION_DAYS = 45;
 // overhead plus the other small JSON fields, not just the decoded photo cap.
 const MAX_REQUEST_BYTES = 6 * 1024 * 1024;
 
-/** Best-effort cleanup: clear photo bytes (and the hasPhoto flag) once they're past retention. */
+/**
+ * Best-effort cleanup: clear photo bytes (and the hasPhoto flag) once
+ * they're past retention — both for check-in/out presence photos and for
+ * FieldVisit's manually-logged site photos (same retention window; see its
+ * schema comment). This runs on essentially every check-in/out anywhere in
+ * the app (kiosk, mobile — see the README's "Mobile app" section on why
+ * they share this route), which is what makes running it here, rather than
+ * a dedicated cron job, an adequate sweep.
+ */
 async function expireOldPhotos() {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - PHOTO_RETENTION_DAYS);
   try {
     await prisma.attendance.updateMany({
       where: { hasPhoto: true, timestamp: { lt: cutoff } },
+      data: { photo: null, hasPhoto: false },
+    });
+    await prisma.fieldVisit.updateMany({
+      where: { hasPhoto: true, reachedAt: { lt: cutoff } },
       data: { photo: null, hasPhoto: false },
     });
   } catch {
@@ -136,6 +148,22 @@ export async function POST(req: NextRequest) {
   const parsed = scanSchema.safeParse(json);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+  }
+
+  // The IP-based limit above only slows a single-source attacker — a kiosk
+  // is shared by every employee behind one office IP, so it can't be tuned
+  // tight enough to also block someone who spreads guesses across many
+  // IPs/proxies (or switches to the mobile app or web login to get a fresh
+  // budget) without breaking legitimate shared-kiosk use. isPinGuessLimited
+  // is shared across every PIN-checking surface, keyed only on employeeCode,
+  // so guesses against one account are capped regardless of source IP or
+  // entry point. Checked before any photo decoding — no reason to make an
+  // attacker do that work first.
+  if (isPinGuessLimited(parsed.data.employeeCode)) {
+    return NextResponse.json(
+      { error: "Too many attempts for this employee code. Please wait a few minutes and try again." },
+      { status: 429 },
+    );
   }
 
   await expireOldPhotos();

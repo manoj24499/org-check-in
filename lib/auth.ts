@@ -2,7 +2,7 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-import { getClientIp, isRateLimited } from "@/lib/rateLimit";
+import { getClientIp, isRateLimited, isPinGuessLimited } from "@/lib/rateLimit";
 import { authConfig } from "./auth.config";
 
 // Every other PIN/password-checking endpoint in the app (kiosk scan, mobile
@@ -10,7 +10,11 @@ import { authConfig } from "./auth.config";
 // reachable from anywhere on the internet, so it needs the same guard.
 // Keyed on IP *and* on the submitted identifier (email/employeeCode), so a
 // brute force targeting one account is still capped even if the caller
-// varies its claimed IP across requests.
+// varies its claimed IP across requests. For the employee-login provider
+// specifically, isPinGuessLimited (below) is checked as well — this
+// function alone would only cap guesses made through *this* form, and the
+// same employeeCode/pinHash pair can also be attacked via the kiosk and the
+// mobile app.
 function checkLoginRateLimit(prefix: string, request: Request, identifier: string) {
   const ip = getClientIp(request);
   return (
@@ -67,6 +71,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const pin = credentials?.pin as string | undefined;
         if (!employeeCode || !pin) return null;
         if (checkLoginRateLimit("employee-login", request, employeeCode)) return null;
+        if (isPinGuessLimited(employeeCode)) return null;
 
         const user = await prisma.user.findUnique({ where: { employeeCode } });
         if (!user || user.role !== "EMPLOYEE" || !user.pinHash || !user.active) {

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
-import { generatePin, hashPin, nextEmployeeCode } from "@/lib/credentials";
+import { generatePin, hashPin, allocateNextEmployeeCode } from "@/lib/credentials";
 import { DEFAULT_GEOFENCE_RADIUS_METERS } from "@/lib/geofence";
 
 const bulkCreateSchema = z.array(
@@ -55,15 +55,15 @@ export async function POST(req: NextRequest) {
     }, { status: 409 });
   }
 
-  // To avoid race conditions in employeeCode generation, we'll fetch the count once
-  let employeeCount = await prisma.user.count({ where: { role: "EMPLOYEE" } });
-
   const createdEmployees = [];
 
-  // We loop because we need to await hash for each PIN
+  // We loop because we need to await hash for each PIN. Each iteration calls
+  // allocateNextEmployeeCode() (an atomic DB counter, not COUNT(*)/MAX() —
+  // see its own comment) rather than incrementing a local variable: COUNT(*)
+  // undercounts once anyone's ever been deleted (lib/employeeCleanup.ts),
+  // producing employeeCode collisions with currently-active employees.
   for (const empData of parsed.data) {
-    const employeeCode = nextEmployeeCode("EMP", employeeCount);
-    employeeCount++;
+    const employeeCode = await allocateNextEmployeeCode();
 
     const pin = generatePin();
     const pinHash = await hashPin(pin);

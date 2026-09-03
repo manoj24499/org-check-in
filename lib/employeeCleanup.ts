@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { buildCsv, csvField } from "@/lib/csv";
+import { deleteFaceEnrollment } from "@/lib/faceVerify";
 
 const RETENTION_DAYS = 7;
 
@@ -64,7 +65,10 @@ function leaveRequestsCsvFor(
  * were just built from). Archive-then-delete happens in one transaction per
  * employee, so a crash partway through never deletes without having
  * archived first, and never leaves an orphaned archive with the user still
- * present.
+ * present. Afterward, also asks the face-verification service to forget that
+ * employee's enrollment (see deleteFaceEnrollment in lib/faceVerify.ts) —
+ * best-effort, since that service is external state this app doesn't own or
+ * transact with.
  *
  * Run daily by the scheduler registered in instrumentation.ts. Also safe to
  * call directly (e.g. from an admin-triggered endpoint) — it's idempotent:
@@ -106,6 +110,21 @@ export async function runDeactivatedEmployeeCleanup(): Promise<{ deletedCount: n
         }),
         prisma.user.delete({ where: { id: user.id } }),
       ]);
+
+      // Best-effort: tell the face-verification service to forget this
+      // employee's enrollment now that they're gone from this app's own DB.
+      // Deliberately outside the transaction above (it's an external HTTP
+      // call, not a DB write) and never allowed to fail this employee's
+      // cleanup — the User row is already deleted by this point, so there's
+      // nothing left to roll back to. A failure here just leaves a stale
+      // enrollment on the service to be retried/cleaned up later; it's
+      // logged, not thrown.
+      const faceDelete = await deleteFaceEnrollment(user.employeeCode);
+      if (faceDelete.outcome === "unavailable") {
+        console.error(
+          `[employeeCleanup] Failed to delete face enrollment for ${user.employeeCode}: ${faceDelete.reason}`,
+        );
+      }
 
       deletedCount++;
     } catch (err) {

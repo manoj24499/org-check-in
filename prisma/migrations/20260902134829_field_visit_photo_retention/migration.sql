@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "FieldVisit" ADD COLUMN     "hasPhoto" BOOLEAN NOT NULL DEFAULT true,
+ALTER COLUMN "photo" DROP NOT NULL;

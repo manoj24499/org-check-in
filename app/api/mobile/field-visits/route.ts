@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
   const visits = await prisma.fieldVisit.findMany({
     where: { attendanceId: checkIn.id },
     orderBy: { reachedAt: "asc" },
-    select: { id: true, name: true, reachedAt: true, latitude: true, longitude: true },
+    select: { id: true, name: true, reachedAt: true, latitude: true, longitude: true, hasPhoto: true },
   });
 
   return NextResponse.json({
@@ -51,6 +51,7 @@ export async function GET(req: NextRequest) {
       reachedAt: v.reachedAt.toISOString(),
       latitude: v.latitude,
       longitude: v.longitude,
+      hasPhoto: v.hasPhoto,
     })),
   });
 }
@@ -94,6 +95,7 @@ export async function POST(req: NextRequest) {
       attendanceId: checkIn.id,
       name: parsed.data.name,
       photo: photoBuffer,
+      hasPhoto: true,
       latitude: parsed.data.latitude,
       longitude: parsed.data.longitude,
     },
