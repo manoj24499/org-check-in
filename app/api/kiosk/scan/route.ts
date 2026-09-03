@@ -127,28 +127,19 @@ async function expireOldPhotos() {
   }
 }
 
-// TEMPORARY DIAGNOSTIC WRAPPER — remove once the production 500 on this
-// route is root-caused. Real handler renamed to handlePost(); this wrapper
-// only exists to surface the actual error in the response instead of a bare
-// 500 with no body, since Vercel's own logs weren't easy to get to quickly
-// during a live incident. DELETE this wrapper (rename handlePost back to
-// POST) as soon as the cause is confirmed — it leaks internal error detail
-// to any caller, which is fine for a few minutes of active debugging, not
-// as permanent behavior.
+// This route previously had no top-level catch at all — an unexpected
+// failure (e.g. the DB being briefly unreachable, per the 2026-09-03
+// incident) bubbled all the way up to a bare 500 with no body, which is
+// both a bad experience for whoever's standing at the kiosk and much
+// harder to diagnose than it needs to be. Logging server-side and
+// returning a clean JSON error (never the real error detail, matching
+// every other route's error handling in this app) fixes both.
 export async function POST(req: NextRequest) {
   try {
     return await handlePost(req);
   } catch (err) {
-    const e = err as Error;
-    return NextResponse.json(
-      {
-        error: "TEMP_DIAGNOSTIC",
-        name: e?.name,
-        message: e?.message,
-        stack: e?.stack?.split("\n").slice(0, 8),
-      },
-      { status: 500 },
-    );
+    console.error("[POST /api/kiosk/scan] Unhandled error:", err);
+    return NextResponse.json({ error: "Internal server error." }, { status: 500 });
   }
 }
 

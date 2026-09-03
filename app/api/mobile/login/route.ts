@@ -10,24 +10,18 @@ const bodySchema = z.object({
   pin: z.string().min(4).max(10),
 });
 
-// TEMPORARY DIAGNOSTIC WRAPPER — remove once the production 500 on this
-// route is root-caused. See the identical wrapper in
-// app/api/kiosk/scan/route.ts for why this exists; delete both once the
-// cause is confirmed.
+// This route previously had no top-level catch at all — an unexpected
+// failure (e.g. the DB being briefly unreachable, per the 2026-09-03
+// incident) bubbled all the way up to a bare 500 with no body. Logging
+// server-side and returning a clean JSON error (never the real error
+// detail, matching every other route's error handling in this app) fixes
+// both the debuggability and the caller-facing experience.
 export async function POST(req: NextRequest) {
   try {
     return await handlePost(req);
   } catch (err) {
-    const e = err as Error;
-    return NextResponse.json(
-      {
-        error: "TEMP_DIAGNOSTIC",
-        name: e?.name,
-        message: e?.message,
-        stack: e?.stack?.split("\n").slice(0, 8),
-      },
-      { status: 500 },
-    );
+    console.error("[POST /api/mobile/login] Unhandled error:", err);
+    return NextResponse.json({ error: "Internal server error." }, { status: 500 });
   }
 }
 
