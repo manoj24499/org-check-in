@@ -15,12 +15,13 @@ import { authConfig } from "./auth.config";
 // function alone would only cap guesses made through *this* form, and the
 // same employeeCode/pinHash pair can also be attacked via the kiosk and the
 // mobile app.
-function checkLoginRateLimit(prefix: string, request: Request, identifier: string) {
+async function checkLoginRateLimit(prefix: string, request: Request, identifier: string) {
   const ip = getClientIp(request);
-  return (
-    isRateLimited(`${prefix}:ip:${ip}`, 60_000, 10) ||
-    isRateLimited(`${prefix}:id:${identifier}`, 5 * 60_000, 10)
-  );
+  // Not run via Promise.all — the id-based check only needs to happen (and
+  // only matters) if the IP-based one didn't already trip, and skipping it
+  // in that case is one fewer write for an already-rate-limited caller.
+  if (await isRateLimited(`${prefix}:ip:${ip}`, 60_000, 10)) return true;
+  return isRateLimited(`${prefix}:id:${identifier}`, 5 * 60_000, 10);
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -38,7 +39,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const email = credentials?.email as string | undefined;
         const password = credentials?.password as string | undefined;
         if (!email || !password) return null;
-        if (checkLoginRateLimit("admin-login", request, email)) return null;
+        if (await checkLoginRateLimit("admin-login", request, email)) return null;
 
         const user = await prisma.user.findUnique({ where: { email } });
         if (!user || user.role !== "ADMIN" || !user.passwordHash || !user.active) {
@@ -70,8 +71,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const employeeCode = credentials?.employeeCode as string | undefined;
         const pin = credentials?.pin as string | undefined;
         if (!employeeCode || !pin) return null;
-        if (checkLoginRateLimit("employee-login", request, employeeCode)) return null;
-        if (isPinGuessLimited(employeeCode)) return null;
+        if (await checkLoginRateLimit("employee-login", request, employeeCode)) return null;
+        if (await isPinGuessLimited(employeeCode)) return null;
 
         const user = await prisma.user.findUnique({ where: { employeeCode } });
         if (!user || user.role !== "EMPLOYEE" || !user.pinHash || !user.active) {

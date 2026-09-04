@@ -32,3 +32,17 @@ export function csvField(value: string): string {
 export function buildCsv(header: string, rows: string[]): string {
   return `${header}\n${rows.join("\n")}`;
 }
+
+/**
+ * Hard ceiling for any admin CSV export query (attendance, leave requests).
+ * Neither export route has a `where` by default — an admin expects "export
+ * everything" to mean everything — so rather than silently narrowing that,
+ * this caps the worst case: a `take` this size is already tens of thousands
+ * of employee-days away from anything this app's actual usage produces
+ * today, but bounds query time/memory instead of letting an ever-growing,
+ * never-purged table (see Attendance's own schema comment) eventually time
+ * out or OOM the export route. `?from=`/`?to=` query params (YYYY-MM-DD) let
+ * an admin scope a specific export themselves when they want to stay well
+ * under this without waiting for it to become a real problem.
+ */
+export const CSV_EXPORT_ROW_CAP = 50_000;

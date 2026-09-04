@@ -2,12 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireMobileUser } from "@/lib/mobileAuth";
 import { haversineDistanceMeters } from "@/lib/geofence";
-
-function startOfToday() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
+import { startOfISTDay } from "@/lib/istTime";
 
 // Powers the mobile Map screen's "Field Day" view — distance covered (summed
 // from today's location pings, same pings /api/kiosk/location already
@@ -19,7 +14,7 @@ export async function GET(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const todaysCheckIn = await prisma.attendance.findFirst({
-    where: { userId: auth.sub, type: "CHECK_IN", timestamp: { gte: startOfToday() } },
+    where: { userId: auth.sub, type: "CHECK_IN", timestamp: { gte: startOfISTDay() } },
     orderBy: { timestamp: "desc" },
   });
 

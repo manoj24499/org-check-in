@@ -19,10 +19,11 @@
  * its `message` straight through to the caller rather than guessing at
  * every possible `status` string.
  *
- * POST /embed's response shape isn't documented anywhere (its OpenAPI schema
- * just shows `{}`) — embedFace() below logs the raw response the first few
- * times it's used so that shape can be confirmed/tightened once real
- * enrollments have gone through.
+ * POST /embed's response shape wasn't documented anywhere when this was
+ * first written (its OpenAPI schema just showed `{}`) — confirmed since via
+ * real enrollments, so the raw-response logging that used to be here (a
+ * biometric similarity score, logged on every single check-in indefinitely)
+ * has been removed; the fields actually used are typed below.
  */
 
 export type FaceVerifyResult =
@@ -81,7 +82,6 @@ export async function verifyFace(
       body: form,
       signal: controller.signal,
     });
-    console.log(`face res: ${res}`);
     if (!res.ok) {
       return {
         outcome: "unavailable",
@@ -90,7 +90,6 @@ export async function verifyFace(
     }
 
     const data: FaceVerifyResponse = await res.json();
-    console.log(`face data: ${JSON.stringify(data)}`);
     const similarity =
       typeof data.similarity === "number" ? data.similarity : null;
 
@@ -154,9 +153,6 @@ export async function embedFace(
     }
 
     const data: FaceVerifyResponse = await res.json().catch(() => ({}));
-    // Shape of /embed's response isn't documented — log it raw until it's
-    // been observed for real (see file header) so this can be tightened.
-    console.log(`face embed response for ${employeeCode}: ${JSON.stringify(data)}`);
 
     if (data.success === false) {
       return { outcome: "failed", message: data.message || "Face enrollment failed." };

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { computeWorkedMs, computeFieldOfficeSplit } from "@/lib/attendanceHours";
+import { startOfISTDay } from "@/lib/istTime";
 import StatusClient from "./StatusClient";
 
 export default async function KioskStatusPage({ params }: { params: Promise<{ id: string }> }) {
@@ -22,8 +23,7 @@ export default async function KioskStatusPage({ params }: { params: Promise<{ id
 
   if (record.type === "CHECK_OUT") {
     // Find the corresponding check-in for today
-    const todayStart = new Date(record.timestamp);
-    todayStart.setHours(0, 0, 0, 0);
+    const todayStart = startOfISTDay(record.timestamp);
 
     const checkInRecord = await prisma.attendance.findFirst({
       where: {

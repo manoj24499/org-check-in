@@ -1,4 +1,5 @@
 import { ipAddress } from "@vercel/functions";
+import { prisma } from "@/lib/prisma";
 
 /**
  * Resolves the caller's IP for use as a rate-limit key. `X-Forwarded-For` is
@@ -17,19 +18,33 @@ export function getClientIp(request: Request): string {
   return ipAddress(request) ?? request.headers.get("x-forwarded-for") ?? "unknown";
 }
 
-// Simple in-memory rate limiter (per-process). Good enough for a single
-// small kiosk device; swap for Upstash/Redis if you deploy multiple instances.
-const buckets = new Map<string, { count: number; resetAt: number }>();
-
-export function isRateLimited(key: string, windowMs = 60_000, max = 20): boolean {
-  const now = Date.now();
-  const entry = buckets.get(key);
-  if (!entry || now > entry.resetAt) {
-    buckets.set(key, { count: 1, resetAt: now + windowMs });
-    return false;
-  }
-  entry.count += 1;
-  return entry.count > max;
+/**
+ * Postgres-backed fixed-window rate limiter — one shared source of truth
+ * regardless of how many concurrent instances of this app happen to be
+ * running (see the schema comment on RateLimitBucket for why an in-memory
+ * `Map` here wasn't actually safe to assume single-instance). One bucket
+ * row per key, reset in place once its window has passed rather than
+ * accumulating a new row per window.
+ *
+ * The increment-or-reset is a single atomic `INSERT ... ON CONFLICT DO
+ * UPDATE`, so two concurrent callers racing on the same key still serialize
+ * correctly at the database level (Postgres takes a row lock on the
+ * conflicting key) instead of both reading a stale count and undercounting
+ * — the exact failure mode a naive read-then-write "check, then increment"
+ * would have.
+ */
+export async function isRateLimited(key: string, windowMs = 60_000, max = 20): Promise<boolean> {
+  const now = new Date();
+  const resetAt = new Date(now.getTime() + windowMs);
+  const rows = await prisma.$queryRaw<{ count: number }[]>`
+    INSERT INTO "RateLimitBucket" (key, count, "resetAt")
+    VALUES (${key}, 1, ${resetAt})
+    ON CONFLICT (key) DO UPDATE SET
+      count = CASE WHEN "RateLimitBucket"."resetAt" > ${now} THEN "RateLimitBucket".count + 1 ELSE 1 END,
+      "resetAt" = CASE WHEN "RateLimitBucket"."resetAt" > ${now} THEN "RateLimitBucket"."resetAt" ELSE ${resetAt} END
+    RETURNING count;
+  `;
+  return rows[0].count > max;
 }
 
 // Deliberately shared by every entry point that checks a PIN against an
@@ -45,6 +60,6 @@ export function isRateLimited(key: string, windowMs = 60_000, max = 20): boolean
 const PIN_GUESS_WINDOW_MS = 5 * 60_000;
 const PIN_GUESS_MAX = 10;
 
-export function isPinGuessLimited(employeeCode: string): boolean {
+export function isPinGuessLimited(employeeCode: string): Promise<boolean> {
   return isRateLimited(`pin-guess:${employeeCode}`, PIN_GUESS_WINDOW_MS, PIN_GUESS_MAX);
 }

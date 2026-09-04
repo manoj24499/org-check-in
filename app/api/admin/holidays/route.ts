@@ -2,12 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
-
-function startOfDay(date: Date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
+import { parseDateOnlyKey, istDateKey } from "@/lib/istTime";
 
 /** This year's public holidays (or a given ?year=), for the holiday
  * calendar manager. */
@@ -16,9 +11,9 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const yearParam = req.nextUrl.searchParams.get("year");
-  const year = yearParam ? Number(yearParam) : new Date().getFullYear();
+  const year = yearParam ? Number(yearParam) : Number(istDateKey().slice(0, 4));
   const holidays = await prisma.publicHoliday.findMany({
-    where: { date: { gte: new Date(year, 0, 1), lt: new Date(year + 1, 0, 1) } },
+    where: { date: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) } },
     orderBy: { date: "asc" },
   });
 
@@ -42,8 +37,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid input." }, { status: 400 });
   }
 
-  const date = startOfDay(new Date(parsed.data.date));
-  if (Number.isNaN(date.getTime())) {
+  const date = parseDateOnlyKey(parsed.data.date);
+  if (!date) {
     return NextResponse.json({ error: "Invalid date." }, { status: 400 });
   }
 

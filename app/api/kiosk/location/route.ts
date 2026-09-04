@@ -8,6 +8,7 @@ import type { CheckInMode } from "@prisma/client";
 import { sendPushNotification } from "@/lib/pushNotifications";
 import { combineDateAndShiftTime } from "@/lib/shiftTime";
 import { loadShiftAssignments, shiftForDate } from "@/lib/shiftAssignment";
+import { istDateKey } from "@/lib/istTime";
 
 // A ping streak only counts as "consecutive" if readings are this close
 // together — otherwise irregular/throttled background delivery (the app was
@@ -293,6 +294,7 @@ async function evaluateTimedPermission(
             type: "CHECK_OUT",
             method: "AUTO",
             timestamp: permission.endTime,
+            dayKey: istDateKey(permission.endTime),
           },
         }),
       ]);
@@ -345,7 +347,7 @@ export async function POST(req: NextRequest) {
   // Generous enough for many employees behind one shared office IP each
   // pinging ~once a minute (plus the occasional immediate wake-up ping),
   // while still guarding against genuine abuse.
-  if (isRateLimited(`location:${ip}`, 60_000, 120)) {
+  if (await isRateLimited(`location:${ip}`, 60_000, 120)) {
     return NextResponse.json({ error: "Too many requests." }, { status: 429 });
   }
 

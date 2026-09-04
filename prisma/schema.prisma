@@ -6,6 +6,23 @@ datasource db {
   provider = "postgresql"
 }
 
+// Backs lib/rateLimit.ts. Was an in-process `Map` — correct only if this app
+// never runs as more than one concurrent instance, which isn't actually
+// guaranteed on Vercel (Fluid Compute pools/reuses instances but can still
+// scale out multiple concurrent ones under real load) — under any such
+// scaling, each instance had its own empty Map, silently multiplying the
+// effective limit (e.g. the 10-guesses/5-min PIN lockout) by however many
+// instances happened to be live. One shared table fixes that regardless of
+// how many instances are actually running. Bounded in size by the number of
+// distinct keys ever used (per-employeeCode and per-IP buckets, reset in
+// place rather than a new row per time window) — not an ever-growing table
+// the way Attendance is.
+model RateLimitBucket {
+  key     String   @id
+  count   Int
+  resetAt DateTime
+}
+
 enum Role {
   ADMIN
   EMPLOYEE
@@ -79,6 +96,17 @@ model User {
 
   // Employee kiosk auth (only set for EMPLOYEE role)
   pinHash String?
+
+  // Embedded in every mobile access/refresh JWT at sign time (see
+  // lib/mobileAuth.ts) and checked against this column on every use —
+  // bumping it invalidates every previously issued mobile token at once.
+  // Used specifically by /api/mobile/change-pin so a stolen token pair
+  // doesn't survive the legitimate employee changing their PIN (previously
+  // it did, for up to the refresh token's full 30-day lifetime). That route
+  // immediately issues a fresh pair reflecting the new version in its own
+  // response, so the legitimate device's *current* session isn't logged out
+  // by its own PIN change — only any other outstanding copy is.
+  tokenVersion Int @default(0)
 
   // WFH employees are geofenced against their own home location instead of
   // the office; FIELD employees skip geofencing entirely (see
@@ -188,6 +216,18 @@ model Attendance {
   method    AttendanceMethod
   timestamp DateTime         @default(now())
 
+  // IST calendar-day key ("YYYY-MM-DD", see lib/istTime.ts's istDateKey) of
+  // `timestamp`, set at creation and never recomputed. Exists purely to back
+  // the uniqueness constraint below — the actual source of truth for "which
+  // day" is always `timestamp` itself. Enforces "at most one CHECK_IN and
+  // one CHECK_OUT per employee per IST day" at the database level, closing
+  // the race the app-level check alone can't (two concurrent requests both
+  // reading "not checked in yet" before either commits) — see
+  // /api/kiosk/scan's handling of the resulting unique-constraint error.
+  dayKey String
+
+
+
   // Presence photo captured at check-in. `hasPhoto` is a cheap flag so list/
   // calendar views can decide whether to render a thumbnail without ever
   // pulling the (much larger) photo bytes into those queries. Photos older
@@ -226,6 +266,7 @@ model Attendance {
   timedPermissions TimedPermission[]
   workSegments     WorkSegment[]
 
+  @@unique([userId, type, dayKey])
   @@index([userId, timestamp])
   // The admin CSV export (app/api/admin/attendance/export/route.ts) is the
   // one query against this ever-growing, never-purged table with no `where`

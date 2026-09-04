@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import MyPageWorkspace from "@/components/MyPageWorkspace";
 import { computeWorkedMs } from "@/lib/attendanceHours";
 import { getCalendarSpecialDays } from "@/lib/timeOff";
+import { startOfISTMonth, istTimeOfDay } from "@/lib/istTime";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,7 @@ export default async function MyPage() {
   const now = new Date();
   const weekAgo = new Date(now);
   weekAgo.setDate(weekAgo.getDate() - 7);
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthStart = startOfISTMonth(now);
 
   // Pair each check-in with the next check-out (chronologically) to total hours worked in the last 7 days.
   let weeklyHours = 0;
@@ -68,9 +69,13 @@ export default async function MyPage() {
   const lateThisMonth = monthCheckIns.filter((r) => r.lateMinutes !== null && r.lateMinutes > 0).length;
   let avgStart = "—";
   if (monthCheckIns.length > 0) {
+    // IST wall-clock time of day, not the server's own (UTC in production) —
+    // otherwise a 9:05am IST check-in averages in as "03:35".
     const avgMinutes =
-      monthCheckIns.reduce((sum, r) => sum + r.timestamp.getHours() * 60 + r.timestamp.getMinutes(), 0) /
-      monthCheckIns.length;
+      monthCheckIns.reduce((sum, r) => {
+        const t = istTimeOfDay(r.timestamp);
+        return sum + t.hours * 60 + t.minutes;
+      }, 0) / monthCheckIns.length;
     const h = Math.floor(avgMinutes / 60);
     const m = Math.round(avgMinutes % 60);
     avgStart = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;

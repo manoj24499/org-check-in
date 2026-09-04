@@ -3,12 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireMobileUser } from "@/lib/mobileAuth";
 import { countLeaveDays, getLeaveBalances } from "@/lib/timeOff";
-
-function startOfDay(date: Date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
+import { parseDateOnlyKey, startOfISTDay, endOfISTDay, todayDateOnlyIST, istDateKey } from "@/lib/istTime";
 
 const bodySchema = z.object({
   type: z.enum(["CASUAL", "SICK", "EARNED"]),
@@ -34,26 +29,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
 
-  const startDate = startOfDay(new Date(parsed.data.startDate));
-  const endDate = startOfDay(new Date(parsed.data.endDate));
-  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+  // startDate/endDate arrive as plain "YYYY-MM-DD" calendar dates (same
+  // convention as PublicHoliday.date) and are parsed the same
+  // timezone-independent way — see lib/istTime.ts.
+  const startDate = parseDateOnlyKey(parsed.data.startDate);
+  const endDate = parseDateOnlyKey(parsed.data.endDate);
+  if (!startDate || !endDate) {
     return NextResponse.json({ error: "Invalid date." }, { status: 400 });
   }
   if (endDate < startDate) {
     return NextResponse.json({ error: "End date must be on or after the start date." }, { status: 400 });
   }
-  const today = startOfDay(new Date());
+  const today = todayDateOnlyIST();
   if (startDate < today) {
     return NextResponse.json({ error: "Leave can't be requested for a past date." }, { status: 400 });
   }
 
   // A day already worked can't also be a leave day — refuse the overlap
-  // rather than silently accepting a contradictory record.
+  // rather than silently accepting a contradictory record. startDate/endDate
+  // are date-only keys, so this needs the true IST day window to compare
+  // against Attendance.timestamp (a real instant).
   const alreadyWorked = await prisma.attendance.findFirst({
     where: {
       userId: auth.sub,
       type: "CHECK_IN",
-      timestamp: { gte: startDate, lt: new Date(endDate.getTime() + 24 * 60 * 60 * 1000) },
+      timestamp: { gte: startOfISTDay(startDate), lte: endOfISTDay(endDate) },
     },
   });
   if (alreadyWorked) {
@@ -126,10 +126,13 @@ export async function GET(req: NextRequest) {
   const auth = await requireMobileUser(req);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const year = new Date().getFullYear();
+  const year = Number(istDateKey().slice(0, 4));
   const [requests, balances] = await Promise.all([
     prisma.timeOffRequest.findMany({
-      where: { userId: auth.sub, startDate: { gte: new Date(year, 0, 1), lt: new Date(year + 1, 0, 1) } },
+      where: {
+        userId: auth.sub,
+        startDate: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) },
+      },
       orderBy: { startDate: "desc" },
     }),
     getLeaveBalances(auth.sub),

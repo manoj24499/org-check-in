@@ -1,15 +1,29 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
-import { csvField } from "@/lib/csv";
+import { csvField, CSV_EXPORT_ROW_CAP } from "@/lib/csv";
+import { parseDateOnlyKey } from "@/lib/istTime";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await requireAdmin();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  // Optional scoping — same convention as the attendance export (see its
+  // own comment): omitted, this still exports everything, just capped at
+  // CSV_EXPORT_ROW_CAP as a safety net against unbounded growth.
+  const fromParam = req.nextUrl.searchParams.get("from");
+  const toParam = req.nextUrl.searchParams.get("to");
+  const from = fromParam ? parseDateOnlyKey(fromParam) : null;
+  const to = toParam ? parseDateOnlyKey(toParam) : null;
+  if ((fromParam && !from) || (toParam && !to)) {
+    return NextResponse.json({ error: "Invalid from/to date." }, { status: 400 });
+  }
+
   const requests = await prisma.timeOffRequest.findMany({
+    where: from || to ? { startDate: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : undefined,
     orderBy: { startDate: "desc" },
     include: { user: true },
+    take: CSV_EXPORT_ROW_CAP,
   });
 
   const header =

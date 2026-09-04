@@ -1,24 +1,31 @@
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
+import { istDateKey } from "@/lib/istTime";
 
 export type TimeOffType = "CASUAL" | "SICK" | "EARNED";
 
 const LEAVE_TYPES: TimeOffType[] = ["CASUAL", "SICK", "EARNED"];
 
+// start/endDate are date-only fields — UTC midnight of the picked calendar
+// date (see lib/istTime.ts's parseDateOnlyKey, used when they're created) —
+// so this operates in UTC explicitly rather than via the server's local
+// clock (previously `setHours`/`getFullYear` etc., a no-op on Vercel's UTC
+// clock today, but only by coincidence — silently wrong the moment the
+// server's timezone isn't UTC).
 function startOfDay(date: Date): Date {
   const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
+  d.setUTCHours(0, 0, 0, 0);
   return d;
 }
 
-/** Every calendar date from start to end inclusive, at local midnight. */
+/** Every calendar date from start to end inclusive, at UTC midnight. */
 function enumerateDates(start: Date, end: Date): Date[] {
   const dates: Date[] = [];
   const cur = startOfDay(start);
   const last = startOfDay(end);
   while (cur.getTime() <= last.getTime()) {
     dates.push(new Date(cur));
-    cur.setDate(cur.getDate() + 1);
+    cur.setUTCDate(cur.getUTCDate() + 1);
   }
   return dates;
 }
@@ -39,7 +46,7 @@ export async function countLeaveDays(start: Date, end: Date): Promise<number> {
 }
 
 function dateKey(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
 
 const TYPE_LABEL: Record<TimeOffType, string> = {
@@ -99,9 +106,12 @@ export interface LeaveBalance {
  * AppSettings) never has to rewrite anyone's history. */
 export async function getLeaveBalances(userId: string): Promise<LeaveBalance[]> {
   const settings = await getSettings();
-  const year = new Date().getFullYear();
-  const yearStart = new Date(year, 0, 1);
-  const yearEnd = new Date(year + 1, 0, 1);
+  // The IST calendar year, not the server's local one — right after IST
+  // midnight on Jan 1, the server (UTC) is still in the old year for the
+  // next 5.5 hours, which would otherwise show last year's balances.
+  const year = Number(istDateKey().slice(0, 4));
+  const yearStart = new Date(Date.UTC(year, 0, 1));
+  const yearEnd = new Date(Date.UTC(year + 1, 0, 1));
 
   const approved = await prisma.timeOffRequest.findMany({
     where: { userId, status: "APPROVED", startDate: { gte: yearStart, lt: yearEnd } },

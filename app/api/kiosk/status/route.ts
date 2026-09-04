@@ -5,12 +5,7 @@ import { getSettings } from "@/lib/settings";
 import { requireMobileUser } from "@/lib/mobileAuth";
 import { resolveGeofenceTarget } from "@/lib/geofenceTarget";
 import { haversineDistanceMeters } from "@/lib/geofence";
-
-function startOfToday() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
+import { startOfISTDay } from "@/lib/istTime";
 
 // Lightweight, PIN-less lookup so the kiosk can steer an employee to the
 // right button (Check In vs Check Out) and warn them about a forgotten
@@ -23,7 +18,7 @@ function startOfToday() {
 // open to "guess anyone's employeeCode from anywhere on the internet".
 export async function GET(req: NextRequest) {
   const ip = getClientIp(req);
-  if (isRateLimited(`status:${ip}`, 60_000, 60)) {
+  if (await isRateLimited(`status:${ip}`, 60_000, 60)) {
     return NextResponse.json({ error: "Too many attempts." }, { status: 429 });
   }
 
@@ -69,7 +64,7 @@ export async function GET(req: NextRequest) {
   }
 
   const todaysRecords = await prisma.attendance.findMany({
-    where: { userId: user.id, timestamp: { gte: startOfToday() } },
+    where: { userId: user.id, timestamp: { gte: startOfISTDay() } },
     orderBy: { timestamp: "asc" },
   });
 

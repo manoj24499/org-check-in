@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
 
 async function handlePost(req: NextRequest) {
   const ip = getClientIp(req);
-  if (isRateLimited(`mobile-login:${ip}`, 60_000, 10)) {
+  if (await isRateLimited(`mobile-login:${ip}`, 60_000, 10)) {
     return NextResponse.json(
       { error: "Too many attempts. Please wait a moment and try again." },
       { status: 429 },
@@ -47,7 +47,7 @@ async function handlePost(req: NextRequest) {
   // across all of them, keyed only on employeeCode, so guesses against one
   // specific account are capped no matter which entry point or how many
   // source IPs an attacker uses.
-  if (isPinGuessLimited(parsed.data.employeeCode)) {
+  if (await isPinGuessLimited(parsed.data.employeeCode)) {
     return NextResponse.json(
       { error: "Too many attempts for this employee code. Please wait a few minutes and try again." },
       { status: 429 },

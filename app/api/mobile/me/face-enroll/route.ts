@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   const auth = await requireMobileUser(req);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  if (isRateLimited(`face-enroll:${auth.sub}`, 60_000, 5)) {
+  if (await isRateLimited(`face-enroll:${auth.sub}`, 60_000, 5)) {
     return NextResponse.json(
       { error: "Too many attempts. Please wait a moment and try again." },
       { status: 429 },

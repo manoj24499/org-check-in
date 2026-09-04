@@ -5,34 +5,20 @@ import { computeTotalDistanceMeters, clusterPings } from "@/lib/locationClusteri
 import { reverseGeocode } from "@/lib/geocoding";
 import { getSettings } from "@/lib/settings";
 import { computeFieldOfficeSplit } from "@/lib/attendanceHours";
+import { startOfISTDay, endOfISTDay, istDateKey, parseDateOnlyKey, todayDateOnlyIST } from "@/lib/istTime";
 
-function startOfDay(date: Date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function endOfDay(date: Date) {
-  const d = new Date(date);
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
-
+// `day` is a date-only value (UTC midnight of the picked calendar date), so
+// it always falls inside the correct IST calendar day — startOfISTDay/
+// endOfISTDay on it recovers the true IST day window to query real
+// timestamps (LocationPing/Attendance) against. Previously this used the
+// server's local clock for both the window and the display formatting
+// (`date.getFullYear()` etc., despite that comment's intent to avoid exactly
+// this class of bug) — a no-op on Vercel's UTC clock, but wrong the moment
+// the server's timezone isn't UTC, and always wrong for `mostRecentDataDate`
+// below, which formats a real timestamp rather than this date-only `day`.
 function parseDateParam(value: string | null): Date {
-  if (!value) return new Date();
-  const parsed = new Date(`${value}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
-}
-
-// `date.toISOString().slice(0, 10)` converts to UTC first — for any
-// timezone ahead of UTC (e.g. IST), local midnight rolls back to the
-// previous UTC calendar day, silently shifting every date by one. This
-// reads the *local* year/month/day directly instead.
-function formatDateKey(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  if (!value) return todayDateOnlyIST();
+  return parseDateOnlyKey(value) ?? todayDateOnlyIST();
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -44,7 +30,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const [pings, mostRecentPing, dayRecords, settings, existingReimbursement] = await Promise.all([
     prisma.locationPing.findMany({
-      where: { userId: id, timestamp: { gte: startOfDay(day), lte: endOfDay(day) } },
+      where: { userId: id, timestamp: { gte: startOfISTDay(day), lte: endOfISTDay(day) } },
       orderBy: { timestamp: "asc" },
     }),
     prisma.locationPing.findFirst({
@@ -52,17 +38,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       orderBy: { timestamp: "desc" },
     }),
     prisma.attendance.findMany({
-      where: { userId: id, timestamp: { gte: startOfDay(day), lte: endOfDay(day) } },
+      where: { userId: id, timestamp: { gte: startOfISTDay(day), lte: endOfISTDay(day) } },
       orderBy: { timestamp: "asc" },
       include: { pauses: true, workSegments: true },
     }),
     getSettings(),
-    prisma.reimbursement.findUnique({ where: { userId_date: { userId: id, date: startOfDay(day) } } }),
+    // Reimbursement.date is that same date-only key, unchanged — no
+    // IST-window conversion here (see reimbursement/route.ts).
+    prisma.reimbursement.findUnique({ where: { userId_date: { userId: id, date: day } } }),
   ]);
 
   const todaysCheckIns = dayRecords.filter((r) => r.type === "CHECK_IN");
   const checkIn = todaysCheckIns[0];
-  const checkOut = dayRecords.find((r) => r.type === "CHECK_OUT" && r.timestamp > (checkIn?.timestamp ?? day));
+  const checkOut = dayRecords.find(
+    (r) => r.type === "CHECK_OUT" && r.timestamp > (checkIn?.timestamp ?? startOfISTDay(day)),
+  );
 
   // Field/Office hour split — only meaningful once the day has actually
   // ended (checked out); a still-open segment would otherwise keep growing
@@ -106,7 +96,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   );
 
   return NextResponse.json({
-    date: formatDateKey(day),
+    date: istDateKey(day),
     totalDistanceMeters,
     hoursSplit: hoursSplit
       ? { fieldHours: hoursSplit.fieldMs / 3_600_000, officeHours: hoursSplit.officeMs / 3_600_000 }
@@ -121,7 +111,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       longitude: v.longitude,
       hasPhoto: v.hasPhoto,
     })),
-    mostRecentDataDate: mostRecentPing ? formatDateKey(mostRecentPing.timestamp) : null,
+    mostRecentDataDate: mostRecentPing ? istDateKey(mostRecentPing.timestamp) : null,
     defaultRatePerKm: settings.reimbursementRatePerKm,
     reimbursement: existingReimbursement
       ? {

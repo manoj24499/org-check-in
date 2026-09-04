@@ -24,16 +24,18 @@ export type MobileTokenPayload = {
   employeeCode: string;
   role: "ADMIN" | "EMPLOYEE";
   type: TokenType;
+  tokenVersion: number;
 };
 
 type TokenSubject = {
   id: string;
   employeeCode: string;
   role: string;
+  tokenVersion: number;
 };
 
 async function sign(user: TokenSubject, type: TokenType, ttl: string) {
-  return new SignJWT({ employeeCode: user.employeeCode, role: user.role, type })
+  return new SignJWT({ employeeCode: user.employeeCode, role: user.role, type, tokenVersion: user.tokenVersion })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(user.id)
     .setIssuedAt()
@@ -56,10 +58,25 @@ export async function verifyMobileToken(
   try {
     const { payload } = await jwtVerify(token, secretKey());
     if (payload.type !== expectedType || typeof payload.sub !== "string") return null;
-    return payload as unknown as MobileTokenPayload;
+    // Tokens signed before tokenVersion existed carry no such claim — treat
+    // that the same as version 0 (everyone's starting DB value), so this
+    // change doesn't force-log-out every already-logged-in device on
+    // deploy day.
+    return { ...payload, tokenVersion: typeof payload.tokenVersion === "number" ? payload.tokenVersion : 0 } as unknown as MobileTokenPayload;
   } catch {
     return null;
   }
+}
+
+/**
+ * Checks a verified token's tokenVersion claim against the account's
+ * current one — bumped by /api/mobile/change-pin so a stolen token pair
+ * can't outlive the legitimate employee changing their PIN (see the schema
+ * comment on User.tokenVersion). The JWT signature/expiry alone only proves
+ * the token was validly issued, not that it hasn't since been superseded.
+ */
+function tokenVersionMatches(payload: MobileTokenPayload, user: { tokenVersion: number }): boolean {
+  return payload.tokenVersion === user.tokenVersion;
 }
 
 /**
@@ -81,8 +98,10 @@ export async function requireMobileUser(req: Request): Promise<MobileTokenPayloa
   const payload = await verifyMobileToken(token, "access");
   if (!payload) return null;
 
-  const user = await prisma.user.findUnique({ where: { id: payload.sub }, select: { active: true } });
-  if (!user?.active) return null;
+  const user = await prisma.user.findUnique({ where: { id: payload.sub }, select: { active: true, tokenVersion: true } });
+  if (!user?.active || !tokenVersionMatches(payload, user)) return null;
 
   return payload;
 }
+
+export { tokenVersionMatches };

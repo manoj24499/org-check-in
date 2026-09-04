@@ -1,15 +1,16 @@
-const SHIFT_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
+import { combineISTDateAndTime } from "@/lib/istTime";
 
-/** Combines an "HH:mm" shift time with the calendar date of `referenceDate`.
- * Shared by /api/kiosk/scan (lateness classification, stale-checkin
- * auto-checkout), /api/kiosk/location (Timed Permission auto-checkout), and
- * /api/admin/attendance/[id] (recomputing lateness on an edited check-in). */
+/** Combines an "HH:mm" shift time (interpreted as IST — see lib/istTime.ts)
+ * with the IST calendar date of `referenceDate`. Shared by /api/kiosk/scan
+ * (lateness classification, stale-checkin auto-checkout), /api/kiosk/location
+ * (Timed Permission auto-checkout), and /api/admin/attendance/[id]
+ * (recomputing lateness on an edited check-in).
+ *
+ * Previously used the server's local clock (`Date.setHours`), which is UTC
+ * in production (Vercel) — a "09:00" shift start silently became 9:00 AM
+ * UTC = 2:30 PM IST, so lateness was never detected before that time. */
 export function combineDateAndShiftTime(referenceDate: Date, hhmm: string): Date | null {
-  const match = SHIFT_TIME_PATTERN.exec(hhmm);
-  if (!match) return null;
-  const result = new Date(referenceDate);
-  result.setHours(Number(match[1]), Number(match[2]), 0, 0);
-  return result;
+  return combineISTDateAndTime(referenceDate, hhmm);
 }
 
 export type Lateness = { lateMinutes: number | null; leaveType: "NONE" | "PERMISSION" | "HALF_DAY" };

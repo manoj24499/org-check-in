@@ -4,12 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireMobileUser } from "@/lib/mobileAuth";
 import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
 import { PayloadTooLargeError, readJsonWithLimit } from "@/lib/readJsonBody";
-
-function startOfToday() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
+import { startOfISTDay } from "@/lib/istTime";
 
 // See kiosk/scan/route.ts's identical constant for why this is larger than
 // MAX_PHOTO_BYTES: it bounds the raw request body (base64 inflates size by
@@ -26,7 +21,7 @@ const createSchema = z.object({
 /** Today's active FIELD check-in — the parent every FieldVisit hangs off. */
 async function findTodaysFieldCheckIn(userId: string) {
   return prisma.attendance.findFirst({
-    where: { userId, type: "CHECK_IN", timestamp: { gte: startOfToday() } },
+    where: { userId, type: "CHECK_IN", timestamp: { gte: startOfISTDay() } },
     orderBy: { timestamp: "desc" },
   });
 }

@@ -5,18 +5,7 @@ import { requireAdmin } from "@/lib/requireAdmin";
 import { computeLateness } from "@/lib/shiftTime";
 import { loadShiftAssignments, shiftForDate } from "@/lib/shiftAssignment";
 import { getSettings } from "@/lib/settings";
-
-function startOfDay(date: Date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function endOfDay(date: Date) {
-  const d = new Date(date);
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
+import { startOfISTDay, endOfISTDay } from "@/lib/istTime";
 
 const bodySchema = z.object({
   timestamp: z.string(),
@@ -49,8 +38,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Invalid date." }, { status: 400 });
   }
 
-  const dayStart = startOfDay(record.timestamp);
-  const dayEnd = endOfDay(record.timestamp);
+  const dayStart = startOfISTDay(record.timestamp);
+  const dayEnd = endOfISTDay(record.timestamp);
   if (newTimestamp < dayStart || newTimestamp > dayEnd) {
     return NextResponse.json({ error: "Only the time can be changed, not the day." }, { status: 400 });
   }

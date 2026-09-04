@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (isRateLimited(`change-pin:${session.user.id}`, 60_000, 5)) {
+  if (await isRateLimited(`change-pin:${session.user.id}`, 60_000, 5)) {
     return NextResponse.json(
       { error: "Too many attempts. Please wait a moment and try again." },
       { status: 429 },
@@ -47,7 +47,18 @@ export async function POST(req: NextRequest) {
   }
 
   const newPinHash = await hashPin(parsed.data.newPin);
-  await prisma.user.update({ where: { id: user.id }, data: { pinHash: newPinHash } });
+  // Bumping tokenVersion invalidates every mobile access/refresh token
+  // issued before this change (see the schema comment on
+  // User.tokenVersion) — this PIN is shared with the mobile app/kiosk
+  // login, so a PIN change made here needs the same "stolen mobile token
+  // doesn't survive it" guarantee as changing it from the mobile app
+  // itself (see /api/mobile/change-pin). No mobile tokens to reissue here
+  // — this route only ever runs inside a NextAuth web session, a separate
+  // token system tokenVersion doesn't touch.
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { pinHash: newPinHash, tokenVersion: { increment: 1 } },
+  });
 
   return NextResponse.json({ success: true });
 }

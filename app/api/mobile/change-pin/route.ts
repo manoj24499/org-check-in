@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { hashPin, verifyPin } from "@/lib/credentials";
 import { isRateLimited } from "@/lib/rateLimit";
-import { requireMobileUser } from "@/lib/mobileAuth";
+import { requireMobileUser, signAccessToken, signRefreshToken } from "@/lib/mobileAuth";
 
 const bodySchema = z.object({
   currentPin: z.string().min(4).max(10),
@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
   const auth = await requireMobileUser(req);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  if (isRateLimited(`change-pin:${auth.sub}`, 60_000, 5)) {
+  if (await isRateLimited(`change-pin:${auth.sub}`, 60_000, 5)) {
     return NextResponse.json(
       { error: "Too many attempts. Please wait a moment and try again." },
       { status: 429 },
@@ -49,7 +49,21 @@ export async function POST(req: NextRequest) {
   }
 
   const newPinHash = await hashPin(parsed.data.newPin);
-  await prisma.user.update({ where: { id: user.id }, data: { pinHash: newPinHash } });
+  // Bumping tokenVersion invalidates every mobile token issued before this
+  // moment (see the schema comment on User.tokenVersion) — including a
+  // stolen copy of *this device's own* previous token pair, which is the
+  // whole point. That would also log this device itself out on its very
+  // next request, so a fresh pair reflecting the new version is issued
+  // below and returned here instead of forcing an immediate re-login.
+  const updated = await prisma.user.update({
+    where: { id: user.id },
+    data: { pinHash: newPinHash, tokenVersion: { increment: 1 } },
+  });
 
-  return NextResponse.json({ success: true });
+  const [accessToken, refreshToken] = await Promise.all([
+    signAccessToken(updated),
+    signRefreshToken(updated),
+  ]);
+
+  return NextResponse.json({ success: true, accessToken, refreshToken });
 }

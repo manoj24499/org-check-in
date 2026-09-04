@@ -3,11 +3,12 @@ import { Download } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import LeaveRequestsPanel from "@/components/LeaveRequestsPanel";
 import HolidayManager from "@/components/HolidayManager";
+import { istDateKey } from "@/lib/istTime";
 
 export const dynamic = "force-dynamic";
 
 export default async function LeavePage() {
-  const year = new Date().getFullYear();
+  const year = Number(istDateKey().slice(0, 4));
 
   const [pendingRaw, holidaysRaw] = await Promise.all([
     prisma.timeOffRequest.findMany({
@@ -16,7 +17,7 @@ export default async function LeavePage() {
       include: { user: { select: { id: true, employeeCode: true, name: true } } },
     }),
     prisma.publicHoliday.findMany({
-      where: { date: { gte: new Date(year, 0, 1), lt: new Date(year + 1, 0, 1) } },
+      where: { date: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) } },
       orderBy: { date: "asc" },
     }),
   ]);

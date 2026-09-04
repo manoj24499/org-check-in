@@ -2,17 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
+import { parseDateOnlyKey, todayDateOnlyIST } from "@/lib/istTime";
 
-function startOfDay(date: Date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
+// Reimbursement.date is a date-only key (UTC midnight of the calendar date —
+// see lib/istTime.ts), not a real instant, so this doesn't need IST-day
+// bucketing — it just needs to parse `?date=` deterministically instead of
+// via the server's local clock (previously `new Date(`${value}T00:00:00`)`,
+// which parses as *local* time — a no-op on Vercel's UTC clock today, but
+// silently wrong the moment the server's timezone ever changes).
 function parseDateParam(value: string | null): Date {
-  if (!value) return new Date();
-  const parsed = new Date(`${value}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  if (!value) return todayDateOnlyIST();
+  return parseDateOnlyKey(value) ?? todayDateOnlyIST();
 }
 
 const putSchema = z.object({
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const day = parseDateParam(req.nextUrl.searchParams.get("date"));
 
   const reimbursement = await prisma.reimbursement.findUnique({
-    where: { userId_date: { userId: id, date: startOfDay(day) } },
+    where: { userId_date: { userId: id, date: day } },
   });
 
   return NextResponse.json({ reimbursement });
@@ -57,7 +57,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const date = startOfDay(parseDateParam(parsed.data.date));
+  const date = parseDateParam(parsed.data.date);
 
   const reimbursement = await prisma.reimbursement.upsert({
     where: { userId_date: { userId: id, date } },

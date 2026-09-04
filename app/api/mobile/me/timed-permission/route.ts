@@ -2,16 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireMobileUser } from "@/lib/mobileAuth";
-
-function startOfToday() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
+import { startOfISTDay } from "@/lib/istTime";
 
 /** The employee's currently active (checked-in today, not yet checked out) session. */
 async function findActiveCheckIn(userId: string) {
-  const today = startOfToday();
+  const today = startOfISTDay();
   const checkIn = await prisma.attendance.findFirst({
     where: { userId, type: "CHECK_IN", timestamp: { gte: today } },
     orderBy: { timestamp: "desc" },
@@ -53,7 +48,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "End time must be after start time." }, { status: 400 });
   }
 
-  const today = startOfToday();
+  const today = startOfISTDay();
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
   if (startTime < today || startTime >= tomorrow) {

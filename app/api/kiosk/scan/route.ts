@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { verifyPin } from "@/lib/credentials";
 import { getClientIp, isRateLimited, isPinGuessLimited } from "@/lib/rateLimit";
@@ -11,6 +12,7 @@ import { verifyFace } from "@/lib/faceVerify";
 import { PayloadTooLargeError, readJsonWithLimit } from "@/lib/readJsonBody";
 import { combineDateAndShiftTime, computeLateness } from "@/lib/shiftTime";
 import { loadShiftAssignments, shiftForDate, type WeekdayShiftMap } from "@/lib/shiftAssignment";
+import { startOfISTDay, endOfISTDay, todayDateOnlyIST, istDateKey } from "@/lib/istTime";
 
 const scanSchema = z.object({
   employeeCode: z.string().min(1),
@@ -30,18 +32,6 @@ const scanSchema = z.object({
   // default (FIELD stays ungeofenced, WFH stays geofenced against home).
   checkInMode: z.enum(["OFFICE", "FIELD"]).optional(),
 });
-
-function startOfToday() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function endOfDay(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
 
 /**
  * Auto-closes any earlier day's check-in the employee simply forgot to
@@ -66,7 +56,7 @@ async function autoCloseStaleCheckIns(user: { id: string }, shiftMap: WeekdayShi
   });
 
   for (const checkIn of staleCheckIns) {
-    const dayEnd = endOfDay(checkIn.timestamp);
+    const dayEnd = endOfISTDay(checkIn.timestamp);
 
     const hasCheckOutThatDay = await prisma.attendance.findFirst({
       where: { userId: user.id, type: "CHECK_OUT", timestamp: { gt: checkIn.timestamp, lte: dayEnd } },
@@ -77,20 +67,43 @@ async function autoCloseStaleCheckIns(user: { id: string }, shiftMap: WeekdayShi
     const shiftEnd = shiftThatDay ? combineDateAndShiftTime(checkIn.timestamp, shiftThatDay.endTime) : null;
     const checkoutAt = shiftEnd && shiftEnd > checkIn.timestamp ? shiftEnd : dayEnd;
 
-    await prisma.$transaction([
-      prisma.attendance.create({
-        data: { userId: user.id, type: "CHECK_OUT", method: "AUTO", timestamp: checkoutAt },
-      }),
-      prisma.attendancePause.updateMany({
-        where: { attendanceId: checkIn.id, resumedAt: null },
-        data: { resumedAt: checkoutAt },
-      }),
-      prisma.attendance.update({ where: { id: checkIn.id }, data: { pauseWarningAt: null } }),
-      prisma.workSegment.updateMany({
-        where: { attendanceId: checkIn.id, endedAt: null },
-        data: { endedAt: checkoutAt },
-      }),
-    ]);
+    try {
+      await prisma.$transaction([
+        prisma.attendance.create({
+          data: {
+            userId: user.id,
+            type: "CHECK_OUT",
+            method: "AUTO",
+            timestamp: checkoutAt,
+            dayKey: istDateKey(checkoutAt),
+          },
+        }),
+        prisma.attendancePause.updateMany({
+          where: { attendanceId: checkIn.id, resumedAt: null },
+          data: { resumedAt: checkoutAt },
+        }),
+        prisma.attendance.update({ where: { id: checkIn.id }, data: { pauseWarningAt: null } }),
+        prisma.workSegment.updateMany({
+          where: { attendanceId: checkIn.id, endedAt: null },
+          data: { endedAt: checkoutAt },
+        }),
+      ]);
+    } catch (err) {
+      // A (userId, type, dayKey) collision here means something else already
+      // occupies this exact day's CHECK_OUT slot — seen in practice from
+      // pre-fix data (a mistimed auto-checkout computed under the old,
+      // pre-IST shift-time bug landed on the wrong dayKey and never got
+      // cleaned up). Skip this one stale check-in rather than failing the
+      // whole request — better to leave one old record unclosed than to
+      // block the employee's real check-in today over historical debris.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        console.error(
+          `[autoCloseStaleCheckIns] Skipped stale check-in ${checkIn.id} for user ${user.id}: dayKey collision.`,
+        );
+        continue;
+      }
+      throw err;
+    }
   }
 }
 
@@ -145,7 +158,7 @@ export async function POST(req: NextRequest) {
 
 async function handlePost(req: NextRequest) {
   const ip = getClientIp(req);
-  if (isRateLimited(`scan:${ip}`)) {
+  if (await isRateLimited(`scan:${ip}`)) {
     return NextResponse.json(
       { error: "Too many attempts. Please wait a moment and try again." },
       { status: 429 }
@@ -175,7 +188,7 @@ async function handlePost(req: NextRequest) {
   // so guesses against one account are capped regardless of source IP or
   // entry point. Checked before any photo decoding — no reason to make an
   // attacker do that work first.
-  if (isPinGuessLimited(parsed.data.employeeCode)) {
+  if (await isPinGuessLimited(parsed.data.employeeCode)) {
     return NextResponse.json(
       { error: "Too many attempts for this employee code. Please wait a few minutes and try again." },
       { status: 429 },
@@ -185,25 +198,22 @@ async function handlePost(req: NextRequest) {
   await expireOldPhotos();
 
   // A presence photo is always mandatory for check-in; for check-out it
-  // depends on the admin-configured setting.
-  let photoBuffer: Uint8Array<ArrayBuffer> | null = null;
+  // depends on the admin-configured setting. Only the cheap presence check
+  // happens here — actually decoding it (sharp resize/re-encode of up to
+  // ~5.3MB) waits until after credentials are verified below, so a caller
+  // with no valid employee code/PIN can never force that work. Without
+  // this ordering, isPinGuessLimited above doesn't help: it's keyed by
+  // employeeCode, so an attacker supplying a fresh/nonexistent code on every
+  // request always passes it, then this used to decode a full photo before
+  // ever checking whether the credentials were even plausible.
   const settings = await getSettings();
   const photoRequired =
     parsed.data.action === "CHECK_IN" ||
     (parsed.data.action === "CHECK_OUT" && settings.checkOutPhotoRequired);
 
-  if (photoRequired) {
-    if (!parsed.data.photo) {
-      const verb = parsed.data.action === "CHECK_IN" ? "check in" : "check out";
-      return NextResponse.json({ error: `A photo is required to ${verb}.` }, { status: 400 });
-    }
-    photoBuffer = await decodePhoto(parsed.data.photo);
-    if (!photoBuffer) {
-      return NextResponse.json({ error: "Invalid photo data." }, { status: 400 });
-    }
-    if (photoBuffer.length > MAX_PHOTO_BYTES) {
-      return NextResponse.json({ error: "Photo is too large." }, { status: 413 });
-    }
+  if (photoRequired && !parsed.data.photo) {
+    const verb = parsed.data.action === "CHECK_IN" ? "check in" : "check out";
+    return NextResponse.json({ error: `A photo is required to ${verb}.` }, { status: 400 });
   }
 
   const candidate = await prisma.user.findUnique({
@@ -217,6 +227,20 @@ async function handlePost(req: NextRequest) {
       { error: "Not recognized. Please check your employee code and PIN and try again." },
       { status: 401 }
     );
+  }
+
+  let photoBuffer: Uint8Array<ArrayBuffer> | null = null;
+  if (photoRequired) {
+    // parsed.data.photo's presence was already checked above; TypeScript
+    // doesn't know that check still holds after the credential branch, so
+    // this repeats it narrowly just to satisfy the type.
+    photoBuffer = parsed.data.photo ? await decodePhoto(parsed.data.photo) : null;
+    if (!photoBuffer) {
+      return NextResponse.json({ error: "Invalid photo data." }, { status: 400 });
+    }
+    if (photoBuffer.length > MAX_PHOTO_BYTES) {
+      return NextResponse.json({ error: "Photo is too large." }, { status: 413 });
+    }
   }
 
   // Face verification only runs for employees an admin has explicitly
@@ -249,7 +273,7 @@ async function handlePost(req: NextRequest) {
   // Sweep up any forgotten check-in from a previous day before doing
   // anything else — see autoCloseStaleCheckIns for why this can't wait.
   if (parsed.data.action === "CHECK_IN") {
-    await autoCloseStaleCheckIns(user, shiftMap, startOfToday());
+    await autoCloseStaleCheckIns(user, shiftMap, startOfISTDay());
   }
 
   // An approved leave day blocks check-in outright — being on paid leave and
@@ -258,7 +282,10 @@ async function handlePost(req: NextRequest) {
   // alone: if someone's already checked in (e.g. leave was approved after
   // the fact), they still need a way to close out their day normally.
   if (parsed.data.action === "CHECK_IN") {
-    const today = startOfToday();
+    // TimeOffRequest.startDate/endDate are date-only fields (UTC midnight of
+    // the picked calendar date — see lib/istTime.ts), so this needs that
+    // same date-only encoding of "today", not a real IST-midnight instant.
+    const today = todayDateOnlyIST();
     const onApprovedLeaveToday = await prisma.timeOffRequest.findFirst({
       where: { userId: user.id, status: "APPROVED", startDate: { lte: today }, endDate: { gte: today } },
     });
@@ -325,7 +352,7 @@ async function handlePost(req: NextRequest) {
 
   // An employee may only check in once and check out once per calendar day.
   const todaysRecords = await prisma.attendance.findMany({
-    where: { userId: user.id, timestamp: { gte: startOfToday() } },
+    where: { userId: user.id, timestamp: { gte: startOfISTDay() } },
     orderBy: { timestamp: "asc" },
   });
   const hasCheckedInToday = todaysRecords.some((r) => r.type === "CHECK_IN");
@@ -356,51 +383,70 @@ async function handlePost(req: NextRequest) {
   // transaction form rather than a plain batch. Without this, a failure
   // partway through would leave a check-in with no segment at all, silently
   // breaking Field/Office tracking for that entire day.
-  const record = await prisma.$transaction(async (tx) => {
-    const created = await tx.attendance.create({
-      data: {
-        userId: user.id,
-        type: parsed.data.action,
-        method: "PIN",
-        timestamp: now,
-        lateMinutes: lateness.lateMinutes,
-        leaveType: lateness.leaveType,
-        ...(parsed.data.action === "CHECK_IN" && user.workMode === "FIELD"
-          ? { checkInMode: effectiveWorkMode === "OFFICE" ? "OFFICE" : "FIELD" }
-          : // For WFH, only record a value when they actually chose Office
-            // that day — CheckInMode has no "HOME" value, and leaving the
-            // field null for an ordinary WFH-from-home day (the vast
-            // majority) preserves its existing meaning everywhere else that
-            // reads it, which all assume it's FIELD-specific.
-            parsed.data.action === "CHECK_IN" &&
-              user.workMode === "WFH" &&
-              effectiveWorkMode === "OFFICE"
-            ? { checkInMode: "OFFICE" }
-            : {}),
-        ...(photoBuffer ? { photo: photoBuffer, hasPhoto: true } : {}),
-        faceVerifyStatus,
-        faceSimilarity,
-      },
-    });
-
-    // FIELD-workMode employees get a WorkSegment timeline, starting with
-    // whatever they picked here — see /api/kiosk/location's
-    // evaluateWorkSegment for how it evolves (auto-detected or manually
-    // switched) over the day. OFFICE/WFH employees never get one; their
-    // mode never changes mid-day.
-    if (parsed.data.action === "CHECK_IN" && user.workMode === "FIELD") {
-      await tx.workSegment.create({
+  //
+  // The hasCheckedInToday/hasCheckedOutToday checks above are a read
+  // separate from this write — two concurrent requests can both read "not
+  // checked in yet" before either commits. The real guarantee is the
+  // (userId, type, dayKey) unique constraint on Attendance (see
+  // prisma/schema.prisma): whichever request loses the race gets a unique-
+  // constraint violation here instead of a duplicate row, caught below and
+  // turned into the same friendly error the read-based check above returns.
+  let record;
+  try {
+    record = await prisma.$transaction(async (tx) => {
+      const created = await tx.attendance.create({
         data: {
-          attendanceId: created.id,
-          mode: effectiveWorkMode === "OFFICE" ? "OFFICE" : "FIELD",
-          startedAt: created.timestamp,
-          startMethod: "CHECKIN",
+          userId: user.id,
+          type: parsed.data.action,
+          method: "PIN",
+          timestamp: now,
+          dayKey: istDateKey(now),
+          lateMinutes: lateness.lateMinutes,
+          leaveType: lateness.leaveType,
+          ...(parsed.data.action === "CHECK_IN" && user.workMode === "FIELD"
+            ? { checkInMode: effectiveWorkMode === "OFFICE" ? "OFFICE" : "FIELD" }
+            : // For WFH, only record a value when they actually chose Office
+              // that day — CheckInMode has no "HOME" value, and leaving the
+              // field null for an ordinary WFH-from-home day (the vast
+              // majority) preserves its existing meaning everywhere else that
+              // reads it, which all assume it's FIELD-specific.
+              parsed.data.action === "CHECK_IN" &&
+                user.workMode === "WFH" &&
+                effectiveWorkMode === "OFFICE"
+              ? { checkInMode: "OFFICE" }
+              : {}),
+          ...(photoBuffer ? { photo: photoBuffer, hasPhoto: true } : {}),
+          faceVerifyStatus,
+          faceSimilarity,
         },
       });
-    }
 
-    return created;
-  });
+      // FIELD-workMode employees get a WorkSegment timeline, starting with
+      // whatever they picked here — see /api/kiosk/location's
+      // evaluateWorkSegment for how it evolves (auto-detected or manually
+      // switched) over the day. OFFICE/WFH employees never get one; their
+      // mode never changes mid-day.
+      if (parsed.data.action === "CHECK_IN" && user.workMode === "FIELD") {
+        await tx.workSegment.create({
+          data: {
+            attendanceId: created.id,
+            mode: effectiveWorkMode === "OFFICE" ? "OFFICE" : "FIELD",
+            startedAt: created.timestamp,
+            startMethod: "CHECKIN",
+          },
+        });
+      }
+
+      return created;
+    });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      const message =
+        parsed.data.action === "CHECK_IN" ? "You've already checked in today." : "You've already checked out today.";
+      return NextResponse.json({ error: message }, { status: 409 });
+    }
+    throw err;
+  }
 
   // Closing the loop on auto-pause (see /api/kiosk/location): don't leave a
   // pause dangling open past checkout, and clear any pending grace-period

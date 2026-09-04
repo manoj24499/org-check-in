@@ -1,14 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import DashboardWorkspace from "@/components/DashboardWorkspace";
 import PendingPermissionsPanel from "@/components/PendingPermissionsPanel";
+import { startOfISTDay } from "@/lib/istTime";
 
 export const dynamic = "force-dynamic";
-
-function startOfToday() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
 
 export default async function AdminDashboard() {
   const employeesRaw = await prisma.user.findMany({
@@ -16,7 +11,7 @@ export default async function AdminDashboard() {
     orderBy: { name: "asc" },
     include: {
       attendances: {
-        where: { timestamp: { gte: startOfToday() } },
+        where: { timestamp: { gte: startOfISTDay() } },
         orderBy: { timestamp: "asc" },
       },
     },

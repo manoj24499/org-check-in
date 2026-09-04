@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { signAccessToken, signRefreshToken, verifyMobileToken } from "@/lib/mobileAuth";
+import { signAccessToken, signRefreshToken, verifyMobileToken, tokenVersionMatches } from "@/lib/mobileAuth";
 
 const bodySchema = z.object({ refreshToken: z.string().min(1) });
 
@@ -20,6 +20,13 @@ export async function POST(req: NextRequest) {
   const user = await prisma.user.findUnique({ where: { id: payload.sub } });
   if (!user || user.role !== "EMPLOYEE" || !user.active) {
     return NextResponse.json({ error: "Account is no longer active." }, { status: 401 });
+  }
+  // A superseded refresh token (the PIN was changed since this one was
+  // issued — see the schema comment on User.tokenVersion) is rejected the
+  // same way an expired one is: the client's only path forward from here is
+  // a real login.
+  if (!tokenVersionMatches(payload, user)) {
+    return NextResponse.json({ error: "Invalid or expired session. Please log in again." }, { status: 401 });
   }
 
   // Rotate both tokens on every refresh.
