@@ -14,6 +14,8 @@ export default async function AdminLayout({
   // see new state" pattern the rest of the admin panel already uses.
   const pendingLeaveCount =
     session?.user?.role === "ADMIN" ? await prisma.timeOffRequest.count({ where: { status: "PENDING" } }) : 0;
+  const pendingOvertimeCount =
+    session?.user?.role === "ADMIN" ? await prisma.overtimeRequest.count({ where: { status: "PENDING" } }) : 0;
 
   return (
     <Providers>
@@ -30,7 +32,11 @@ export default async function AdminLayout({
           rather than a fixed max-width, so it scales with the screen.
         */}
         <div className="w-[95%] mx-auto h-full rounded-lg border border-border bg-surface overflow-hidden flex flex-col">
-          <AdminHeader userName={session?.user?.name} pendingLeaveCount={pendingLeaveCount} />
+          <AdminHeader
+            userName={session?.user?.name}
+            pendingLeaveCount={pendingLeaveCount}
+            pendingOvertimeCount={pendingOvertimeCount}
+          />
           <main className="flex-1 overflow-y-auto">{children}</main>
         </div>
       </div>

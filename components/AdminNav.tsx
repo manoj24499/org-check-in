@@ -9,16 +9,19 @@ const LINKS = [
   { href: "/admin/employees", label: "Employees" },
   { href: "/admin/shifts", label: "Shifts" },
   { href: "/admin/leave", label: "Leave" },
+  { href: "/admin/overtime", label: "Overtime" },
   { href: "/admin/office-location", label: "Office location" },
   { href: "/admin/settings", label: "Settings" },
 ];
 
 export default function AdminNav({
   pendingLeaveCount = 0,
+  pendingOvertimeCount = 0,
   stacked = false,
   onNavigate,
 }: {
   pendingLeaveCount?: number;
+  pendingOvertimeCount?: number;
   /** Vertical, full-width, touch-sized rows — used in the mobile dropdown
    * (see AdminHeader) instead of the horizontal-wrap layout desktop uses. */
   stacked?: boolean;
@@ -27,6 +30,10 @@ export default function AdminNav({
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
+  const badgeCountFor: Record<string, number> = {
+    "/admin/leave": pendingLeaveCount,
+    "/admin/overtime": pendingOvertimeCount,
+  };
 
   return (
     <nav className={stacked ? "flex flex-col gap-1" : "flex items-center gap-4 flex-wrap"}>
@@ -49,13 +56,13 @@ export default function AdminNav({
           >
             {!stacked && <span className={`w-3.5 h-[2px] block ${active ? "bg-primary" : "bg-transparent"}`} />}
             {label}
-            {href === "/admin/leave" && pendingLeaveCount > 0 ? (
+            {(badgeCountFor[href] ?? 0) > 0 ? (
               <span
                 className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-white text-[10px] font-semibold tabular-nums ${
                   stacked ? "ml-auto" : ""
                 }`}
               >
-                {pendingLeaveCount}
+                {badgeCountFor[href]}
               </span>
             ) : null}
           </Link>

@@ -141,6 +141,13 @@ model User {
   // someone who was never actually enrolled (see the warning above).
   faceVerificationExempt  Boolean @default(false)
 
+  // Mirrors the mobile app's "Shift reminders" toggle (Profile screen) —
+  // the server is what decides whether to actually send a push (see
+  // /api/kiosk/location's shift-end/overtime-end reminder evaluator), so it
+  // needs the employee's preference, not just the device's notification
+  // permission. Defaults on, matching the toggle's own default.
+  shiftRemindersEnabled Boolean @default(true)
+
   active    Boolean  @default(true)
   // Set the moment an admin deactivates this employee (PATCH .../set-active)
   // — null while active. lib/employeeCleanup.ts's daily job uses this to
@@ -171,10 +178,12 @@ model User {
   @@index([role, active, workMode])
 }
 
-// A named time slot (e.g. "General Shift", 09:00–18:00) an OFFICE employee
-// can be assigned to on any subset of weekdays — see ShiftAssignment.
-// startTime drives the lateness classification in /api/kiosk/scan; endTime
-// is used for the stale-checkin/timed-permission auto-checkout.
+// A named time slot (e.g. "General Shift", 09:00–18:00) an employee can be
+// assigned to on any subset of weekdays — see ShiftAssignment. startTime
+// drives the lateness classification in /api/kiosk/scan (OFFICE-mode only —
+// see computeLateness); endTime is used for the stale-checkin/timed-
+// permission/shift-end-reminder auto-checkout and notifications, which
+// apply regardless of workMode.
 model Shift {
   id        String   @id @default(cuid())
   name      String?
@@ -265,6 +274,14 @@ model Attendance {
   fieldVisits    FieldVisit[]
   timedPermissions TimedPermission[]
   workSegments     WorkSegment[]
+  overtimeRequests OvertimeRequest[]
+
+  // Set the moment the shift-end (or, if an OvertimeRequest is active,
+  // overtime-end) reminder push actually fires for this CHECK_IN — see
+  // /api/kiosk/location's reminder evaluator. Only ever set once per
+  // check-in, so a reminder can never double-send across repeated pings in
+  // the same 10-minute window.
+  shiftReminderSentAt DateTime?
 
   @@unique([userId, type, dayKey])
   @@index([userId, timestamp])
@@ -314,6 +331,55 @@ model TimedPermission {
   // ORDER BY too, not just the filter. Still serves any approvalStatus-only
   // lookup via its leftmost prefix.
   @@index([approvalStatus, createdAt])
+}
+
+enum OvertimeRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// A self-declared request from a checked-in employee to keep working past
+// their normal end time (e.g. a lead asked for an urgent task) — takes
+// effect the moment it's created, unlike TimedPermission above. `status`
+// is record-keeping only: an admin reviews it after the fact for payroll/
+// audit purposes, but nothing in this app's behavior ever waits on it —
+// the shift-end reminder evaluator (/api/kiosk/location) and the checkout
+// work-summary flow (/api/kiosk/scan) both key off this row simply
+// *existing and unresolved* (no CHECK_OUT recorded yet for its
+// attendanceId), never off approvalStatus. Deliberately not repeating
+// TimedPermission's inconsistency (framed as "immediate" in its own mobile
+// UI copy, but its actual pause-opening logic only honors APPROVED rows).
+model OvertimeRequest {
+  id             String                @id @default(cuid())
+  attendanceId   String
+  attendance     Attendance            @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  // What the employee expects to finish by — drives the "remind me before
+  // I should check out" push, same 10-minutes-before convention as the
+  // plain shift-end reminder.
+  estimatedEndAt DateTime
+  reason         String
+  createdAt      DateTime              @default(now())
+
+  status         OvertimeRequestStatus @default(PENDING)
+  reviewedAt     DateTime?
+  reviewedByName String?
+
+  // Set the moment the overtime-end reminder push fires — same
+  // once-only idempotency purpose as Attendance.shiftReminderSentAt.
+  reminderSentAt DateTime?
+
+  // Optional, captured at checkout (see /api/kiosk/scan) — never required
+  // to actually check out. submittedAt marks whether this request has been
+  // "closed out" with (or explicitly without) a summary; null means the
+  // employee hasn't checked out yet.
+  workSummary String?
+  photo       Bytes?
+  hasPhoto    Boolean   @default(false)
+  submittedAt DateTime?
+
+  @@index([attendanceId])
+  @@index([status, createdAt])
 }
 
 enum WorkSegmentStartMethod {

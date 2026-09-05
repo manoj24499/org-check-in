@@ -34,13 +34,26 @@ export default async function EmployeeDetailPage({
 }) {
   const { id } = await params;
 
+  // Explicit `select` on the attendances relation — same egress-audit fix as
+  // my-page/api/admin/employees/[id]/attendance: this was pulling up to 2000
+  // full Attendance rows (photo bytes included) per employee-detail-page
+  // view, and the RecentActivityList/AttendanceCalendar below never render
+  // photo bytes directly (only `hasPhoto`).
   const employee = await prisma.user.findUnique({
     where: { id },
     include: {
       attendances: {
         orderBy: { timestamp: "desc" },
         take: 2000,
-        include: { pauses: true },
+        select: {
+          id: true,
+          type: true,
+          method: true,
+          timestamp: true,
+          hasPhoto: true,
+          faceVerifyStatus: true,
+          pauses: { select: { pausedAt: true, resumedAt: true, timedPermissionId: true } },
+        },
       },
     },
   });

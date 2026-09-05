@@ -179,8 +179,10 @@ export default function ShiftTable({ shifts: initialShifts, allEmployees }: Shif
             Shifts
           </h1>
           <p className="text-sm text-muted mt-1 max-w-2xl">
-            Office employees are marked Permission or Half-day leave when they
-            check in late, based on whichever shift they&apos;re on that day.
+            Any employee can be assigned a shift. Office employees are marked
+            Permission or Half-day leave when they check in late, based on
+            whichever shift they&apos;re on that day; everyone with a shift
+            (Office, WFH, or Field) gets a reminder push near their shift end.
             Assign an employee&apos;s weekly schedule from their{" "}
             <Link href="/admin/employees" className="text-primary font-semibold hover:text-primary-dark transition-colors">
               employee page

@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
   const todaysCheckIn = await prisma.attendance.findFirst({
     where: { userId: auth.sub, type: "CHECK_IN", timestamp: { gte: startOfISTDay() } },
     orderBy: { timestamp: "desc" },
+    select: { id: true, timestamp: true, checkInMode: true },
   });
 
   if (!todaysCheckIn || todaysCheckIn.checkInMode !== "FIELD") {

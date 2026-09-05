@@ -7,9 +7,17 @@ import StatusClient from "./StatusClient";
 export default async function KioskStatusPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   
+  // Explicit `select` — this renders on the kiosk screen after every single
+  // check-in/check-out, so pulling the full row (photo bytes) plus the full
+  // related `user` row (pinHash included) each time was a real, frequent cost.
   const record = await prisma.attendance.findUnique({
     where: { id },
-    include: { user: true },
+    select: {
+      type: true,
+      timestamp: true,
+      userId: true,
+      user: { select: { name: true } },
+    },
   });
 
   if (!record) {
@@ -35,7 +43,11 @@ export default async function KioskStatusPage({ params }: { params: Promise<{ id
         },
       },
       orderBy: { timestamp: "desc" },
-      include: { pauses: true, workSegments: true },
+      select: {
+        timestamp: true,
+        pauses: { select: { pausedAt: true, resumedAt: true } },
+        workSegments: { select: { mode: true, startedAt: true, endedAt: true } },
+      },
     });
 
     if (checkInRecord) {

@@ -63,9 +63,16 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Explicit `select` — no photo bytes needed here, but without one Prisma
+  // pulls every column including them. This route is polled every ~30s by
+  // every actively-checked-in employee's device (see the mobile app's
+  // useAttendanceStatus), so pulling full presence-photo blobs on each poll
+  // was a real, continuous, unbounded egress cost — the single largest
+  // contributor found in an audit of every Attendance query in this app.
   const todaysRecords = await prisma.attendance.findMany({
     where: { userId: user.id, timestamp: { gte: startOfISTDay() } },
     orderBy: { timestamp: "asc" },
+    select: { id: true, type: true, timestamp: true, lateMinutes: true, leaveType: true, checkInMode: true },
   });
 
   const checkIn = todaysRecords.find((r) => r.type === "CHECK_IN");

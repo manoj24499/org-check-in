@@ -8,14 +8,17 @@ function createPrismaClient() {
 
   return new PrismaClient({
     adapter,
-    // Attendance photos are only ever needed by the dedicated photo route —
-    // omit them by default everywhere else so list/calendar queries never
+    // Photos are only ever needed by their dedicated photo route — omit them
+    // by default everywhere else so list/calendar/history queries never
     // accidentally pull large binary blobs into memory.
     omit: {
       attendance: {
         photo: true,
       },
       fieldVisit: {
+        photo: true,
+      },
+      overtimeRequest: {
         photo: true,
       },
     },

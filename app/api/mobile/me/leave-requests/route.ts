@@ -55,6 +55,7 @@ export async function POST(req: NextRequest) {
       type: "CHECK_IN",
       timestamp: { gte: startOfISTDay(startDate), lte: endOfISTDay(endDate) },
     },
+    select: { id: true },
   });
   if (alreadyWorked) {
     return NextResponse.json(

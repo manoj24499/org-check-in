@@ -332,6 +332,68 @@ async function evaluateTimedPermission(
   }
 }
 
+const SHIFT_REMINDER_LEAD_MS = 10 * 60 * 1000;
+
+/**
+ * Reminds a checked-in employee ~10 minutes before they're expected to
+ * check out — either their shift end (any workMode with a shift assigned;
+ * see lib/shiftAssignment.ts) or, if they have an active OvertimeRequest,
+ * its estimatedEndAt instead (overtime supersedes the plain shift-end
+ * reminder — the whole point of requesting it is to stay past the normal
+ * end). Fires at most once per target: `checkIn.shiftReminderSentAt` guards
+ * the plain case, `OvertimeRequest.reminderSentAt` guards the overtime one,
+ * each set the moment the push actually goes out. No active OvertimeRequest
+ * and no shift assigned that day == nothing to remind about. Best-effort:
+ * never throws, matching every other evaluator in this file.
+ */
+async function evaluateEndOfWorkReminder(
+  checkIn: { id: string; userId: string; timestamp: Date; shiftReminderSentAt: Date | null },
+  shiftThatDay: { endTime: string } | null,
+  ping: { timestamp: Date },
+): Promise<void> {
+  try {
+    const overtimeRequest = await prisma.overtimeRequest.findFirst({
+      where: { attendanceId: checkIn.id, submittedAt: null },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const target = overtimeRequest
+      ? overtimeRequest.estimatedEndAt
+      : shiftThatDay
+        ? combineDateAndShiftTime(checkIn.timestamp, shiftThatDay.endTime)
+        : null;
+    if (!target) return;
+
+    const alreadySent = overtimeRequest ? overtimeRequest.reminderSentAt : checkIn.shiftReminderSentAt;
+    if (alreadySent) return;
+
+    const windowStart = new Date(target.getTime() - SHIFT_REMINDER_LEAD_MS);
+    if (ping.timestamp < windowStart || ping.timestamp >= target) return;
+
+    if (overtimeRequest) {
+      await prisma.overtimeRequest.update({
+        where: { id: overtimeRequest.id },
+        data: { reminderSentAt: ping.timestamp },
+      });
+    } else {
+      await prisma.attendance.update({
+        where: { id: checkIn.id },
+        data: { shiftReminderSentAt: ping.timestamp },
+      });
+    }
+
+    await sendPushNotification(
+      checkIn.userId,
+      overtimeRequest ? "Your overtime is ending soon" : "Your shift is ending soon",
+      overtimeRequest
+        ? "Don't forget to check out and log a quick summary of what you worked on."
+        : "Don't forget to check out.",
+    );
+  } catch (error) {
+    console.error("[evaluateEndOfWorkReminder] failed:", error);
+  }
+}
+
 // The check-in attendance id doubles as an unguessable, session-scoped
 // capability token — no PIN re-entry needed for a background 1-minute ping.
 const bodySchema = z.object({
@@ -357,8 +419,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
 
+  // Explicit `select` — this runs on *every* location ping (~once/minute per
+  // checked-in device, all day) and previously pulled the full row including
+  // the presence photo on each one; across a whole workday and every
+  // checked-in employee, this was almost certainly the single largest
+  // contributor to this app's database egress.
   const checkIn = await prisma.attendance.findUnique({
     where: { id: parsed.data.attendanceId },
+    select: {
+      id: true,
+      userId: true,
+      type: true,
+      timestamp: true,
+      pauseWarningAt: true,
+      checkInMode: true,
+      shiftReminderSentAt: true,
+    },
   });
 
   if (!checkIn || checkIn.type !== "CHECK_IN") {
@@ -385,6 +461,7 @@ export async function POST(req: NextRequest) {
       type: "CHECK_OUT",
       timestamp: { gt: checkIn.timestamp },
     },
+    select: { id: true },
   });
 
   if (laterCheckOut) {
@@ -395,6 +472,10 @@ export async function POST(req: NextRequest) {
   const ping = { latitude: parsed.data.latitude, longitude: parsed.data.longitude, timestamp };
 
   const permissionResult = await evaluateTimedPermission(checkIn, user, shiftThatDay, ping);
+
+  if (user.shiftRemindersEnabled) {
+    await evaluateEndOfWorkReminder(checkIn, shiftThatDay, ping);
+  }
 
   // Field/office segment tracking runs regardless of pause state — where
   // someone physically is doesn't depend on whether their time is paused.

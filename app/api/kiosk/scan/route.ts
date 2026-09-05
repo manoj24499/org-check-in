@@ -31,6 +31,12 @@ const scanSchema = z.object({
   // location for FIELD, home for WFH). Omitted preserves each profile's
   // default (FIELD stays ungeofenced, WFH stays geofenced against home).
   checkInMode: z.enum(["OFFICE", "FIELD"]).optional(),
+  // Only meaningful on CHECK_OUT, and only when the employee has an active
+  // OvertimeRequest for today (see /api/mobile/me/overtime) — optional even
+  // then, never required to actually check out (see the schema comment on
+  // OvertimeRequest.workSummary).
+  overtimeSummary: z.string().trim().max(1000).optional(),
+  overtimeSummaryPhoto: z.string().optional(),
 });
 
 /**
@@ -50,9 +56,12 @@ const scanSchema = z.object({
  * the end of that day.
  */
 async function autoCloseStaleCheckIns(user: { id: string }, shiftMap: WeekdayShiftMap, before: Date) {
+  // No photo bytes needed to compute an auto-checkout time — see the
+  // egress-audit note on the todaysRecords query below.
   const staleCheckIns = await prisma.attendance.findMany({
     where: { userId: user.id, type: "CHECK_IN", timestamp: { lt: before } },
     orderBy: { timestamp: "asc" },
+    select: { id: true, timestamp: true },
   });
 
   for (const checkIn of staleCheckIns) {
@@ -60,6 +69,7 @@ async function autoCloseStaleCheckIns(user: { id: string }, shiftMap: WeekdayShi
 
     const hasCheckOutThatDay = await prisma.attendance.findFirst({
       where: { userId: user.id, type: "CHECK_OUT", timestamp: { gt: checkIn.timestamp, lte: dayEnd } },
+      select: { id: true },
     });
     if (hasCheckOutThatDay) continue;
 
@@ -354,6 +364,7 @@ async function handlePost(req: NextRequest) {
   const todaysRecords = await prisma.attendance.findMany({
     where: { userId: user.id, timestamp: { gte: startOfISTDay() } },
     orderBy: { timestamp: "asc" },
+    select: { id: true, type: true },
   });
   const hasCheckedInToday = todaysRecords.some((r) => r.type === "CHECK_IN");
   const hasCheckedOutToday = todaysRecords.some((r) => r.type === "CHECK_OUT");
@@ -470,6 +481,29 @@ async function handlePost(req: NextRequest) {
           data: { endedAt: record.timestamp },
         }),
       ]);
+
+      // Close out an active overtime request, if any — the summary/photo
+      // are both optional and never block this checkout either way (see
+      // the schema comment on OvertimeRequest.workSummary); absent, the
+      // request is simply marked submitted with nothing attached, visible
+      // to admins as "no summary given."
+      const activeOvertime = await prisma.overtimeRequest.findFirst({
+        where: { attendanceId: todaysCheckIn.id, submittedAt: null },
+        orderBy: { createdAt: "desc" },
+      });
+      if (activeOvertime) {
+        const overtimePhoto = parsed.data.overtimeSummaryPhoto
+          ? await decodePhoto(parsed.data.overtimeSummaryPhoto)
+          : null;
+        await prisma.overtimeRequest.update({
+          where: { id: activeOvertime.id },
+          data: {
+            workSummary: parsed.data.overtimeSummary || null,
+            ...(overtimePhoto ? { photo: overtimePhoto, hasPhoto: true } : {}),
+            submittedAt: record.timestamp,
+          },
+        });
+      }
     }
   }
 

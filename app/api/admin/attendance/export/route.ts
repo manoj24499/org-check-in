@@ -20,10 +20,22 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Invalid from/to date." }, { status: 400 });
   }
 
+  // Explicit `select` — a CSV is plain text, so pulling full rows (photo
+  // bytes included) and the full related `user` row (pinHash included) for
+  // every one of up to CSV_EXPORT_ROW_CAP records was pure waste; a query
+  // this unbounded-by-default is exactly the kind of place a wasted-bytes
+  // pattern like that adds up fastest.
   const records = await prisma.attendance.findMany({
     where: from || to ? { timestamp: { ...(from ? { gte: from } : {}), ...(to ? { lte: endOfISTDay(to) } : {}) } } : undefined,
     orderBy: { timestamp: "desc" },
-    include: { user: true },
+    select: {
+      type: true,
+      method: true,
+      timestamp: true,
+      lateMinutes: true,
+      leaveType: true,
+      user: { select: { employeeCode: true, name: true, email: true } },
+    },
     take: CSV_EXPORT_ROW_CAP,
   });
 

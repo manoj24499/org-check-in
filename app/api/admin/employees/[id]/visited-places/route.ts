@@ -40,7 +40,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     prisma.attendance.findMany({
       where: { userId: id, timestamp: { gte: startOfISTDay(day), lte: endOfISTDay(day) } },
       orderBy: { timestamp: "asc" },
-      include: { pauses: true, workSegments: true },
+      select: {
+        id: true,
+        type: true,
+        timestamp: true,
+        pauses: { select: { pausedAt: true, resumedAt: true } },
+        workSegments: { select: { mode: true, startedAt: true, endedAt: true } },
+      },
     }),
     getSettings(),
     // Reimbursement.date is that same date-only key, unchanged — no

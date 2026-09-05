@@ -10,12 +10,23 @@ export async function GET(req: NextRequest) {
   const take = Math.min(Math.max(Number(searchParams.get("take")) || 30, 1), 100);
   const cursor = searchParams.get("cursor");
 
+  // Explicit `select` — the response below never includes photo bytes (just
+  // `hasPhoto`; the actual image is fetched separately, one at a time, via
+  // /api/mobile/me/attendance/[id]/photo), so pulling them here on every
+  // history page load was pure waste.
   const records = await prisma.attendance.findMany({
     where: { userId: auth.sub },
     orderBy: { timestamp: "desc" },
     take,
     ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
-    include: { pauses: true },
+    select: {
+      id: true,
+      type: true,
+      method: true,
+      timestamp: true,
+      hasPhoto: true,
+      pauses: { select: { pausedAt: true, resumedAt: true } },
+    },
   });
 
   return NextResponse.json({

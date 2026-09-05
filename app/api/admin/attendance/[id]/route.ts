@@ -30,7 +30,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
 
-  const record = await prisma.attendance.findUnique({ where: { id } });
+  const record = await prisma.attendance.findUnique({
+    where: { id },
+    select: { userId: true, type: true, timestamp: true },
+  });
   if (!record) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
   const newTimestamp = new Date(parsed.data.timestamp);
@@ -49,6 +52,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const pairedType = record.type === "CHECK_IN" ? "CHECK_OUT" : "CHECK_IN";
   const paired = await prisma.attendance.findFirst({
     where: { userId: record.userId, type: pairedType, timestamp: { gte: dayStart, lte: dayEnd } },
+    select: { id: true, timestamp: true },
   });
 
   if (record.type === "CHECK_IN" && paired && newTimestamp >= paired.timestamp) {

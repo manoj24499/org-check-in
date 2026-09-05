@@ -12,11 +12,22 @@ export async function GET(
 
   const { id } = await params;
   const [attendances, specialDays] = await Promise.all([
+    // Explicit `select` — same reasoning as /api/mobile/me/attendance: the
+    // response never sends photo bytes, only `hasPhoto`, so pulling up to
+    // 2000 full presence-photo blobs per employee-history view was pure waste.
     prisma.attendance.findMany({
       where: { userId: id },
       orderBy: { timestamp: "desc" },
       take: 2000,
-      include: { pauses: true },
+      select: {
+        id: true,
+        type: true,
+        method: true,
+        timestamp: true,
+        hasPhoto: true,
+        faceVerifyStatus: true,
+        pauses: { select: { pausedAt: true, resumedAt: true, timedPermissionId: true } },
+      },
     }),
     getCalendarSpecialDays(id),
   ]);

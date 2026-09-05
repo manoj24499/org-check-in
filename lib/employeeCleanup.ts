@@ -87,7 +87,15 @@ export async function runDeactivatedEmployeeCleanup(): Promise<{ deletedCount: n
   for (const user of due) {
     try {
       const [attendance, reimbursements, leaveRequests] = await Promise.all([
-        prisma.attendance.findMany({ where: { userId: user.id }, orderBy: { timestamp: "asc" } }),
+        // Explicit `select` — attendanceCsvFor (below) only ever reads these
+        // fields; pulling every deactivated employee's full attendance
+        // history including photo bytes, just to discard them building a
+        // text CSV, was pure waste.
+        prisma.attendance.findMany({
+          where: { userId: user.id },
+          orderBy: { timestamp: "asc" },
+          select: { type: true, method: true, timestamp: true, lateMinutes: true, leaveType: true, checkInMode: true },
+        }),
         prisma.reimbursement.findMany({ where: { userId: user.id }, orderBy: { date: "asc" } }),
         prisma.timeOffRequest.findMany({ where: { userId: user.id }, orderBy: { startDate: "asc" } }),
       ]);

@@ -23,6 +23,7 @@ async function findTodaysFieldCheckIn(userId: string) {
   return prisma.attendance.findFirst({
     where: { userId, type: "CHECK_IN", timestamp: { gte: startOfISTDay() } },
     orderBy: { timestamp: "desc" },
+    select: { id: true, checkInMode: true },
   });
 }
 

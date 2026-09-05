@@ -25,11 +25,21 @@ export default async function MyPage() {
   if (!session) return null;
 
   const [records, me, specialDays] = await Promise.all([
+    // Explicit `select` — same reasoning as /api/mobile/me/attendance: the
+    // serialized response below never sends photo bytes, only `hasPhoto`.
     prisma.attendance.findMany({
       where: { userId: session.user.id },
       orderBy: { timestamp: "desc" },
       take: 1000,
-      include: { pauses: true },
+      select: {
+        id: true,
+        type: true,
+        method: true,
+        timestamp: true,
+        hasPhoto: true,
+        lateMinutes: true,
+        pauses: { select: { pausedAt: true, resumedAt: true, timedPermissionId: true } },
+      },
     }),
     prisma.user.findUnique({
       where: { id: session.user.id },
