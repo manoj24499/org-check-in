@@ -283,9 +283,14 @@ export default function VisitedPlacesPanel({
             </div>
             <div className="rounded-lg border border-border p-3 lg:h-full lg:min-h-0 overflow-y-auto">
               <VisitDatePicker
+                userId={userId}
                 selectedDate={data.date}
                 onSelect={(date) => loadDate(date)}
               />
+              <div className="flex items-center gap-1.5 mt-2 text-[11px] text-secondary">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                Logged a field visit
+              </div>
             </div>
           </div>
 

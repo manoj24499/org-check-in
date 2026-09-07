@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireMobileUser } from "@/lib/mobileAuth";
 import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
 import { PayloadTooLargeError, readJsonWithLimit } from "@/lib/readJsonBody";
-import { startOfISTDay } from "@/lib/istTime";
+import { findActiveCheckIn } from "@/lib/activeSession";
 
 // See kiosk/scan/route.ts's identical constant for why this is larger than
 // MAX_PHOTO_BYTES: it bounds the raw request body (base64 inflates size by
@@ -18,11 +18,14 @@ const createSchema = z.object({
   longitude: z.number().min(-180).max(180),
 });
 
-/** Today's active FIELD check-in — the parent every FieldVisit hangs off. */
+/** The active FIELD check-in — the parent every FieldVisit hangs off. Built
+ * on the shared findActiveCheckIn (see lib/activeSession.ts) so an overnight
+ * shift's session is recognized here too, past midnight. */
 async function findTodaysFieldCheckIn(userId: string) {
-  return prisma.attendance.findFirst({
-    where: { userId, type: "CHECK_IN", timestamp: { gte: startOfISTDay() } },
-    orderBy: { timestamp: "desc" },
+  const active = await findActiveCheckIn(userId);
+  if (!active) return null;
+  return prisma.attendance.findUnique({
+    where: { id: active.id },
     select: { id: true, checkInMode: true },
   });
 }

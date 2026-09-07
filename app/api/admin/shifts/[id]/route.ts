@@ -28,6 +28,17 @@ export async function PATCH(
   const existing = await prisma.shift.findUnique({ where: { id } });
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+  // Checked against the *effective* (merged with whatever isn't being
+  // changed) times — a partial update (e.g. renaming only) must not let a
+  // stale combination slip past unchecked. endTime < startTime is a valid
+  // overnight shift (see isOvernightShift in lib/shiftAssignment.ts), not an
+  // error; only exact equality is.
+  const effectiveStart = parsed.data.startTime ?? existing.startTime;
+  const effectiveEnd = parsed.data.endTime ?? existing.endTime;
+  if (effectiveStart === effectiveEnd) {
+    return NextResponse.json({ error: "Start and end time can't be the same." }, { status: 400 });
+  }
+
   const shift = await prisma.shift.update({
     where: { id },
     data: {

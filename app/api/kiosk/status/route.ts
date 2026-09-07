@@ -7,6 +7,7 @@ import { resolveGeofenceTarget } from "@/lib/geofenceTarget";
 import { haversineDistanceMeters } from "@/lib/geofence";
 import { startOfISTDay } from "@/lib/istTime";
 import { loadShiftAssignments, shiftForDate } from "@/lib/shiftAssignment";
+import { findActiveCheckIn } from "@/lib/activeSession";
 
 // Lightweight, PIN-less lookup so the kiosk can steer an employee to the
 // right button (Check In vs Check Out) and warn them about a forgotten
@@ -76,8 +77,24 @@ export async function GET(req: NextRequest) {
     select: { id: true, type: true, timestamp: true, lateMinutes: true, leaveType: true, checkInMode: true },
   });
 
-  const checkIn = todaysRecords.find((r) => r.type === "CHECK_IN");
+  let checkIn = todaysRecords.find((r) => r.type === "CHECK_IN");
   const checkOut = todaysRecords.find((r) => r.type === "CHECK_OUT");
+
+  // No check-in among today's own records — still possibly on an overnight
+  // shift that started yesterday and hasn't been checked out yet (see
+  // lib/activeSession.ts). checkOut stays scoped to today's records either
+  // way: findActiveCheckIn already confirmed there's no later CHECK_OUT.
+  if (!checkIn) {
+    const active = await findActiveCheckIn(user.id);
+    if (active) {
+      checkIn =
+        (await prisma.attendance.findUnique({
+          where: { id: active.id },
+          select: { id: true, type: true, timestamp: true, lateMinutes: true, leaveType: true, checkInMode: true },
+        })) ?? undefined;
+    }
+  }
+
   const settings = await getSettings();
 
   const isPaused = checkIn

@@ -2,24 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireMobileUser } from "@/lib/mobileAuth";
-import { startOfISTDay } from "@/lib/istTime";
-
-/** The employee's currently active (checked-in today, not yet checked out) session. */
-async function findActiveCheckIn(userId: string) {
-  const today = startOfISTDay();
-  const checkIn = await prisma.attendance.findFirst({
-    where: { userId, type: "CHECK_IN", timestamp: { gte: today } },
-    orderBy: { timestamp: "desc" },
-    select: { id: true, timestamp: true },
-  });
-  if (!checkIn) return null;
-
-  const laterCheckOut = await prisma.attendance.findFirst({
-    where: { userId, type: "CHECK_OUT", timestamp: { gt: checkIn.timestamp } },
-    select: { id: true },
-  });
-  return laterCheckOut ? null : checkIn;
-}
+import { findActiveCheckIn } from "@/lib/activeSession";
 
 const bodySchema = z.object({
   estimatedEndAt: z.string(),

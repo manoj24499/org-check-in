@@ -109,8 +109,11 @@ export default function ShiftTable({ shifts: initialShifts, allEmployees }: Shif
 
   async function handleSave() {
     if (!editing) return;
-    if (editing.startTime >= editing.endTime) {
-      setError("End time must be after start time.");
+    // Equal times only — a reversed pair (e.g. 16:00-02:00) is a valid
+    // overnight shift, not an error (see the "+1d" hint next to the End
+    // time field, and prisma/schema.prisma's comment on Shift).
+    if (editing.startTime === editing.endTime) {
+      setError("Start and end time can't be the same.");
       return;
     }
     setLoading(true);
@@ -274,6 +277,9 @@ export default function ShiftTable({ shifts: initialShifts, allEmployees }: Shif
                     </td>
                     <td className="px-6 py-4 text-secondary whitespace-nowrap">
                       {formatTimeLabel(shift.endTime)}
+                      {shift.endTime <= shift.startTime && (
+                        <span className="ml-1 text-[10px] font-semibold text-primary-dark align-top">+1d</span>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       {roster.length === 0 ? (
@@ -414,6 +420,9 @@ export default function ShiftTable({ shifts: initialShifts, allEmployees }: Shif
                     }
                     className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
                   />
+                  {editing.startTime && editing.endTime && editing.endTime <= editing.startTime && (
+                    <p className="text-xs text-primary-dark mt-1">Ends the next day (overnight shift).</p>
+                  )}
                 </div>
               </div>
 

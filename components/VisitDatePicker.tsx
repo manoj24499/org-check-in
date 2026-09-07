@@ -17,11 +17,19 @@ function dateKey(d: Date) {
  * history — replaces the old prev/next-day arrows in VisitedPlacesPanel.
  * Clicking any past date jumps the map straight to that day; month nav
  * (its own arrows) is unrelated to the day-stepping UI that was removed.
+ *
+ * Days with at least one logged FieldVisit get a small dot (see
+ * /api/admin/employees/[id]/field-visit-days) — lets an admin spot which
+ * days actually had field activity without clicking through every date.
+ * Fetched fresh per month shown; not cached across remounts, since this is
+ * an occasionally-used admin panel, not a hot path.
  */
 export default function VisitDatePicker({
+  userId,
   selectedDate,
   onSelect,
 }: {
+  userId: string;
   /** "YYYY-MM-DD" */
   selectedDate: string;
   onSelect: (date: string) => void;
@@ -30,6 +38,7 @@ export default function VisitDatePicker({
   const [viewDate, setViewDate] = useState(
     () => new Date(selected.getFullYear(), selected.getMonth(), 1),
   );
+  const [travelDays, setTravelDays] = useState<Set<string>>(new Set());
 
   // Follow the selected date to whatever month it lands in — e.g. the
   // initial "jump to most recent data" load, which can land outside the
@@ -42,6 +51,23 @@ export default function VisitDatePicker({
 
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
+
+  useEffect(() => {
+    let cancelled = false;
+    const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
+    fetch(`/api/admin/employees/${userId}/field-visit-days?month=${monthKey}`)
+      .then((res) => (res.ok ? res.json() : { days: [] }))
+      .then((body) => {
+        if (!cancelled) setTravelDays(new Set(body.days ?? []));
+      })
+      .catch(() => {
+        if (!cancelled) setTravelDays(new Set());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, year, month]);
+
   const monthStartWeekday = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const today = new Date();
@@ -100,21 +126,30 @@ export default function VisitDatePicker({
           const isSelected = key === selectedDate;
           const isToday = key === dateKey(today);
           const isFuture = cellDate > today;
+          const traveled = travelDays.has(key);
 
           return (
             <button
               key={key}
               onClick={() => onSelect(key)}
               disabled={isFuture}
-              className={`h-8 rounded-lg flex items-center justify-center text-xs font-medium transition-colors ${
+              className={`relative h-8 rounded-lg flex items-center justify-center text-xs font-medium transition-colors ${
                 isSelected
                   ? "bg-primary text-white"
                   : isToday
                     ? "bg-primary/10 text-primary"
                     : "text-muted-2 hover:bg-surface-2"
               } ${isFuture ? "cursor-not-allowed opacity-30" : "cursor-pointer"}`}
+              title={traveled ? "Logged a field visit this day" : undefined}
             >
               {day}
+              {traveled && (
+                <span
+                  className={`absolute bottom-1 w-1 h-1 rounded-full ${
+                    isSelected ? "bg-white" : "bg-emerald-500"
+                  }`}
+                />
+              )}
             </button>
           );
         })}

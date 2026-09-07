@@ -10,9 +10,10 @@ import { getSettings } from "@/lib/settings";
 import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
 import { verifyFace } from "@/lib/faceVerify";
 import { PayloadTooLargeError, readJsonWithLimit } from "@/lib/readJsonBody";
-import { combineDateAndShiftTime, computeLateness } from "@/lib/shiftTime";
+import { combineDateAndShiftEndTime, computeLateness } from "@/lib/shiftTime";
 import { loadShiftAssignments, shiftForDate, type WeekdayShiftMap } from "@/lib/shiftAssignment";
 import { startOfISTDay, endOfISTDay, todayDateOnlyIST, istDateKey } from "@/lib/istTime";
+import { findActiveCheckIn } from "@/lib/activeSession";
 
 const scanSchema = z.object({
   employeeCode: z.string().min(1),
@@ -74,7 +75,7 @@ async function autoCloseStaleCheckIns(user: { id: string }, shiftMap: WeekdayShi
     if (hasCheckOutThatDay) continue;
 
     const shiftThatDay = shiftForDate(shiftMap, checkIn.timestamp);
-    const shiftEnd = shiftThatDay ? combineDateAndShiftTime(checkIn.timestamp, shiftThatDay.endTime) : null;
+    const shiftEnd = shiftThatDay ? combineDateAndShiftEndTime(checkIn.timestamp, shiftThatDay) : null;
     const checkoutAt = shiftEnd && shiftEnd > checkIn.timestamp ? shiftEnd : dayEnd;
 
     try {
@@ -376,8 +377,21 @@ async function handlePost(req: NextRequest) {
     orderBy: { timestamp: "asc" },
     select: { id: true, type: true },
   });
-  const hasCheckedInToday = todaysRecords.some((r) => r.type === "CHECK_IN");
+  let hasCheckedInToday = todaysRecords.some((r) => r.type === "CHECK_IN");
   const hasCheckedOutToday = todaysRecords.some((r) => r.type === "CHECK_OUT");
+
+  // A CHECK_OUT with no check-in among *today's* records might still be
+  // closing out an overnight shift that started yesterday (see
+  // lib/activeSession.ts) — e.g. checked in 4pm for a 16:00-02:00 shift,
+  // checking out at 1am the next IST day. Only checked for CHECK_OUT:
+  // autoCloseStaleCheckIns above already swept up any genuinely-forgotten
+  // previous-day check-in before a fresh CHECK_IN ever reaches this gate, so
+  // that path needs no change.
+  let overnightCheckIn: { id: string; timestamp: Date } | null = null;
+  if (parsed.data.action === "CHECK_OUT" && !hasCheckedInToday) {
+    overnightCheckIn = await findActiveCheckIn(user.id);
+    if (overnightCheckIn) hasCheckedInToday = true;
+  }
 
   if (parsed.data.action === "CHECK_IN" && hasCheckedInToday) {
     return NextResponse.json({ error: "You've already checked in today." }, { status: 409 });
@@ -473,7 +487,7 @@ async function handlePost(req: NextRequest) {
   // pause dangling open past checkout, and clear any pending grace-period
   // warning — the session is over regardless of where either stood.
   if (parsed.data.action === "CHECK_OUT") {
-    const todaysCheckIn = todaysRecords.find((r) => r.type === "CHECK_IN");
+    const todaysCheckIn = todaysRecords.find((r) => r.type === "CHECK_IN") ?? overnightCheckIn;
     if (todaysCheckIn) {
       await prisma.$transaction([
         prisma.attendancePause.updateMany({

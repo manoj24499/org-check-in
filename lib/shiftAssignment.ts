@@ -28,3 +28,13 @@ export async function loadShiftAssignments(userId: string): Promise<WeekdayShift
 export function shiftForDate(map: WeekdayShiftMap, date: Date): ResolvedShift | null {
   return map.get(date.getDay()) ?? null;
 }
+
+/** A shift "spans midnight" (e.g. 16:00-02:00) exactly when its endTime
+ * sorts at or before its startTime as plain "HH:mm" strings — there's no
+ * separate flag on Shift for this (see its schema comment); it's the same
+ * convention the admin Shifts UI now allows saving. Used everywhere that
+ * needs to know whether "today's shift" is still governing an employee past
+ * midnight, into the next IST calendar day. */
+export function isOvernightShift(shift: { startTime: string; endTime: string }): boolean {
+  return shift.endTime <= shift.startTime;
+}

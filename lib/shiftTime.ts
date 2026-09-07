@@ -1,4 +1,5 @@
 import { combineISTDateAndTime } from "@/lib/istTime";
+import { isOvernightShift } from "@/lib/shiftAssignment";
 
 /** Combines an "HH:mm" shift time (interpreted as IST — see lib/istTime.ts)
  * with the IST calendar date of `referenceDate`. Shared by /api/kiosk/scan
@@ -11,6 +12,31 @@ import { combineISTDateAndTime } from "@/lib/istTime";
  * UTC = 2:30 PM IST, so lateness was never detected before that time. */
 export function combineDateAndShiftTime(referenceDate: Date, hhmm: string): Date | null {
   return combineISTDateAndTime(referenceDate, hhmm);
+}
+
+/**
+ * Resolves a shift's actual END instant, given the IST calendar day
+ * `referenceDate` falls on (almost always the check-in's own timestamp —
+ * see each caller). Same-day shifts (the overwhelming majority) are just
+ * `combineDateAndShiftTime(referenceDate, shift.endTime)`, same as before.
+ *
+ * The one difference: for an overnight shift (see isOvernightShift —
+ * endTime at or before startTime, e.g. 16:00-02:00), plain
+ * combineDateAndShiftTime would anchor "02:00" to the *same* IST day as
+ * "16:00", producing an end instant 14 hours *before* the shift even starts.
+ * This rolls that case onto the next IST day instead, so shiftEnd is always
+ * chronologically after shiftStart. Every caller that needs "when does this
+ * shift actually end" (auto-checkout, the shift-end reminder, Timed
+ * Permission auto-checkout) should use this instead of
+ * combineDateAndShiftTime directly.
+ */
+export function combineDateAndShiftEndTime(
+  referenceDate: Date,
+  shift: { startTime: string; endTime: string },
+): Date | null {
+  const end = combineDateAndShiftTime(referenceDate, shift.endTime);
+  if (!end) return null;
+  return isOvernightShift(shift) ? new Date(end.getTime() + 24 * 60 * 60 * 1000) : end;
 }
 
 export type Lateness = { lateMinutes: number | null; leaveType: "NONE" | "PERMISSION" | "HALF_DAY" };

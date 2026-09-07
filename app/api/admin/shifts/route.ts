@@ -5,11 +5,20 @@ import { requireAdmin } from "@/lib/requireAdmin";
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
-const createSchema = z.object({
-  name: z.string().trim().max(60).optional(),
-  startTime: z.string().regex(TIME_PATTERN, "Use 24-hour HH:mm."),
-  endTime: z.string().regex(TIME_PATTERN, "Use 24-hour HH:mm."),
-});
+const createSchema = z
+  .object({
+    name: z.string().trim().max(60).optional(),
+    startTime: z.string().regex(TIME_PATTERN, "Use 24-hour HH:mm."),
+    endTime: z.string().regex(TIME_PATTERN, "Use 24-hour HH:mm."),
+  })
+  // endTime < startTime is a valid overnight shift (e.g. 16:00-02:00 — see
+  // isOvernightShift in lib/shiftAssignment.ts and Shift's schema comment),
+  // not an error. Only exact equality (zero-length or ambiguous 24h) is
+  // actually invalid.
+  .refine((data) => data.startTime !== data.endTime, {
+    message: "Start and end time can't be the same.",
+    path: ["endTime"],
+  });
 
 // Who's on a shift, and which weekdays, is now assigned from the employee
 // detail page's weekly schedule editor (see

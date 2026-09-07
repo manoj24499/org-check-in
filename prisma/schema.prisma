@@ -184,6 +184,15 @@ model User {
 // see computeLateness); endTime is used for the stale-checkin/timed-
 // permission/shift-end-reminder auto-checkout and notifications, which
 // apply regardless of workMode.
+//
+// endTime at or before startTime (e.g. 16:00-02:00) means the shift spans
+// midnight — there's no separate flag for this; it's the implicit
+// convention every consumer agrees on (see isOvernightShift in
+// lib/shiftAssignment.ts, combineDateAndShiftEndTime in lib/shiftTime.ts,
+// and findActiveCheckIn in lib/activeSession.ts, which is what lets an
+// employee who checked in "yesterday" still check out correctly after
+// midnight). Exact equality (startTime === endTime) is the only combination
+// actually rejected, by both the admin UI and /api/admin/shifts.
 model Shift {
   id        String   @id @default(cuid())
   name      String?

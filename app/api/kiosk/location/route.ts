@@ -6,7 +6,7 @@ import { haversineDistanceMeters } from "@/lib/geofence";
 import { resolveGeofenceTarget, resolveOfficeLocationTarget, type GeofenceTarget } from "@/lib/geofenceTarget";
 import type { CheckInMode } from "@prisma/client";
 import { sendPushNotification } from "@/lib/pushNotifications";
-import { combineDateAndShiftTime } from "@/lib/shiftTime";
+import { combineDateAndShiftEndTime } from "@/lib/shiftTime";
 import { loadShiftAssignments, shiftForDate } from "@/lib/shiftAssignment";
 import { istDateKey } from "@/lib/istTime";
 
@@ -250,7 +250,7 @@ async function evaluateWorkSegment(
 async function evaluateTimedPermission(
   checkIn: { id: string; userId: string; timestamp: Date; checkInMode: CheckInMode | null },
   user: Parameters<typeof resolveGeofenceTarget>[0],
-  shiftThatDay: { endTime: string } | null,
+  shiftThatDay: { startTime: string; endTime: string } | null,
   ping: { latitude: number; longitude: number; timestamp: Date },
 ): Promise<{ active: boolean; autoCheckedOut: boolean }> {
   try {
@@ -281,7 +281,7 @@ async function evaluateTimedPermission(
 
     // Requested end time has passed. If it runs through the employee's
     // shift end, there's no shift left to resume into — auto-checkout.
-    const shiftEnd = shiftThatDay ? combineDateAndShiftTime(checkIn.timestamp, shiftThatDay.endTime) : null;
+    const shiftEnd = shiftThatDay ? combineDateAndShiftEndTime(checkIn.timestamp, shiftThatDay) : null;
     if (shiftEnd && permission.endTime >= shiftEnd) {
       await prisma.$transaction([
         prisma.attendancePause.update({
@@ -348,7 +348,7 @@ const SHIFT_REMINDER_LEAD_MS = 10 * 60 * 1000;
  */
 async function evaluateEndOfWorkReminder(
   checkIn: { id: string; userId: string; timestamp: Date; shiftReminderSentAt: Date | null },
-  shiftThatDay: { endTime: string } | null,
+  shiftThatDay: { startTime: string; endTime: string } | null,
   ping: { timestamp: Date },
 ): Promise<void> {
   try {
@@ -360,7 +360,7 @@ async function evaluateEndOfWorkReminder(
     const target = overtimeRequest
       ? overtimeRequest.estimatedEndAt
       : shiftThatDay
-        ? combineDateAndShiftTime(checkIn.timestamp, shiftThatDay.endTime)
+        ? combineDateAndShiftEndTime(checkIn.timestamp, shiftThatDay)
         : null;
     if (!target) return;
 

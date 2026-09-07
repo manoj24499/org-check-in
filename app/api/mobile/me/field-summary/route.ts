@@ -2,22 +2,26 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireMobileUser } from "@/lib/mobileAuth";
 import { haversineDistanceMeters } from "@/lib/geofence";
-import { startOfISTDay } from "@/lib/istTime";
+import { findActiveCheckIn } from "@/lib/activeSession";
 
 // Powers the mobile Map screen's "Field Day" view — distance covered (summed
 // from today's location pings, same pings /api/kiosk/location already
 // collects) plus the route and any manually-logged visits, all scoped to
-// today's CHECK_IN. Returns { active: false } on any day that wasn't a Field
-// day (including no check-in yet) — nothing to show in that case.
+// the active CHECK_IN (see lib/activeSession.ts — recognizes an overnight
+// shift's session past midnight too). Returns { active: false } on any day
+// that wasn't a Field day (including no check-in yet) — nothing to show in
+// that case.
 export async function GET(req: NextRequest) {
   const auth = await requireMobileUser(req);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const todaysCheckIn = await prisma.attendance.findFirst({
-    where: { userId: auth.sub, type: "CHECK_IN", timestamp: { gte: startOfISTDay() } },
-    orderBy: { timestamp: "desc" },
-    select: { id: true, timestamp: true, checkInMode: true },
-  });
+  const active = await findActiveCheckIn(auth.sub);
+  const todaysCheckIn = active
+    ? await prisma.attendance.findUnique({
+        where: { id: active.id },
+        select: { id: true, timestamp: true, checkInMode: true },
+      })
+    : null;
 
   if (!todaysCheckIn || todaysCheckIn.checkInMode !== "FIELD") {
     return NextResponse.json({ active: false });
