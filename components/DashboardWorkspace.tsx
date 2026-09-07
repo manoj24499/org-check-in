@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Search, X, Loader2, Download, MapPin } from "lucide-react";
 import AttendanceCalendar, { type CalendarSpecialDay } from "./AttendanceCalendar";
 import LocationMapModal from "./LocationMapModal";
+import MarkLeaveControl, { type OnLeaveToday } from "./MarkLeaveControl";
 
 type EmployeeLocation = {
   latitude: number;
@@ -23,6 +24,10 @@ type EmployeeSummary = {
   lateMinutes: number | null;
   leaveType: LeaveType;
   location: EmployeeLocation | null;
+  /** A full-day TimeOffRequest (any origin — employee-submitted or
+   * admin-quick-marked) approved and covering today, if any — see
+   * /api/admin/employees/[id]/leave-today. */
+  onLeaveToday: OnLeaveToday | null;
 };
 
 type AttendanceRecord = {
@@ -164,7 +169,24 @@ function formatTime(iso: string | null) {
     : "—";
 }
 
-function leaveBadge(leaveType: LeaveType, lateMinutes: number | null) {
+const TIME_OFF_TYPE_LABEL: Record<OnLeaveToday["type"], string> = {
+  CASUAL: "Casual",
+  SICK: "Sick",
+  EARNED: "Earned",
+};
+
+function leaveBadge(leaveType: LeaveType, lateMinutes: number | null, onLeaveToday: OnLeaveToday | null) {
+  // A full-day leave takes priority over the auto-computed lateness
+  // classification below — the two are unrelated concepts that happen to
+  // share a table cell (see the schema comment on TimeOffRequest), but if
+  // someone's on leave today that's the more significant thing to show.
+  if (onLeaveToday) {
+    return (
+      <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium tracking-wide border bg-slate-50 text-slate-600 border-slate-200">
+        On leave · {TIME_OFF_TYPE_LABEL[onLeaveToday.type]}
+      </span>
+    );
+  }
   if (leaveType === "NONE")
     return <span className="text-secondary text-xs">—</span>;
   const label = leaveType === "PERMISSION" ? "Permission" : "Half-day leave";
@@ -265,7 +287,10 @@ function CurrentStatusPanel({ employees }: { employees: EmployeeSummary[] }) {
                     </span>
                   </td>
                   <td className="px-3 py-3">
-                    {leaveBadge(emp.leaveType, emp.lateMinutes)}
+                    <div className="flex flex-col items-start gap-1">
+                      {leaveBadge(emp.leaveType, emp.lateMinutes, emp.onLeaveToday)}
+                      <MarkLeaveControl employeeId={emp.id} onLeaveToday={emp.onLeaveToday} />
+                    </div>
                   </td>
                   <td className="px-3 py-3">
                     <div className="flex flex-wrap items-center gap-2">

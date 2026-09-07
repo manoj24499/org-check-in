@@ -615,6 +615,16 @@ model TimeOffRequest {
   reviewNote String?
   createdAt  DateTime @default(now())
 
+  // True only for the dashboard's quick "Mark as leave" action (see
+  // /api/admin/employees/[id]/leave-today) — always a single day
+  // (startDate === endDate), created pre-approved with no employee
+  // submission at all. Distinguishes that from an ordinary single-day
+  // request the employee submitted and an admin separately approved, which
+  // looks identical otherwise (same status, same one-day range) but must
+  // NOT be cancellable via that same quick action — only ever manageable
+  // from the Leave page like any other submitted request.
+  markedByAdmin Boolean @default(false)
+
   @@index([userId])
   @@index([status])
   @@index([userId, startDate, endDate])

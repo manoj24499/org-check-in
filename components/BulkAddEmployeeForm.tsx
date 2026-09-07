@@ -2,7 +2,80 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Upload } from "lucide-react";
+import { Upload, Download } from "lucide-react";
+
+interface SubmittedRow {
+  name: string;
+  email: string;
+  workMode: "OFFICE" | "WFH" | "FIELD";
+  homeLatitude?: number;
+  homeLongitude?: number;
+  homeRadiusMeters?: number;
+}
+
+interface CreatedEmployee {
+  name: string;
+  employeeCode: string;
+  pin: string;
+}
+
+/** Quotes a CSV field only when it actually needs it (contains a comma,
+ * quote, or newline) — matches how every spreadsheet app writes CSV, so the
+ * downloaded file round-trips cleanly if re-opened/re-edited. */
+function toCsvField(value: string | number | undefined): string {
+  if (value === undefined || value === null) return "";
+  const str = String(value);
+  return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+}
+
+/**
+ * The same columns the admin originally uploaded, with EmployeeID and PIN
+ * appended after the location columns — a durable, archivable record of
+ * this batch's credentials, since the on-screen table (and the PINs in it)
+ * only ever exist for this one page view (see the schema comment on
+ * User.pinHash — there's no "look it up later" for a PIN, same as a
+ * password). Matched to `created` by array index: the backend's bulk-create
+ * loop processes rows in the exact order submitted and pushes each result
+ * in that same order, so index-zipping the two arrays here is safe.
+ */
+function downloadCredentialsCsv(rows: SubmittedRow[], created: CreatedEmployee[]) {
+  const header = [
+    "Name",
+    "Email",
+    "WorkMode",
+    "HomeLatitude",
+    "HomeLongitude",
+    "HomeRadius",
+    "EmployeeID",
+    "PIN",
+  ];
+  const lines = [header.join(",")];
+  rows.forEach((row, i) => {
+    const c = created[i];
+    lines.push(
+      [
+        toCsvField(row.name),
+        toCsvField(row.email),
+        toCsvField(row.workMode),
+        toCsvField(row.homeLatitude),
+        toCsvField(row.homeLongitude),
+        toCsvField(row.homeRadiusMeters),
+        toCsvField(c?.employeeCode),
+        toCsvField(c?.pin),
+      ].join(","),
+    );
+  });
+
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `employee-credentials-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 export default function BulkAddEmployeeForm() {
   const router = useRouter();
@@ -10,14 +83,8 @@ export default function BulkAddEmployeeForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [csvText, setCsvText] = useState("");
-  const [created, setCreated] = useState<
-    | {
-        name: string;
-        employeeCode: string;
-        pin: string;
-      }[]
-    | null
-  >(null);
+  const [submittedRows, setSubmittedRows] = useState<SubmittedRow[]>([]);
+  const [created, setCreated] = useState<CreatedEmployee[] | null>(null);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -69,6 +136,7 @@ export default function BulkAddEmployeeForm() {
       return;
     }
 
+    setSubmittedRows(employeesToCreate);
     setCreated(data.created);
     router.refresh();
   }
@@ -76,6 +144,7 @@ export default function BulkAddEmployeeForm() {
   function closeAll() {
     setOpen(false);
     setCreated(null);
+    setSubmittedRows([]);
     setError(null);
     setCsvText("");
   }
@@ -95,13 +164,25 @@ export default function BulkAddEmployeeForm() {
           <div className="w-full max-w-2xl bg-surface-2 rounded-lg shadow-2xl p-6 border border-white/50">
             {created ? (
               <div className="flex flex-col gap-4">
-                <h2 className="text-xl font-medium text-foreground">
-                  Employees created!
-                </h2>
-                <p className="text-sm text-muted">
-                  Please copy or screenshot the PINs below. They will not be
-                  shown again.
-                </p>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-xl font-medium text-foreground">
+                      Employees created!
+                    </h2>
+                    <p className="text-sm text-muted mt-1">
+                      Please copy, screenshot, or download the PINs below. They will not be
+                      shown again.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => downloadCredentialsCsv(submittedRows, created)}
+                    className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-primary px-3 py-1.5 text-sm font-medium text-primary-dark hover:bg-primary/5 transition"
+                  >
+                    <Download className="w-4 h-4" />
+                    Download CSV
+                  </button>
+                </div>
                 <div className="rounded-lg border border-border bg-surface max-h-96 overflow-auto">
                   <table className="w-full text-sm text-left">
                     <thead className="bg-surface sticky top-0">

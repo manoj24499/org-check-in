@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import DashboardWorkspace from "@/components/DashboardWorkspace";
 import PendingPermissionsPanel from "@/components/PendingPermissionsPanel";
-import { startOfISTDay } from "@/lib/istTime";
+import { startOfISTDay, todayDateOnlyIST } from "@/lib/istTime";
 
 export const dynamic = "force-dynamic";
 
@@ -45,9 +45,22 @@ export default async function AdminDashboard() {
     ]),
   );
 
+  // Full-day leave covering today, any origin (employee-submitted-and-
+  // approved, or admin-quick-marked via /api/admin/employees/[id]/leave-today)
+  // — see DashboardWorkspace's leaveBadge/MarkLeaveControl for how this
+  // renders. Unrelated to Attendance.leaveType (an auto-computed lateness
+  // classification, despite the similar name — see its own schema comment).
+  const todayDateOnly = todayDateOnlyIST();
+  const leaveTodayRaw = await prisma.timeOffRequest.findMany({
+    where: { status: "APPROVED", startDate: { lte: todayDateOnly }, endDate: { gte: todayDateOnly } },
+    select: { id: true, userId: true, type: true, markedByAdmin: true },
+  });
+  const leaveByUser = new Map(leaveTodayRaw.map((r) => [r.userId, r]));
+
   const employees = employeesRaw.map((e) => {
     const checkIn = e.attendances.find((a) => a.type === "CHECK_IN");
     const checkOut = e.attendances.find((a) => a.type === "CHECK_OUT");
+    const leave = leaveByUser.get(e.id);
     return {
       id: e.id,
       employeeCode: e.employeeCode,
@@ -57,6 +70,13 @@ export default async function AdminDashboard() {
       lateMinutes: checkIn?.lateMinutes ?? null,
       leaveType: checkIn?.leaveType ?? "NONE",
       location: locationByUser.get(e.id) ?? null,
+      onLeaveToday: leave
+        ? {
+            requestId: leave.id,
+            type: leave.type,
+            isQuickMarked: leave.markedByAdmin,
+          }
+        : null,
     };
   });
 
