@@ -6,6 +6,7 @@ import { requireMobileUser } from "@/lib/mobileAuth";
 import { resolveGeofenceTarget } from "@/lib/geofenceTarget";
 import { haversineDistanceMeters } from "@/lib/geofence";
 import { startOfISTDay } from "@/lib/istTime";
+import { loadShiftAssignments, shiftForDate } from "@/lib/shiftAssignment";
 
 // Lightweight, PIN-less lookup so the kiosk can steer an employee to the
 // right button (Check In vs Check Out) and warn them about a forgotten
@@ -87,6 +88,20 @@ export async function GET(req: NextRequest) {
       )
     : false;
 
+  // Today's assigned shift end ("HH:mm", IST), if any — same
+  // shiftForDate/loadShiftAssignments pair every other shift-aware evaluator
+  // in this app already uses (see /api/kiosk/scan, /api/kiosk/location).
+  // Reference date is the actual check-in when there is one (matching how
+  // the reminder/lateness evaluators resolve "which day's shift" for an
+  // already-checked-in employee), falling back to now for the pre-check-in
+  // case. Lets the mobile app's overtime-request time picker (which only
+  // makes sense once checked in) disable slots at or before this time,
+  // instead of offering to "request overtime" starting mid-shift. Null when
+  // no shift is assigned that day (e.g. most FIELD workers) — the picker
+  // then has no basis to restrict anything.
+  const shiftMap = await loadShiftAssignments(user.id);
+  const shiftThatDay = shiftForDate(shiftMap, checkIn?.timestamp ?? new Date());
+
   return NextResponse.json({
     exists: true,
     name: user.name,
@@ -99,5 +114,6 @@ export async function GET(req: NextRequest) {
     lateMinutes: checkIn?.lateMinutes ?? null,
     leaveType: checkIn?.leaveType ?? "NONE",
     checkInMode: checkIn?.checkInMode ?? null,
+    shiftEndTime: shiftThatDay?.endTime ?? null,
   });
 }

@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import DashboardWorkspace from "@/components/DashboardWorkspace";
 import PendingPermissionsPanel from "@/components/PendingPermissionsPanel";
-import OvertimeStatusPanel from "@/components/OvertimeStatusPanel";
 import { startOfISTDay } from "@/lib/istTime";
 
 export const dynamic = "force-dynamic";
@@ -76,22 +75,6 @@ export default async function AdminDashboard() {
     employee: p.attendance.user,
   }));
 
-  // "Currently working overtime" — any request not yet closed out at a
-  // checkout (submittedAt: null), regardless of admin decision so far; see
-  // components/OvertimeStatusPanel.tsx.
-  const activeOvertimeRaw = await prisma.overtimeRequest.findMany({
-    where: { submittedAt: null },
-    orderBy: { createdAt: "asc" },
-    include: { attendance: { select: { user: { select: { id: true, employeeCode: true, name: true } } } } },
-  });
-  const activeOvertime = activeOvertimeRaw.map((r) => ({
-    id: r.id,
-    estimatedEndAt: r.estimatedEndAt.toISOString(),
-    reason: r.reason,
-    status: r.status,
-    employee: r.attendance.user,
-  }));
-
   return (
     <div className="flex flex-col">
       <div className="px-5 sm:px-7 pt-6 sm:pt-7">
@@ -104,12 +87,6 @@ export default async function AdminDashboard() {
       {pendingPermissions.length > 0 ? (
         <div className="px-5 sm:px-7 pt-5">
           <PendingPermissionsPanel initialPermissions={pendingPermissions} />
-        </div>
-      ) : null}
-
-      {activeOvertime.length > 0 ? (
-        <div className="px-5 sm:px-7 pt-5">
-          <OvertimeStatusPanel initialRequests={activeOvertime} />
         </div>
       ) : null}
 

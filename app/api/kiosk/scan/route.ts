@@ -97,6 +97,16 @@ async function autoCloseStaleCheckIns(user: { id: string }, shiftMap: WeekdayShi
           where: { attendanceId: checkIn.id, endedAt: null },
           data: { endedAt: checkoutAt },
         }),
+        // Mirror the manual-checkout path below: a stale check-in can still
+        // have an active (unsubmitted) overtime request hanging off it — if
+        // this auto-close doesn't resolve it too, it's stuck showing "Still
+        // working" forever (see /admin/overtime), since nothing else ever
+        // sets submittedAt for it. No summary/photo to attach here, same as
+        // any other checkout where the employee didn't provide one.
+        prisma.overtimeRequest.updateMany({
+          where: { attendanceId: checkIn.id, submittedAt: null },
+          data: { submittedAt: checkoutAt },
+        }),
       ]);
     } catch (err) {
       // A (userId, type, dayKey) collision here means something else already
