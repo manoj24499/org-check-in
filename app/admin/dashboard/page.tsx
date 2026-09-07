@@ -13,7 +13,8 @@ export default async function AdminDashboard() {
   // bytes included) just to compute a few booleans and two numbers.
   const employeesRaw = await prisma.user.findMany({
     where: { role: "EMPLOYEE", active: true },
-    orderBy: { name: "asc" },
+    // Join order (oldest first), matching /admin/employees and /admin/shifts.
+    orderBy: { createdAt: "asc" },
     select: {
       id: true,
       employeeCode: true,

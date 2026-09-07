@@ -9,7 +9,9 @@ import type { PickableEmployee } from "./MultiEmployeePicker";
 
 type ShiftAssignment = {
   weekday: number;
-  user: { id: string; employeeCode: string; name: string };
+  // createdAt arrives as an ISO string — Date props get serialized crossing
+  // the server/client component boundary.
+  user: { id: string; employeeCode: string; name: string; createdAt: string };
 };
 
 type Shift = {
@@ -46,17 +48,20 @@ function formatTimeLabel(value: string) {
 /** Groups a shift's flat (weekday, user) assignment rows into one entry per
  * employee with the set of weekdays they're on this particular shift — the
  * same employee can also appear on a different shift's roster for the
- * weekdays not covered here (see ShiftScheduleEditor, where this is set). */
+ * weekdays not covered here (see ShiftScheduleEditor, where this is set).
+ * Sorted by join order (oldest first), matching /admin/employees and the
+ * dashboard rather than alphabetically. */
 function groupByEmployee(assignments: ShiftAssignment[]) {
-  const byUser = new Map<string, { name: string; weekdays: Set<number> }>();
+  const byUser = new Map<string, { name: string; createdAt: string; weekdays: Set<number> }>();
   for (const a of assignments) {
-    const entry = byUser.get(a.user.id) ?? { name: a.user.name, weekdays: new Set<number>() };
+    const entry =
+      byUser.get(a.user.id) ?? { name: a.user.name, createdAt: a.user.createdAt, weekdays: new Set<number>() };
     entry.weekdays.add(a.weekday);
     byUser.set(a.user.id, entry);
   }
   return [...byUser.entries()]
     .map(([id, v]) => ({ id, ...v }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
 export default function ShiftTable({ shifts: initialShifts, allEmployees }: ShiftTableProps) {

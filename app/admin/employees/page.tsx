@@ -10,7 +10,11 @@ export default async function EmployeesPage() {
   const [employees, shifts] = await Promise.all([
     prisma.user.findMany({
       where: { role: "EMPLOYEE" },
-      orderBy: { name: "asc" },
+      // Join order (oldest first) rather than alphabetical — employeeCode
+      // is allocated sequentially at creation (see allocateNextEmployeeCode)
+      // but createdAt is the more direct, unambiguous signal for "who
+      // joined first."
+      orderBy: { createdAt: "asc" },
       select: {
         id: true,
         employeeCode: true,

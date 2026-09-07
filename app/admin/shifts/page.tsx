@@ -13,7 +13,10 @@ export default async function ShiftsPage() {
       orderBy: { startTime: "asc" },
       include: {
         assignments: {
-          select: { weekday: true, user: { select: { id: true, employeeCode: true, name: true } } },
+          select: {
+            weekday: true,
+            user: { select: { id: true, employeeCode: true, name: true, createdAt: true } },
+          },
         },
       },
     }),
@@ -24,10 +27,23 @@ export default async function ShiftsPage() {
     // /api/kiosk/scan), both of which apply to WFH/FIELD employees too.
     prisma.user.findMany({
       where: { role: "EMPLOYEE", active: true },
-      orderBy: { name: "asc" },
+      // Join order (oldest first), matching /admin/employees — see that
+      // page's comment for why createdAt over employeeCode/name.
+      orderBy: { createdAt: "asc" },
       select: { id: true, employeeCode: true, name: true },
     }),
   ]);
 
-  return <ShiftTable shifts={shifts} allEmployees={employees} />;
+  // ISO-stringify createdAt explicitly for the client component's prop
+  // type — Next.js serializes Date props across the server/client boundary
+  // at runtime regardless, but that's invisible to the type-checker.
+  const shiftsForClient = shifts.map((s) => ({
+    ...s,
+    assignments: s.assignments.map((a) => ({
+      ...a,
+      user: { ...a.user, createdAt: a.user.createdAt.toISOString() },
+    })),
+  }));
+
+  return <ShiftTable shifts={shiftsForClient} allEmployees={employees} />;
 }
