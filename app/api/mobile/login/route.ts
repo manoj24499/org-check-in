@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { verifyPin } from "@/lib/credentials";
 import { getClientIp, isRateLimited, isPinGuessLimited } from "@/lib/rateLimit";
-import { signAccessToken, signRefreshToken } from "@/lib/mobileAuth";
+import { signAccessToken, issueRefreshToken } from "@/lib/mobileAuth";
 
 const bodySchema = z.object({
   employeeCode: z.string().min(1),
@@ -68,7 +68,7 @@ async function handlePost(req: NextRequest) {
 
   const [accessToken, refreshToken] = await Promise.all([
     signAccessToken(user),
-    signRefreshToken(user),
+    issueRefreshToken(user),
   ]);
 
   return NextResponse.json({

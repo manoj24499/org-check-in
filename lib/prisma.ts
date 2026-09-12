@@ -21,6 +21,9 @@ function createPrismaClient() {
       overtimeRequest: {
         photo: true,
       },
+      supportTicket: {
+        photo: true,
+      },
     },
     log:
       process.env.NODE_ENV === "development"

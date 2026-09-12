@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
-import { generatePin, hashPin, allocateNextEmployeeCode } from "@/lib/credentials";
+import { generateUniquePin, hashPin, allocateNextEmployeeCode } from "@/lib/credentials";
 import { DEFAULT_GEOFENCE_RADIUS_METERS } from "@/lib/geofence";
 
 // Postgres' default transaction timeout comfortably covers a normal admin
@@ -79,6 +79,28 @@ export async function POST(req: NextRequest) {
     }, { status: 409 });
   }
 
+  // PIN generation + hashing happens BEFORE the transaction, not inside it —
+  // generateUniquePin() does a full linear bcrypt-compare scan against every
+  // active employee (see lib/credentials.ts) and hashPin() is bcrypt cost 12
+  // (~100ms each); doing both per-row inside the transaction would eat
+  // straight into BULK_CREATE_TRANSACTION_TIMEOUT_MS for no reason, since
+  // none of this needs the transaction's atomicity. generateUniquePin()
+  // only ever checks already-persisted rows, so it can't see PINs picked
+  // earlier in this same batch — tracked separately here via
+  // `pinsUsedInBatch` so two rows in one submission can't collide with each
+  // other either.
+  const pinsUsedInBatch = new Set<string>();
+  const rowsWithPins: Array<(typeof parsed.data)[number] & { pin: string; pinHash: string }> = [];
+  for (const empData of parsed.data) {
+    let pin = await generateUniquePin();
+    while (pinsUsedInBatch.has(pin)) {
+      pin = await generateUniquePin();
+    }
+    pinsUsedInBatch.add(pin);
+    const pinHash = await hashPin(pin);
+    rowsWithPins.push({ ...empData, pin, pinHash });
+  }
+
   // Whole batch succeeds or none of it does — previously each row was
   // created one at a time with no transaction, so a failure partway through
   // (e.g. a constraint violation this route hadn't anticipated) left the
@@ -90,17 +112,16 @@ export async function POST(req: NextRequest) {
     createdEmployees = await prisma.$transaction(
       async (tx) => {
         const created = [];
-        // Looped (not createMany) because each row needs its own awaited PIN
-        // hash and its own allocateNextEmployeeCode() call (an atomic DB
-        // counter, not COUNT(*)/MAX() — see its own comment) rather than
-        // incrementing a local variable: COUNT(*) undercounts once anyone's
-        // ever been deleted (lib/employeeCleanup.ts), producing employeeCode
-        // collisions with currently-active employees.
-        for (const empData of parsed.data) {
+        // Looped (not createMany) because each row needs its own
+        // allocateNextEmployeeCode() call (an atomic DB counter, not
+        // COUNT(*)/MAX() — see its own comment) rather than incrementing a
+        // local variable: COUNT(*) undercounts once anyone's ever been
+        // deleted (lib/employeeCleanup.ts), producing employeeCode
+        // collisions with currently-active employees. PIN + hash are
+        // already computed above, so this loop is just the DB write.
+        for (const empData of rowsWithPins) {
           const employeeCode = await allocateNextEmployeeCode();
-
-          const pin = generatePin();
-          const pinHash = await hashPin(pin);
+          const { pin, pinHash } = empData;
 
           const user = await tx.user.create({
             data: {

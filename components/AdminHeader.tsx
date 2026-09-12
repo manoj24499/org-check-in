@@ -27,10 +27,12 @@ export default function AdminHeader({
   userName,
   pendingLeaveCount,
   pendingOvertimeCount,
+  pendingSupportCount,
 }: {
   userName?: string | null;
   pendingLeaveCount: number;
   pendingOvertimeCount: number;
+  pendingSupportCount: number;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -45,7 +47,11 @@ export default function AdminHeader({
         </div>
 
         <div className="hidden min-[1220px]:flex min-[1220px]:flex-1 min-[1220px]:items-center min-[1220px]:gap-6">
-          <AdminNav pendingLeaveCount={pendingLeaveCount} pendingOvertimeCount={pendingOvertimeCount} />
+          <AdminNav
+            pendingLeaveCount={pendingLeaveCount}
+            pendingOvertimeCount={pendingOvertimeCount}
+            pendingSupportCount={pendingSupportCount}
+          />
           <div className="flex items-center gap-3.5 ml-auto text-[13px] text-muted">
             <span>{userName}</span>
             <SignOutButton />
@@ -71,6 +77,7 @@ export default function AdminHeader({
           <AdminNav
             pendingLeaveCount={pendingLeaveCount}
             pendingOvertimeCount={pendingOvertimeCount}
+            pendingSupportCount={pendingSupportCount}
             stacked
             onNavigate={() => setOpen(false)}
           />

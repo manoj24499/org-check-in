@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { SignJWT, jwtVerify } from "jose";
 import { prisma } from "@/lib/prisma";
 
@@ -16,6 +17,7 @@ function secretKey() {
 
 const ACCESS_TOKEN_TTL = "15m";
 const REFRESH_TOKEN_TTL = "30d";
+const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 type TokenType = "access" | "refresh";
 
@@ -25,6 +27,12 @@ export type MobileTokenPayload = {
   role: "ADMIN" | "EMPLOYEE";
   type: TokenType;
   tokenVersion: number;
+  // Only ever present on refresh tokens (see issueRefreshToken) — the id of
+  // this token's own RefreshToken row, used for real server-side revocation
+  // (logout, rotation). Access tokens carry no jti; they're short-lived
+  // enough (15m) that tokenVersion/active-account checks already cover
+  // them, per requireMobileUser's own comment.
+  jti?: string;
 };
 
 type TokenSubject = {
@@ -34,21 +42,57 @@ type TokenSubject = {
   tokenVersion: number;
 };
 
-async function sign(user: TokenSubject, type: TokenType, ttl: string) {
-  return new SignJWT({ employeeCode: user.employeeCode, role: user.role, type, tokenVersion: user.tokenVersion })
+async function sign(user: TokenSubject, type: TokenType, ttl: string, jti?: string) {
+  const builder = new SignJWT({ employeeCode: user.employeeCode, role: user.role, type, tokenVersion: user.tokenVersion })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(user.id)
     .setIssuedAt()
-    .setExpirationTime(ttl)
-    .sign(secretKey());
+    .setExpirationTime(ttl);
+  if (jti) builder.setJti(jti);
+  return builder.sign(secretKey());
 }
 
 export function signAccessToken(user: TokenSubject) {
   return sign(user, "access", ACCESS_TOKEN_TTL);
 }
 
-export function signRefreshToken(user: TokenSubject) {
-  return sign(user, "refresh", REFRESH_TOKEN_TTL);
+/**
+ * Signs a refresh token AND persists a matching RefreshToken row in one
+ * call — this is the only way a refresh token should ever be minted, since
+ * real revocation (logout, rotation) depends on every issued refresh token
+ * having a corresponding row. See the schema comment on RefreshToken.
+ */
+export async function issueRefreshToken(user: TokenSubject): Promise<string> {
+  const jti = randomUUID();
+  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
+  const [token] = await Promise.all([
+    sign(user, "refresh", REFRESH_TOKEN_TTL, jti),
+    prisma.refreshToken.create({ data: { jti, userId: user.id, expiresAt } }),
+  ]);
+  return token;
+}
+
+/**
+ * True only if this refresh token's own row is still valid — not revoked
+ * (an explicit logout, or superseded by a later /api/mobile/refresh
+ * rotation) and not past its own expiresAt. A token signed before this
+ * feature existed carries no `jti` claim at all and is rejected here,
+ * forcing one extra login for an already-logged-in device the first time
+ * it refreshes after this deploys — a deliberate one-time cost for real
+ * revocation, not a bug.
+ */
+export async function verifyRefreshTokenRecord(jti: string | undefined): Promise<boolean> {
+  if (!jti) return false;
+  const record = await prisma.refreshToken.findUnique({ where: { jti }, select: { revokedAt: true, expiresAt: true } });
+  return !!record && record.revokedAt === null && record.expiresAt > new Date();
+}
+
+/** Marks one specific refresh token's row revoked — used by logout (revokes
+ * just that one session) and by /api/mobile/refresh's rotation (the old
+ * token is revoked the moment it's exchanged for a new pair). Idempotent:
+ * revoking an already-revoked or nonexistent jti is a harmless no-op. */
+export async function revokeRefreshToken(jti: string): Promise<void> {
+  await prisma.refreshToken.updateMany({ where: { jti, revokedAt: null }, data: { revokedAt: new Date() } });
 }
 
 export async function verifyMobileToken(

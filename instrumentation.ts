@@ -48,6 +48,7 @@ export async function register() {
   globalForCleanup.__employeeCleanupRegistered = true;
 
   const { runDeactivatedEmployeeCleanup } = await import("@/lib/employeeCleanup");
+  const { pruneExpiredRefreshTokens } = await import("@/lib/refreshTokenCleanup");
 
   async function tick() {
     try {
@@ -60,6 +61,15 @@ export async function register() {
       }
     } catch (err) {
       console.error("[employeeCleanup] Scheduled run failed:", err);
+    }
+
+    try {
+      const prunedCount = await pruneExpiredRefreshTokens();
+      if (prunedCount > 0) {
+        console.log(`[refreshTokenCleanup] Pruned ${prunedCount} expired refresh token row(s).`);
+      }
+    } catch (err) {
+      console.error("[refreshTokenCleanup] Scheduled run failed:", err);
     }
   }
 

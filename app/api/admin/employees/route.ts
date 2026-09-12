@@ -6,6 +6,7 @@ import { generateUniquePin, hashPin, allocateNextEmployeeCode } from "@/lib/cred
 import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
 import { embedFace } from "@/lib/faceVerify";
 import { PayloadTooLargeError, readJsonWithLimit } from "@/lib/readJsonBody";
+import { EMPLOYEES_PAGE_SIZE } from "@/lib/pagination";
 
 const createSchema = z.object({
   name: z.string().min(1),
@@ -30,25 +31,55 @@ const createSchema = z.object({
 // enough headroom for that encoding overhead plus the other form fields.
 const MAX_REQUEST_BYTES = 6 * 1024 * 1024;
 
-export async function GET() {
+// Supports the admin employee list's pagination + search (see
+// components/EmployeeTable.tsx and app/admin/employees/page.tsx, which share
+// this route's page-size constant via lib/pagination.ts). `q` matches
+// against name/email/employeeCode, case-insensitive — the same three fields
+// the table's previous client-side-only filter checked, just now run
+// server-side so it covers every employee, not just the currently-loaded
+// page.
+export async function GET(req: NextRequest) {
   const session = await requireAdmin();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const employees = await prisma.user.findMany({
-    where: { role: "EMPLOYEE" },
-    orderBy: { name: "asc" },
-    select: {
-      id: true,
-      employeeCode: true,
-      name: true,
-      email: true,
-      active: true,
-      workMode: true,
-      createdAt: true,
-    },
-  });
+  const { searchParams } = req.nextUrl;
+  const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10) || 1);
+  const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get("pageSize") ?? "", 10) || EMPLOYEES_PAGE_SIZE));
+  const q = searchParams.get("q")?.trim();
 
-  return NextResponse.json({ employees });
+  const where = {
+    role: "EMPLOYEE" as const,
+    ...(q
+      ? {
+          OR: [
+            { name: { contains: q, mode: "insensitive" as const } },
+            { email: { contains: q, mode: "insensitive" as const } },
+            { employeeCode: { contains: q, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
+  };
+
+  const [employees, total] = await Promise.all([
+    prisma.user.findMany({
+      where,
+      // Join order, matching the page's default (non-search) listing — see
+      // that page's own comment for why createdAt beats alphabetical here.
+      orderBy: { createdAt: "asc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      select: {
+        id: true,
+        employeeCode: true,
+        name: true,
+        email: true,
+        active: true,
+      },
+    }),
+    prisma.user.count({ where }),
+  ]);
+
+  return NextResponse.json({ employees, total, page, pageSize });
 }
 
 export async function POST(req: NextRequest) {

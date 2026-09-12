@@ -11,17 +11,20 @@ const LINKS = [
   { href: "/admin/leave", label: "Leave" },
   { href: "/admin/overtime", label: "Overtime" },
   { href: "/admin/office-location", label: "Office location" },
+  { href: "/admin/support", label: "Support" },
   { href: "/admin/settings", label: "Settings" },
 ];
 
 export default function AdminNav({
   pendingLeaveCount = 0,
   pendingOvertimeCount = 0,
+  pendingSupportCount = 0,
   stacked = false,
   onNavigate,
 }: {
   pendingLeaveCount?: number;
   pendingOvertimeCount?: number;
+  pendingSupportCount?: number;
   /** Vertical, full-width, touch-sized rows — used in the mobile dropdown
    * (see AdminHeader) instead of the horizontal-wrap layout desktop uses. */
   stacked?: boolean;
@@ -33,6 +36,7 @@ export default function AdminNav({
   const badgeCountFor: Record<string, number> = {
     "/admin/leave": pendingLeaveCount,
     "/admin/overtime": pendingOvertimeCount,
+    "/admin/support": pendingSupportCount,
   };
 
   return (

@@ -3,11 +3,17 @@ import { prisma } from "@/lib/prisma";
 import AddEmployeeForm from "@/components/AddEmployeeForm";
 import BulkAddEmployeeForm from "@/components/BulkAddEmployeeForm";
 import EmployeeTable from "@/components/EmployeeTable";
+import { EMPLOYEES_PAGE_SIZE } from "@/lib/pagination";
 
 export const dynamic = "force-dynamic";
 
 export default async function EmployeesPage() {
-  const [employees, shifts] = await Promise.all([
+  // Only page 1 (unfiltered) is fetched server-side, for a fast first
+  // paint with no client round-trip — paging/searching from here on is
+  // handled by EmployeeTable itself against GET /api/admin/employees,
+  // which shares this same page size (see lib/pagination.ts) and where
+  // clause shape.
+  const [employees, total, shifts] = await Promise.all([
     prisma.user.findMany({
       where: { role: "EMPLOYEE" },
       // Join order (oldest first) rather than alphabetical — employeeCode
@@ -15,6 +21,7 @@ export default async function EmployeesPage() {
       // but createdAt is the more direct, unambiguous signal for "who
       // joined first."
       orderBy: { createdAt: "asc" },
+      take: EMPLOYEES_PAGE_SIZE,
       select: {
         id: true,
         employeeCode: true,
@@ -23,6 +30,7 @@ export default async function EmployeesPage() {
         active: true,
       },
     }),
+    prisma.user.count({ where: { role: "EMPLOYEE" } }),
     prisma.shift.findMany({
       orderBy: { startTime: "asc" },
       select: { id: true, name: true, startTime: true, endTime: true },
@@ -37,7 +45,7 @@ export default async function EmployeesPage() {
             Employees
           </h1>
           <p className="text-sm text-muted mt-1">
-            {employees.length} total employees ·{" "}
+            {total} total employees ·{" "}
             <Link href="/admin/employees/deleted" className="text-primary font-medium hover:text-primary-dark transition-colors">
               Deleted employees
             </Link>
@@ -49,7 +57,7 @@ export default async function EmployeesPage() {
         </div>
       </div>
 
-      <EmployeeTable employees={employees} />
+      <EmployeeTable initialEmployees={employees} initialTotal={total} pageSize={EMPLOYEES_PAGE_SIZE} />
     </div>
   );
 }

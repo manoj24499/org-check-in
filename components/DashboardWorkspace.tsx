@@ -467,7 +467,7 @@ function CalendarPanel({ employees }: { employees: EmployeeSummary[] }) {
         )}
       </div>
 
-      <div className="max-w-sm">
+      <div>
         {!selected && (
           <p className="text-sm text-secondary text-center py-8">
             Search for an employee above to view their attendance calendar.
@@ -480,7 +480,14 @@ function CalendarPanel({ employees }: { employees: EmployeeSummary[] }) {
           </div>
         )}
         {selected && !loading && attendances && (
-          <AttendanceCalendar attendances={attendances} specialDays={specialDays} />
+          // "split" (grid on the left, month summary + day detail filling
+          // the rest) — same layout the employee-detail page and My Page
+          // already use. This panel used to be capped at max-w-sm along
+          // with everything above it, which made sense when the whole
+          // admin shell was itself only 95% width — now that the shell is
+          // full-bleed (see app/admin/layout.tsx), that cap just left a
+          // narrow calendar floating in a mostly-empty card.
+          <AttendanceCalendar attendances={attendances} specialDays={specialDays} layout="split" />
         )}
       </div>
     </div>

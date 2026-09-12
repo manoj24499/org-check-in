@@ -23,6 +23,61 @@ model RateLimitBucket {
   resetAt DateTime
 }
 
+// One row per issued mobile refresh token (see lib/mobileAuth.ts's
+// issueRefreshToken/verifyRefreshTokenRecord) — the actual mechanism behind
+// real server-side revocation. Before this, a refresh token was purely a
+// self-contained signed JWT with no persisted record at all: logging out
+// only ever cleared local device storage, so a captured refresh token
+// stayed valid server-side for its full 30-day life regardless. `jti` is
+// the token's own random id (embedded as a JWT claim at sign time), not a
+// foreign key into User — deliberately no relation, same reasoning as
+// RateLimitBucket above: this is a lookup table, not part of the User
+// aggregate. Rotation (see /api/mobile/refresh) revokes the old row and
+// inserts a new one rather than reusing it, so each row maps to exactly one
+// still-valid token at a time. Pruned well after expiry by
+// lib/refreshTokenCleanup.ts (see instrumentation.ts) so this doesn't grow
+// unbounded.
+model RefreshToken {
+  jti       String    @id
+  userId    String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// An employee-submitted "something's wrong" report from the mobile app's
+// Profile > Help screen (replaces what used to be static, made-up HR
+// contact info there) — free text plus an optional photo, reviewed by an
+// admin on /admin/support. Deliberately simple: no category/priority field,
+// no admin reply thread. Submission itself still doesn't notify an admin
+// (this app has no existing admin-notification mechanism at all — Leave/
+// Overtime submissions don't push to admins either, so "check the
+// dashboard badge" is the established pattern there too), but resolving
+// one DOES push the employee back (see the PATCH route) — unlike Leave/
+// Overtime, a report like this has no other visible outcome for the
+// employee to notice on their own. `photo` is omitted by the global
+// Prisma client default (see lib/prisma.ts) — always add any new
+// photo-bearing model there in the same commit as this one; missing that
+// once already caused a real Supabase egress overage (see
+// OvertimeRequest's own history).
+model SupportTicket {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message    String
+  hasPhoto   Boolean   @default(false)
+  photo      Bytes?
+  status     String    @default("OPEN") // OPEN | RESOLVED
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+  adminNote  String?
+
+  @@index([userId])
+  @@index([status])
+}
+
 enum Role {
   ADMIN
   EMPLOYEE
@@ -168,6 +223,7 @@ model User {
   // the week (e.g. General Mon-Wed, Afternoon Thu-Fri) instead of having
   // exactly one shift for every day.
   shiftAssignments ShiftAssignment[]
+  supportTickets   SupportTicket[]
 
   @@index([role])
   @@index([workMode])
