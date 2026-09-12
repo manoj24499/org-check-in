@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
-import { generatePin, hashPin, allocateNextEmployeeCode } from "@/lib/credentials";
+import { generateUniquePin, hashPin, allocateNextEmployeeCode } from "@/lib/credentials";
 import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
 import { embedFace } from "@/lib/faceVerify";
 import { PayloadTooLargeError, readJsonWithLimit } from "@/lib/readJsonBody";
@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
     // own comment for why this can't just be MAX(employeeCode).
     const employeeCode = await allocateNextEmployeeCode();
 
-    const pin = generatePin();
+    const pin = await generateUniquePin();
     const pinHash = await hashPin(pin);
 
     const user = await prisma.user.create({

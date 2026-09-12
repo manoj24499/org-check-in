@@ -97,13 +97,19 @@ export async function GET(req: NextRequest) {
 
   const settings = await getSettings();
 
-  const isPaused = checkIn
-    ? Boolean(
-        await prisma.attendancePause.findFirst({
-          where: { attendanceId: checkIn.id, resumedAt: null },
-        }),
-      )
-    : false;
+  // Fetch every pause today (not just the open one) so the mobile app can
+  // compute a live, pause-adjusted "worked so far" figure the same way
+  // computeWorkedMs already does for closed sessions — and show a live
+  // "outside time" counter for whichever one is still open. Previously this
+  // only checked existence and discarded the row(s) entirely.
+  const pauses = checkIn
+    ? await prisma.attendancePause.findMany({
+        where: { attendanceId: checkIn.id },
+        select: { pausedAt: true, resumedAt: true },
+        orderBy: { pausedAt: "asc" },
+      })
+    : [];
+  const isPaused = pauses.some((p) => p.resumedAt === null);
 
   // Today's assigned shift end ("HH:mm", IST), if any — same
   // shiftForDate/loadShiftAssignments pair every other shift-aware evaluator
@@ -128,6 +134,7 @@ export async function GET(req: NextRequest) {
     checkInAt: checkIn?.timestamp ?? null,
     checkOutPhotoRequired: settings.checkOutPhotoRequired,
     isPaused,
+    pauses,
     lateMinutes: checkIn?.lateMinutes ?? null,
     leaveType: checkIn?.leaveType ?? "NONE",
     checkInMode: checkIn?.checkInMode ?? null,

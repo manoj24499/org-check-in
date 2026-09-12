@@ -148,12 +148,30 @@ async function evaluatePauseState(
 
     const graceElapsedMs = ping.timestamp.getTime() - checkIn.pauseWarningAt.getTime();
     if (graceElapsedMs >= GRACE_PERIOD_MS) {
-      await prisma.$transaction([
-        prisma.attendancePause.create({
-          data: { attendanceId: checkIn.id, pausedAt: checkIn.pauseWarningAt },
-        }),
-        prisma.attendance.update({ where: { id: checkIn.id }, data: { pauseWarningAt: null } }),
-      ]);
+      // A burst of pings arriving close together (backgrounded app catching
+      // up, network retries, etc.) can otherwise all read the same
+      // `checkIn.pauseWarningAt` snapshot before any of them commits, each
+      // independently conclude "grace period elapsed, create a pause", and
+      // each create its own duplicate AttendancePause row for the same
+      // actual departure — silently inflating pause totals (and therefore
+      // under-counting worked hours) by however many pings raced. The
+      // conditional updateMany below is an atomic compare-and-swap: it only
+      // matches (and nulls pauseWarningAt) if the column still holds the
+      // exact value this request read, so at most one racing request can
+      // "win" and go on to create the pause; every other racer sees
+      // count === 0 and does nothing.
+      const pauseWarningAt = checkIn.pauseWarningAt; // narrow once — see note below
+      await prisma.$transaction(async (tx) => {
+        const claimed = await tx.attendance.updateMany({
+          where: { id: checkIn.id, pauseWarningAt },
+          data: { pauseWarningAt: null },
+        });
+        if (claimed.count > 0) {
+          await tx.attendancePause.create({
+            data: { attendanceId: checkIn.id, pausedAt: pauseWarningAt },
+          });
+        }
+      });
     }
   } catch (error) {
     console.error("[evaluatePauseState] failed:", error);

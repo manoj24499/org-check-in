@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hashPin, verifyPin } from "@/lib/credentials";
+import { hashPin, verifyPin, isPinTakenByAnotherEmployee } from "@/lib/credentials";
 import { isRateLimited } from "@/lib/rateLimit";
 
 const bodySchema = z.object({
@@ -43,6 +43,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: "New PIN must be different from the current PIN." },
       { status: 400 },
+    );
+  }
+
+  // See isPinTakenByAnotherEmployee's own comment — employeeCode isn't
+  // secret, so a knowingly-shared PIN lets either employee deliberately log
+  // in as the other, even though login itself stays correctly scoped.
+  if (await isPinTakenByAnotherEmployee(parsed.data.newPin, user.id)) {
+    return NextResponse.json(
+      { error: "That PIN is already taken. Please choose a different one." },
+      { status: 409 },
     );
   }
 

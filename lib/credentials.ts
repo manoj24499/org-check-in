@@ -28,6 +28,66 @@ export async function verifyPin(pin: string, hashed: string): Promise<boolean> {
   return bcrypt.compare(pin, hashed);
 }
 
+// Should essentially never loop — 1,000,000 possible 6-digit PINs against a
+// realistic active-employee count — but caps out rather than looping
+// forever in the pathological case, falling back to whatever the last
+// attempt generated (still logged, so it's visible if it ever actually
+// happens).
+const MAX_GENERATE_ATTEMPTS = 5;
+
+/**
+ * generatePin() + a collision check against every other active employee's
+ * PIN, retried a few times on the (extremely unlikely) chance of a random
+ * collision — used by the admin create/regenerate-pin flows so a
+ * system-generated PIN can't hand two employees the same one either, same
+ * reasoning as isPinTakenByAnotherEmployee below.
+ */
+export async function generateUniquePin(excludeUserId?: string, length = 6): Promise<string> {
+  let pin = generatePin(length);
+  for (let attempt = 1; attempt < MAX_GENERATE_ATTEMPTS; attempt++) {
+    if (!(await isPinTakenByAnotherEmployee(pin, excludeUserId))) return pin;
+    console.warn(`[generateUniquePin] Collision on attempt ${attempt}, regenerating.`);
+    pin = generatePin(length);
+  }
+  return pin;
+}
+
+/**
+ * True if the given plaintext PIN matches any OTHER active employee's
+ * currently-stored PIN. Verification itself (verifyPin above) is already
+ * correctly scoped per-employee via employeeCode — a shared PIN can never
+ * let one employee's login be mistaken for another's — but employeeCode
+ * isn't secret (often sequential, visible in the app itself), so two
+ * employees *knowingly* sharing a PIN is a real impersonation risk: either
+ * one can deliberately log in as the other. This is the guard against that,
+ * called wherever a PIN is set (self-service change-pin, and the admin
+ * create/regenerate flows for defense in depth) — not a fix to the
+ * verification logic, which was never the problem.
+ *
+ * bcrypt hashes have no reversible/indexable lookup, so this is a linear
+ * scan comparing against every other active employee's hash, with an early
+ * exit on the first match. Fine at this app's employee-count scale; it
+ * would need a separate keyed-hash index (not a bcrypt rework) to stay fast
+ * into the thousands.
+ */
+export async function isPinTakenByAnotherEmployee(pin: string, excludeUserId?: string): Promise<boolean> {
+  const others = await prisma.user.findMany({
+    where: {
+      role: "EMPLOYEE",
+      active: true,
+      pinHash: { not: null },
+      ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
+    },
+    select: { pinHash: true },
+  });
+  for (const other of others) {
+    if (other.pinHash && (await bcrypt.compare(pin, other.pinHash))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** Builds the next sequential employee code, e.g. EMP001, EMP002... */
 export function nextEmployeeCode(prefix: "EMP" | "ADM", currentMax: number): string {
   return `${prefix}${String(currentMax + 1).padStart(3, "0")}`;
