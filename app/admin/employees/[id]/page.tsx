@@ -100,9 +100,18 @@ export default async function EmployeeDetailPage({
         </Link>
 
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-lg bg-primary text-white flex items-center justify-center text-lg font-medium shadow-[0_1px_2px_rgba(41,43,49,0.05)] shrink-0">
-            {initials(employee.name)}
-          </div>
+          {employee.hasProfilePhoto ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={`/api/admin/employees/${employee.id}/profile-photo`}
+              alt={employee.name}
+              className="w-14 h-14 rounded-lg object-cover shadow-[0_1px_2px_rgba(41,43,49,0.05)] shrink-0"
+            />
+          ) : (
+            <div className="w-14 h-14 rounded-lg bg-primary text-white flex items-center justify-center text-lg font-medium shadow-[0_1px_2px_rgba(41,43,49,0.05)] shrink-0">
+              {initials(employee.name)}
+            </div>
+          )}
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-2xl font-medium text-foreground tracking-tight break-words">

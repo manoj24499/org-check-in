@@ -203,6 +203,16 @@ model User {
   // permission. Defaults on, matching the toggle's own default.
   shiftRemindersEnabled Boolean @default(true)
 
+  // Employee-uploaded profile photo (mobile Profile screen, self-service
+  // only — no admin upload path) — shown on the admin employee-detail page
+  // and in the mobile app's own Profile screen, falling back to initials
+  // when absent, same `hasX` + `Bytes?` convention as every other photo
+  // field in this app (Attendance/FieldVisit/OvertimeRequest/SupportTicket).
+  // `photo` is omitted by the global Prisma client default (see
+  // lib/prisma.ts) — added there in the same commit as this field.
+  profilePhoto    Bytes?
+  hasProfilePhoto Boolean @default(false)
+
   active    Boolean  @default(true)
   // Set the moment an admin deactivates this employee (PATCH .../set-active)
   // — null while active. lib/employeeCleanup.ts's daily job uses this to

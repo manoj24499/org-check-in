@@ -138,6 +138,7 @@ export async function GET(req: NextRequest) {
     lateMinutes: checkIn?.lateMinutes ?? null,
     leaveType: checkIn?.leaveType ?? "NONE",
     checkInMode: checkIn?.checkInMode ?? null,
+    shiftStartTime: shiftThatDay?.startTime ?? null,
     shiftEndTime: shiftThatDay?.endTime ?? null,
   });
 }

@@ -30,6 +30,10 @@ export async function GET(req: NextRequest) {
     // actually turning on check-in enforcement for someone never enrolled.
     faceVerificationExempt: user.faceVerificationExempt,
     shiftRemindersEnabled: user.shiftRemindersEnabled,
+    // Lets the client decide whether to fetch/render the actual photo (see
+    // /api/mobile/me/profile-photo) or fall back to initials, without an
+    // extra round trip just to find out there isn't one.
+    hasProfilePhoto: user.hasProfilePhoto,
   });
 }
 

@@ -24,6 +24,9 @@ function createPrismaClient() {
       supportTicket: {
         photo: true,
       },
+      user: {
+        profilePhoto: true,
+      },
     },
     log:
       process.env.NODE_ENV === "development"
