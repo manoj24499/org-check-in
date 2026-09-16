@@ -73,24 +73,54 @@ export async function issueRefreshToken(user: TokenSubject): Promise<string> {
 }
 
 /**
- * True only if this refresh token's own row is still valid — not revoked
- * (an explicit logout, or superseded by a later /api/mobile/refresh
- * rotation) and not past its own expiresAt. A token signed before this
- * feature existed carries no `jti` claim at all and is rejected here,
- * forcing one extra login for an already-logged-in device the first time
- * it refreshes after this deploys — a deliberate one-time cost for real
- * revocation, not a bug.
+ * Atomically checks a refresh token's row is still valid (not revoked, not
+ * past its own expiresAt) AND revokes it, in one UPDATE — used by
+ * /api/mobile/refresh to claim a token for rotation. Deliberately not a
+ * separate "check" step followed later by a separate "revoke" call: two
+ * concurrent refresh requests carrying the same still-valid token would
+ * otherwise both pass an initial read-only check before either commits its
+ * revoke, and both would go on to mint their own new token pair — a real
+ * TOCTOU race that both double-issues sessions from one token and silently
+ * defeats reuse detection (a captured, not-yet-rotated token replayed at
+ * the same moment as the legitimate device's own routine refresh would
+ * succeed for both, with nothing to flag it as suspicious). Returns true
+ * only for whichever single caller actually wins the race — every other
+ * concurrent caller (including a genuine replay) gets `false` and must log
+ * in again. A token signed before this feature existed carries no `jti`
+ * claim at all and is rejected here, forcing one extra login for an
+ * already-logged-in device the first time it refreshes after this
+ * deploys — a deliberate one-time cost for real revocation, not a bug.
  */
-export async function verifyRefreshTokenRecord(jti: string | undefined): Promise<boolean> {
-  if (!jti) return false;
-  const record = await prisma.refreshToken.findUnique({ where: { jti }, select: { revokedAt: true, expiresAt: true } });
-  return !!record && record.revokedAt === null && record.expiresAt > new Date();
+export async function claimRefreshToken(jti: string): Promise<boolean> {
+  const { count } = await prisma.refreshToken.updateMany({
+    where: { jti, revokedAt: null, expiresAt: { gt: new Date() } },
+    data: { revokedAt: new Date() },
+  });
+  return count === 1;
 }
 
-/** Marks one specific refresh token's row revoked — used by logout (revokes
- * just that one session) and by /api/mobile/refresh's rotation (the old
- * token is revoked the moment it's exchanged for a new pair). Idempotent:
- * revoking an already-revoked or nonexistent jti is a harmless no-op. */
+/**
+ * Bulk-revokes every currently-active RefreshToken row for a user — called
+ * alongside a `tokenVersion` bump (both change-pin routes) so the
+ * RefreshToken table's own `revokedAt` doesn't silently drift out of sync
+ * with what `tokenVersion` already implies. Without this, a PIN change
+ * left every other outstanding session's RefreshToken row reporting
+ * `revokedAt: null` — not currently exploitable (verifyMobileToken/
+ * tokenVersionMatches still independently reject those tokens on their own
+ * next refresh), but a real trap for anything built later that reads
+ * RefreshToken.revokedAt as the source of truth (an "active sessions" admin
+ * view, say) without also re-checking tokenVersion.
+ */
+export async function revokeAllRefreshTokensForUser(userId: string): Promise<void> {
+  await prisma.refreshToken.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });
+}
+
+/** Marks one specific refresh token's row revoked — used by logout to
+ * revoke just that one session. (Rotation in /api/mobile/refresh uses
+ * claimRefreshToken instead, which checks-and-revokes atomically — see its
+ * own comment for why a separate check-then-call-this pattern there was a
+ * real race.) Idempotent: revoking an already-revoked or nonexistent jti is
+ * a harmless no-op. */
 export async function revokeRefreshToken(jti: string): Promise<void> {
   await prisma.refreshToken.updateMany({ where: { jti, revokedAt: null }, data: { revokedAt: new Date() } });
 }

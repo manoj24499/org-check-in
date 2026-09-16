@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { hashPin, verifyPin, isPinTakenByAnotherEmployee } from "@/lib/credentials";
 import { isRateLimited } from "@/lib/rateLimit";
-import { requireMobileUser, signAccessToken, issueRefreshToken } from "@/lib/mobileAuth";
+import { requireMobileUser, signAccessToken, issueRefreshToken, revokeAllRefreshTokensForUser } from "@/lib/mobileAuth";
 
 const bodySchema = z.object({
   currentPin: z.string().min(4).max(10),
@@ -70,6 +70,11 @@ export async function POST(req: NextRequest) {
     where: { id: user.id },
     data: { pinHash: newPinHash, tokenVersion: { increment: 1 } },
   });
+
+  // Keeps RefreshToken.revokedAt in sync with the tokenVersion bump above
+  // (see that function's own comment) — done before issuing this device's
+  // own fresh pair below, which creates a brand-new row unaffected by it.
+  await revokeAllRefreshTokensForUser(updated.id);
 
   const [accessToken, refreshToken] = await Promise.all([
     signAccessToken(updated),

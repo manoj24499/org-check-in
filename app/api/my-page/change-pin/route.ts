@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { hashPin, verifyPin, isPinTakenByAnotherEmployee } from "@/lib/credentials";
 import { isRateLimited } from "@/lib/rateLimit";
+import { revokeAllRefreshTokensForUser } from "@/lib/mobileAuth";
 
 const bodySchema = z.object({
   currentPin: z.string().min(4).max(10),
@@ -69,6 +70,12 @@ export async function POST(req: NextRequest) {
     where: { id: user.id },
     data: { pinHash: newPinHash, tokenVersion: { increment: 1 } },
   });
+
+  // Keeps RefreshToken.revokedAt in sync with the tokenVersion bump above
+  // (see that function's own comment) — no mobile tokens are reissued from
+  // this web-only route, so unlike /api/mobile/change-pin there's no
+  // "current device" session to preserve here.
+  await revokeAllRefreshTokensForUser(user.id);
 
   return NextResponse.json({ success: true });
 }

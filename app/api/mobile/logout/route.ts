@@ -21,11 +21,14 @@ export async function POST(req: NextRequest) {
   }
 
   // Verified so an attacker can't revoke an arbitrary jti by guessing one —
-  // but deliberately not gated on tokenVersion/account-active/expiry the
-  // way requireMobileUser is: an already-expired or already-superseded
-  // refresh token should still be revoke-able (that's exactly the state a
-  // logout call is likely to arrive in), and there's nothing sensitive
-  // returned here either way.
+  // but deliberately not gated on tokenVersion/account-active the way
+  // requireMobileUser is: an already-superseded refresh token should still
+  // be revoke-able (that's exactly the state a logout call is likely to
+  // arrive in), and there's nothing sensitive returned here either way. An
+  // already-*expired* token is a no-op here regardless — verifyMobileToken
+  // (jose's jwtVerify under the hood) rejects expired tokens outright, so
+  // `payload` is just null and the block below is skipped; harmless, since
+  // an expired token could never have refreshed anyway.
   const payload = await verifyMobileToken(parsed.data.refreshToken, "refresh");
   if (payload?.jti) {
     await revokeRefreshToken(payload.jti);

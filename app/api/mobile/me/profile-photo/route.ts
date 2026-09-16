@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireMobileUser } from "@/lib/mobileAuth";
 import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
 import { PayloadTooLargeError, readJsonWithLimit } from "@/lib/readJsonBody";
+import { isRateLimited } from "@/lib/rateLimit";
 
 const bodySchema = z.object({
   // Data URL, same convention as every other photo upload in this app
@@ -25,6 +26,17 @@ const MAX_REQUEST_BYTES = 6 * 1024 * 1024;
 export async function POST(req: NextRequest) {
   const auth = await requireMobileUser(req);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // decodePhoto() below does a real sharp decode/resize/re-encode — genuine
+  // CPU cost, not just a DB write — so an authenticated employee spamming
+  // this endpoint is a real, if minor, cost-amplification vector. Same
+  // reasoning as change-pin's identical rate limit.
+  if (await isRateLimited(`profile-photo:${auth.sub}`, 60_000, 10)) {
+    return NextResponse.json(
+      { error: "Too many attempts. Please wait a moment and try again." },
+      { status: 429 },
+    );
+  }
 
   let json: unknown;
   try {
@@ -82,7 +94,15 @@ export async function GET(req: NextRequest) {
   return new NextResponse(new Uint8Array(user.profilePhoto), {
     headers: {
       "Content-Type": "image/jpeg",
-      "Cache-Control": "private, max-age=3600",
+      // `no-store`, not `private, max-age=...` — this exact URL is reused
+      // across logins on the same device with no per-user component and no
+      // `Vary: Authorization`, so an HTTP cache honoring `private` is
+      // technically permitted to serve one employee's cached photo bytes
+      // back to a *different* employee signed in afterward on the same
+      // device (a shared/reissued phone within the cache window). A single
+      // small avatar image refetched on every screen visit is a trivial
+      // cost next to that risk — this isn't a hot path.
+      "Cache-Control": "private, no-store",
     },
   });
 }

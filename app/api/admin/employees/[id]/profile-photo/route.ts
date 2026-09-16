@@ -24,7 +24,11 @@ export async function GET(
   return new NextResponse(new Uint8Array(user.profilePhoto), {
     headers: {
       "Content-Type": "image/jpeg",
-      "Cache-Control": "private, max-age=3600",
+      // `no-store` — same reasoning as the mobile self-serve route: a
+      // small avatar refetched per view is cheap, and this avoids an admin
+      // seeing a stale cached photo for up to an hour after an employee
+      // re-uploads one.
+      "Cache-Control": "private, no-store",
     },
   });
 }
