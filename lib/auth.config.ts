@@ -5,6 +5,7 @@ export const authConfig = {
   pages: {
     signIn: "/login",
   },
+  trustHost: true,
   providers: [],
   callbacks: {
     async jwt({ token, user }) {
