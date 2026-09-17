@@ -1,4 +1,5 @@
 import { LogIn, LogOut } from "lucide-react";
+import { startOfISTDay } from "@/lib/istTime";
 
 export interface RecentActivityRecord {
   id: string;
@@ -20,9 +21,15 @@ const RECENT_ACTIVITY_DAYS = 3;
  * instead of drifting apart with separately-maintained copies.
  */
 export function RecentActivityList({ records }: { records: RecentActivityRecord[] }) {
-  const cutoff = new Date();
-  cutoff.setHours(0, 0, 0, 0);
-  cutoff.setDate(cutoff.getDate() - (RECENT_ACTIVITY_DAYS - 1));
+  // This is a Server Component — rendered on whatever clock the Node process
+  // itself runs on (UTC in production, IST on most dev machines; see
+  // lib/istTime.ts's doc comment for why that split makes this invisible in
+  // local testing). `setHours`/`getDate()` and `toLocale*` without an
+  // explicit `timeZone` are all server-clock-dependent, so both the cutoff
+  // and the displayed date/time must be pinned to IST explicitly.
+  const cutoff = new Date(
+    startOfISTDay().getTime() - (RECENT_ACTIVITY_DAYS - 1) * 24 * 60 * 60 * 1000,
+  );
   const recent = records.filter((r) => new Date(r.timestamp) >= cutoff);
 
   if (recent.length === 0) {
@@ -64,6 +71,7 @@ export function RecentActivityList({ records }: { records: RecentActivityRecord[
               {new Date(r.timestamp).toLocaleDateString("en-US", {
                 day: "numeric",
                 month: "short",
+                timeZone: "Asia/Kolkata",
               })}{" "}
               · {r.method}
             </p>
@@ -76,6 +84,7 @@ export function RecentActivityList({ records }: { records: RecentActivityRecord[
             {new Date(r.timestamp).toLocaleTimeString("en-US", {
               hour: "2-digit",
               minute: "2-digit",
+              timeZone: "Asia/Kolkata",
             })}
           </span>
         </div>

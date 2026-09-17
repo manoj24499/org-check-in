@@ -123,7 +123,7 @@ export default async function MyPage() {
           <span className="text-sm font-medium text-primary-dark">
             {last
               ? isIn
-                ? `Checked in since ${last.timestamp.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })} · ${formatDuration(now.getTime() - last.timestamp.getTime())}`
+                ? `Checked in since ${last.timestamp.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" })} · ${formatDuration(now.getTime() - last.timestamp.getTime())}`
                 : "Checked out"
               : "No activity yet"}
           </span>
