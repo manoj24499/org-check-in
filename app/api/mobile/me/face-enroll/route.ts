@@ -81,6 +81,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ status: "failed", message: result.message });
   }
   // Service unreachable/errored — distinct from "failed" so the client can
-  // show "try again shortly" rather than "retake your photo".
-  return NextResponse.json({ status: "unavailable", message: result.reason });
+  // show "try again shortly" rather than "retake your photo". `result.reason`
+  // is a raw internal error string (e.g. a bare AbortError message like "This
+  // operation was aborted") — log it for diagnostics, but never send it to
+  // the client; the mobile screen already has its own friendly copy for this
+  // status and only falls back to it when `message` is absent.
+  console.warn(`[POST /api/mobile/me/face-enroll] embed unavailable for ${user.employeeCode}:`, result.reason);
+  return NextResponse.json({ status: "unavailable" });
 }

@@ -47,7 +47,7 @@ interface FaceVerifyResponse {
   similarity?: number;
 }
 
-const DEFAULT_TIMEOUT_MS = 5000;
+const DEFAULT_TIMEOUT_MS = 10000;
 
 /**
  * Calls the face-verification service for one check-in photo. Never throws —
@@ -155,7 +155,10 @@ export async function embedFace(
     const data: FaceVerifyResponse = await res.json().catch(() => ({}));
 
     if (data.success === false) {
-      return { outcome: "failed", message: data.message || "Face enrollment failed." };
+      return {
+        outcome: "failed",
+        message: data.message || "Face enrollment failed.",
+      };
     }
     // No explicit `success: false` (including no `success` field at all,
     // which /embed may just omit on the happy path) is treated as enrolled.
@@ -186,26 +189,38 @@ export async function embedFace(
  * employee is already deleted from this app's own DB, so a failure here must
  * never be treated as blocking; the caller just logs it.
  */
-export async function deleteFaceEnrollment(employeeCode: string): Promise<FaceDeleteResult> {
+export async function deleteFaceEnrollment(
+  employeeCode: string,
+): Promise<FaceDeleteResult> {
   const baseUrl = process.env.FACE_VERIFY_URL;
   if (!baseUrl) {
-    return { outcome: "unavailable", reason: "FACE_VERIFY_URL is not configured" };
+    return {
+      outcome: "unavailable",
+      reason: "FACE_VERIFY_URL is not configured",
+    };
   }
   const apiKey = process.env.FACE_VERIFY_API_KEY;
   if (!apiKey) {
-    return { outcome: "unavailable", reason: "FACE_VERIFY_API_KEY is not configured" };
+    return {
+      outcome: "unavailable",
+      reason: "FACE_VERIFY_API_KEY is not configured",
+    };
   }
 
-  const timeoutMs = Number(process.env.FACE_VERIFY_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS;
+  const timeoutMs =
+    Number(process.env.FACE_VERIFY_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const res = await fetch(new URL(`/employees/${encodeURIComponent(employeeCode)}`, baseUrl), {
-      method: "DELETE",
-      headers: { "x-api-key": apiKey },
-      signal: controller.signal,
-    });
+    const res = await fetch(
+      new URL(`/employees/${encodeURIComponent(employeeCode)}`, baseUrl),
+      {
+        method: "DELETE",
+        headers: { "x-api-key": apiKey },
+        signal: controller.signal,
+      },
+    );
     if (!res.ok && res.status !== 404) {
       return {
         outcome: "unavailable",

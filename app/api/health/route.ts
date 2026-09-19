@@ -8,13 +8,18 @@ export const dynamic = "force-dynamic";
 // is reported here for visibility but never affects the overall `status`
 // below. A short timeout so a hung/unreachable face-verify host can't make
 // this whole health check slow.
-async function checkFaceVerify(): Promise<"ok" | "unreachable" | "not_configured"> {
+async function checkFaceVerify(): Promise<
+  "ok" | "unreachable" | "not_configured"
+> {
   const baseUrl = process.env.FACE_VERIFY_URL;
+  console.log("baseUrl--->", baseUrl);
   if (!baseUrl) return "not_configured";
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 3000);
   try {
     const res = await fetch(baseUrl, { signal: controller.signal });
+
+    console.log("res--->", res);
     return res.ok ? "ok" : "unreachable";
   } catch {
     return "unreachable";
@@ -33,6 +38,7 @@ async function checkFaceVerify(): Promise<"ok" | "unreachable" | "not_configured
  * boot-time check only catches the var being *missing*, not wrong.
  */
 export async function GET() {
+  console.log("rendered");
   const [dbResult, faceVerifyResult] = await Promise.allSettled([
     prisma.$queryRaw`SELECT 1`,
     checkFaceVerify(),
@@ -49,7 +55,10 @@ export async function GET() {
       timestamp: new Date().toISOString(),
       checks: {
         database: databaseOk ? "ok" : "error",
-        faceVerification: faceVerifyResult.status === "fulfilled" ? faceVerifyResult.value : "unreachable",
+        faceVerification:
+          faceVerifyResult.status === "fulfilled"
+            ? faceVerifyResult.value
+            : "unreachable",
       },
     },
     { status: databaseOk ? 200 : 503 },
