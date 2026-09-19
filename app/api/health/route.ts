@@ -1,32 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { checkFaceVerifyHealth } from "@/lib/faceVerify";
 
 export const dynamic = "force-dynamic";
-
-// Best-effort only — this service already fails open everywhere it's
-// actually used (see lib/faceVerify.ts's own comment), so its reachability
-// is reported here for visibility but never affects the overall `status`
-// below. A short timeout so a hung/unreachable face-verify host can't make
-// this whole health check slow.
-async function checkFaceVerify(): Promise<
-  "ok" | "unreachable" | "not_configured"
-> {
-  const baseUrl = process.env.FACE_VERIFY_URL;
-  console.log("baseUrl--->", baseUrl);
-  if (!baseUrl) return "not_configured";
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 3000);
-  try {
-    const res = await fetch(baseUrl, { signal: controller.signal });
-
-    console.log("res--->", res);
-    return res.ok ? "ok" : "unreachable";
-  } catch {
-    return "unreachable";
-  } finally {
-    clearTimeout(timeout);
-  }
-}
 
 /**
  * Unauthenticated health check for uptime monitoring / load balancers — no
@@ -38,10 +14,9 @@ async function checkFaceVerify(): Promise<
  * boot-time check only catches the var being *missing*, not wrong.
  */
 export async function GET() {
-  console.log("rendered");
   const [dbResult, faceVerifyResult] = await Promise.allSettled([
     prisma.$queryRaw`SELECT 1`,
-    checkFaceVerify(),
+    checkFaceVerifyHealth(),
   ]);
 
   const databaseOk = dbResult.status === "fulfilled";
@@ -55,10 +30,7 @@ export async function GET() {
       timestamp: new Date().toISOString(),
       checks: {
         database: databaseOk ? "ok" : "error",
-        faceVerification:
-          faceVerifyResult.status === "fulfilled"
-            ? faceVerifyResult.value
-            : "unreachable",
+        faceVerification: faceVerifyResult.status === "fulfilled" ? faceVerifyResult.value : "unreachable",
       },
     },
     { status: databaseOk ? 200 : 503 },

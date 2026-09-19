@@ -235,3 +235,26 @@ export async function deleteFaceEnrollment(
     clearTimeout(timeout);
   }
 }
+
+/**
+ * Lightweight reachability check for the face-verification service — used by
+ * both /api/health (uptime monitoring) and the admin dashboard's status
+ * banner. Deliberately just a GET on the base URL, not a real /verify call —
+ * this only needs to answer "is the service up," not exercise the actual
+ * recognition pipeline. A short timeout so a hung host can't make either
+ * caller slow.
+ */
+export async function checkFaceVerifyHealth(): Promise<"ok" | "unreachable" | "not_configured"> {
+  const baseUrl = process.env.FACE_VERIFY_URL;
+  if (!baseUrl) return "not_configured";
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 3000);
+  try {
+    const res = await fetch(baseUrl, { signal: controller.signal });
+    return res.ok ? "ok" : "unreachable";
+  } catch {
+    return "unreachable";
+  } finally {
+    clearTimeout(timeout);
+  }
+}

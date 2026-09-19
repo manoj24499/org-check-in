@@ -3,6 +3,9 @@ import { prisma } from "@/lib/prisma";
 import Providers from "@/components/Providers";
 import TabSecurity from "@/components/TabSecurity";
 import AdminHeader from "@/components/AdminHeader";
+import { FaceVerifyStatusBanner } from "@/components/FaceVerifyStatusBanner";
+import { checkFaceVerifyHealth } from "@/lib/faceVerify";
+import { startOfISTDay } from "@/lib/istTime";
 
 export default async function AdminLayout({
   children,
@@ -10,14 +13,20 @@ export default async function AdminLayout({
   children: React.ReactNode;
 }) {
   const session = await auth();
+  const isAdmin = session?.user?.role === "ADMIN";
   // Server-rendered once per navigation (no live polling) — same "refresh to
   // see new state" pattern the rest of the admin panel already uses.
-  const pendingLeaveCount =
-    session?.user?.role === "ADMIN" ? await prisma.timeOffRequest.count({ where: { status: "PENDING" } }) : 0;
-  const pendingOvertimeCount =
-    session?.user?.role === "ADMIN" ? await prisma.overtimeRequest.count({ where: { status: "PENDING" } }) : 0;
-  const pendingSupportCount =
-    session?.user?.role === "ADMIN" ? await prisma.supportTicket.count({ where: { status: "OPEN" } }) : 0;
+  const pendingLeaveCount = isAdmin ? await prisma.timeOffRequest.count({ where: { status: "PENDING" } }) : 0;
+  const pendingOvertimeCount = isAdmin ? await prisma.overtimeRequest.count({ where: { status: "PENDING" } }) : 0;
+  const pendingSupportCount = isAdmin ? await prisma.supportTicket.count({ where: { status: "OPEN" } }) : 0;
+  const [faceVerifyStatus, unavailableCheckInsToday] = isAdmin
+    ? await Promise.all([
+        checkFaceVerifyHealth(),
+        prisma.attendance.count({
+          where: { faceVerifyStatus: "UNAVAILABLE", timestamp: { gte: startOfISTDay() } },
+        }),
+      ])
+    : (["ok", 0] as const);
 
   return (
     <Providers>
@@ -42,6 +51,9 @@ export default async function AdminLayout({
           pendingOvertimeCount={pendingOvertimeCount}
           pendingSupportCount={pendingSupportCount}
         />
+        {isAdmin && (
+          <FaceVerifyStatusBanner status={faceVerifyStatus} unavailableCheckInsToday={unavailableCheckInsToday} />
+        )}
         <main className="flex-1 overflow-y-auto">{children}</main>
       </div>
     </Providers>
