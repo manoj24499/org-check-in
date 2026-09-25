@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { Download } from "lucide-react";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import LeaveRequestsPanel from "@/components/LeaveRequestsPanel";
 import HolidayManager from "@/components/HolidayManager";
@@ -8,16 +10,20 @@ import { istDateKey } from "@/lib/istTime";
 export const dynamic = "force-dynamic";
 
 export default async function LeavePage() {
+  const session = await auth();
+  if (!session?.user.organizationId) notFound();
+  const organizationId = session.user.organizationId;
+
   const year = Number(istDateKey().slice(0, 4));
 
   const [pendingRaw, holidaysRaw] = await Promise.all([
     prisma.timeOffRequest.findMany({
-      where: { status: "PENDING" },
+      where: { status: "PENDING", user: { organizationId } },
       orderBy: { createdAt: "asc" },
       include: { user: { select: { id: true, employeeCode: true, name: true } } },
     }),
     prisma.publicHoliday.findMany({
-      where: { date: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) } },
+      where: { organizationId, date: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) } },
       orderBy: { date: "asc" },
     }),
   ]);

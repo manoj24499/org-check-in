@@ -7,10 +7,16 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  const employee = await prisma.user.findUnique({
+    where: { id, organizationId: admin.organizationId },
+    select: { id: true },
+  });
+  if (!employee) return NextResponse.json({ error: "Not found." }, { status: 404 });
+
   const [attendances, specialDays] = await Promise.all([
     // Explicit `select` — same reasoning as /api/mobile/me/attendance: the
     // response never sends photo bytes, only `hasPhoto`, so pulling up to
@@ -29,7 +35,7 @@ export async function GET(
         pauses: { select: { pausedAt: true, resumedAt: true, timedPermissionId: true } },
       },
     }),
-    getCalendarSpecialDays(id),
+    getCalendarSpecialDays(id, admin.organizationId),
   ]);
 
   return NextResponse.json({

@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
   // though login itself stays correctly scoped per-employee) lets either
   // one deliberately log in as the other — see isPinTakenByAnotherEmployee's
   // own comment.
-  if (await isPinTakenByAnotherEmployee(parsed.data.newPin, user.id)) {
+  if (await isPinTakenByAnotherEmployee(parsed.data.newPin, auth.organizationId, user.id)) {
     return NextResponse.json(
       { error: "That PIN is already taken. Please choose a different one." },
       { status: 409 },

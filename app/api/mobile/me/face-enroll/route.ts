@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const result = await embedFace(user.employeeCode, photoBuffer);
+  const result = await embedFace(auth.organizationId, user.employeeCode, photoBuffer);
 
   if (result.outcome === "enrolled") {
     await prisma.user.update({

@@ -5,8 +5,8 @@ import { csvField, CSV_EXPORT_ROW_CAP } from "@/lib/csv";
 import { parseDateOnlyKey } from "@/lib/istTime";
 
 export async function GET(req: NextRequest) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   // Optional scoping — same convention as the attendance export (see its
   // own comment): omitted, this still exports everything, just capped at
@@ -20,7 +20,10 @@ export async function GET(req: NextRequest) {
   }
 
   const requests = await prisma.timeOffRequest.findMany({
-    where: from || to ? { startDate: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : undefined,
+    where: {
+      user: { organizationId: admin.organizationId },
+      ...(from || to ? { startDate: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
+    },
     orderBy: { startDate: "desc" },
     include: { user: true },
     take: CSV_EXPORT_ROW_CAP,

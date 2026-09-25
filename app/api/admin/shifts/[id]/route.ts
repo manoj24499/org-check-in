@@ -15,8 +15,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
   const json = await req.json().catch(() => null);
@@ -25,7 +25,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid input." }, { status: 400 });
   }
 
-  const existing = await prisma.shift.findUnique({ where: { id } });
+  const existing = await prisma.shift.findFirst({ where: { id, organizationId: admin.organizationId } });
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   // Checked against the *effective* (merged with whatever isn't being
@@ -60,11 +60,11 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const existing = await prisma.shift.findUnique({ where: { id } });
+  const existing = await prisma.shift.findFirst({ where: { id, organizationId: admin.organizationId } });
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   // Every ShiftAssignment referencing this shift is cascade-deleted (see

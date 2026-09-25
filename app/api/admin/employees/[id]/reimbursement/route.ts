@@ -28,10 +28,16 @@ const putSchema = z.object({
 // rate actually used so a later change to the default rate never rewrites
 // history (see AppSettings.reimbursementRatePerKm).
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  const employee = await prisma.user.findUnique({
+    where: { id, organizationId: admin.organizationId },
+    select: { id: true },
+  });
+  if (!employee) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
   const day = parseDateParam(req.nextUrl.searchParams.get("date"));
 
   const reimbursement = await prisma.reimbursement.findUnique({
@@ -42,8 +48,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
   const json = await req.json().catch(() => null);
@@ -52,7 +58,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: "Invalid input." }, { status: 400 });
   }
 
-  const user = await prisma.user.findUnique({ where: { id } });
+  const user = await prisma.user.findUnique({ where: { id, organizationId: admin.organizationId } });
   if (!user || user.role !== "EMPLOYEE") {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }

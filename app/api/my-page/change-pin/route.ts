@@ -13,7 +13,13 @@ const bodySchema = z.object({
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (!session || session.user.role !== "EMPLOYEE") {
+  // organizationId checked explicitly, not just role — a session issued
+  // before organizationId existed on the JWT (see lib/auth.config.ts's jwt
+  // callback, only set on fresh sign-in) would otherwise pass `undefined`
+  // into isPinTakenByAnotherEmployee below, which Prisma treats as "no
+  // filter" rather than "match nothing" — silently checking PIN uniqueness
+  // across every organization instead of just this one.
+  if (!session || session.user.role !== "EMPLOYEE" || !session.user.organizationId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -50,7 +56,7 @@ export async function POST(req: NextRequest) {
   // See isPinTakenByAnotherEmployee's own comment — employeeCode isn't
   // secret, so a knowingly-shared PIN lets either employee deliberately log
   // in as the other, even though login itself stays correctly scoped.
-  if (await isPinTakenByAnotherEmployee(parsed.data.newPin, user.id)) {
+  if (await isPinTakenByAnotherEmployee(parsed.data.newPin, session.user.organizationId, user.id)) {
     return NextResponse.json(
       { error: "That PIN is already taken. Please choose a different one." },
       { status: 409 },

@@ -1,20 +1,26 @@
 import { prisma } from "@/lib/prisma";
 
-/** Fetches the singleton app settings row, creating it with defaults on first read. */
-export async function getSettings() {
-  const existing = await prisma.appSettings.findFirst();
+/** Fetches one organization's settings row, creating it with defaults on first read. */
+export async function getSettings(organizationId: string) {
+  const existing = await prisma.appSettings.findUnique({ where: { organizationId } });
   if (existing) return existing;
-  return prisma.appSettings.create({ data: {} });
+  return prisma.appSettings.create({ data: { organizationId } });
 }
 
-export async function updateSettings(data: {
-  checkOutPhotoRequired?: boolean;
-  reimbursementRatePerKm?: number | null;
-  casualLeaveQuota?: number;
-  sickLeaveQuota?: number;
-  earnedLeaveQuota?: number;
-  lateThresholdMinutes?: number;
-}) {
-  const existing = await getSettings();
-  return prisma.appSettings.update({ where: { id: existing.id }, data });
+export async function updateSettings(
+  organizationId: string,
+  data: {
+    checkOutPhotoRequired?: boolean;
+    reimbursementRatePerKm?: number | null;
+    casualLeaveQuota?: number;
+    sickLeaveQuota?: number;
+    earnedLeaveQuota?: number;
+    lateThresholdMinutes?: number;
+  },
+) {
+  return prisma.appSettings.upsert({
+    where: { organizationId },
+    create: { organizationId, ...data },
+    update: data,
+  });
 }

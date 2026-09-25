@@ -57,6 +57,13 @@ export default function LoginSelectionPage() {
             <ArrowRight className="w-[17px] h-[17px] ml-auto text-muted shrink-0 transition-transform group-hover:translate-x-0.5" />
           </Link>
         </div>
+
+        <p className="mt-6 text-center text-[13px] text-muted">
+          New organization?{" "}
+          <Link href="/register" className="font-medium text-primary-dark hover:underline">
+            Register here
+          </Link>
+        </p>
       </div>
     </main>
   );

@@ -9,13 +9,13 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
 
   const user = await prisma.user.findUnique({
-    where: { id },
+    where: { id, organizationId: admin.organizationId },
     select: { profilePhoto: true },
   });
 

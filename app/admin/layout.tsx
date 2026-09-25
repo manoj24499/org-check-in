@@ -13,20 +13,37 @@ export default async function AdminLayout({
   children: React.ReactNode;
 }) {
   const session = await auth();
-  const isAdmin = session?.user?.role === "ADMIN";
+  const isAdmin = session?.user?.role === "ADMIN" && Boolean(session.user.organizationId);
+  const organizationId = session?.user?.organizationId;
   // Server-rendered once per navigation (no live polling) — same "refresh to
   // see new state" pattern the rest of the admin panel already uses.
-  const pendingLeaveCount = isAdmin ? await prisma.timeOffRequest.count({ where: { status: "PENDING" } }) : 0;
-  const pendingOvertimeCount = isAdmin ? await prisma.overtimeRequest.count({ where: { status: "PENDING" } }) : 0;
-  const pendingSupportCount = isAdmin ? await prisma.supportTicket.count({ where: { status: "OPEN" } }) : 0;
-  const [faceVerifyStatus, unavailableCheckInsToday] = isAdmin
-    ? await Promise.all([
-        checkFaceVerifyHealth(),
-        prisma.attendance.count({
-          where: { faceVerifyStatus: "UNAVAILABLE", timestamp: { gte: startOfISTDay() } },
-        }),
-      ])
-    : (["ok", 0] as const);
+  const pendingLeaveCount =
+    isAdmin && organizationId
+      ? await prisma.timeOffRequest.count({ where: { status: "PENDING", user: { organizationId } } })
+      : 0;
+  const pendingOvertimeCount =
+    isAdmin && organizationId
+      ? await prisma.overtimeRequest.count({
+          where: { status: "PENDING", attendance: { user: { organizationId } } },
+        })
+      : 0;
+  const pendingSupportCount =
+    isAdmin && organizationId
+      ? await prisma.supportTicket.count({ where: { status: "OPEN", user: { organizationId } } })
+      : 0;
+  const [faceVerifyStatus, unavailableCheckInsToday] =
+    isAdmin && organizationId
+      ? await Promise.all([
+          checkFaceVerifyHealth(),
+          prisma.attendance.count({
+            where: {
+              faceVerifyStatus: "UNAVAILABLE",
+              timestamp: { gte: startOfISTDay() },
+              user: { organizationId },
+            },
+          }),
+        ])
+      : (["ok", 0] as const);
 
   return (
     <Providers>

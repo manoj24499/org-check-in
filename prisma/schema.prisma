@@ -83,6 +83,42 @@ enum Role {
   EMPLOYEE
 }
 
+enum OrgStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+// One tenant. Every User/Shift/OfficeLocation/AppSettings/PublicHoliday/
+// DeletedEmployeeArchive belongs to exactly one Organization — everything
+// else (Attendance, TimeOffRequest, etc.) is scoped transitively through its
+// owning User instead of carrying its own organizationId. `slug` is the one
+// human-facing identifier: it's both the kiosk URL segment
+// (/kiosk/<slug>) and the "Organization Code" typed at mobile/my-page login,
+// deliberately kept as a single thing for an org owner to hand out rather
+// than two.
+model Organization {
+  id     String    @id @default(cuid())
+  name   String
+  slug   String    @unique
+  status OrgStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Forward-compatible only — unused until a future billing pass; no code
+  // reads or writes these yet.
+  planTier          String?
+  seatLimit         Int?
+  billingCustomerId String?
+
+  users                   User[]
+  shifts                  Shift[]
+  officeLocation          OfficeLocation?
+  appSettings             AppSettings?
+  publicHolidays          PublicHoliday[]
+  deletedEmployeeArchives DeletedEmployeeArchive[]
+}
+
 enum AttendanceType {
   CHECK_IN
   CHECK_OUT
@@ -141,10 +177,25 @@ enum FaceVerifyStatus {
 
 model User {
   id           String @id @default(cuid())
-  employeeCode String @unique // human-friendly ID, e.g. EMP001 / ADM001
+  // Unique only within its organization now (see @@unique below) — was
+  // globally unique before organizationId was required; two different
+  // organizations' independently-allocated "EMP001" are expected and fine.
+  // email stays globally unique (a separate, so-far-unneeded product
+  // decision: whether the same person's email can exist in two different
+  // organizations).
+  employeeCode String // human-friendly ID, e.g. EMP001 / ADM001
   name         String
   email        String @unique
   role         Role   @default(EMPLOYEE)
+
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // True only for the first admin created when an organization registers
+  // (see the self-serve registration flow) — distinguishes "the account this
+  // org would have zero admins without" from any other admin, so it can be
+  // protected from deactivation/removal. Not a role/permission tier: every
+  // ADMIN, owner or not, has identical capabilities today.
+  isOwner        Boolean       @default(false)
 
   // Admin auth (only set for ADMIN role)
   passwordHash String?
@@ -235,6 +286,9 @@ model User {
   shiftAssignments ShiftAssignment[]
   supportTickets   SupportTicket[]
 
+  // Replaces the old bare @unique on employeeCode — see that field's own
+  // comment.
+  @@unique([organizationId, employeeCode])
   @@index([role])
   @@index([workMode])
   // Serves the recurring "active employees, optionally filtered to one
@@ -266,6 +320,9 @@ model Shift {
   endTime   String // "HH:mm", 24-hour
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   assignments ShiftAssignment[]
 }
@@ -577,8 +634,10 @@ model LocationPing {
   @@index([userId, timestamp])
 }
 
-// Singleton-ish config: the scan route reads whichever row exists (there's
-// normally just one) to geofence check-ins. No row yet == geofencing is off.
+// One row per organization (see lib/settings.ts's getSettings/updateSettings
+// and Organization.slug's own comment) — the scan route geofences check-ins
+// against the calling org's own row. No row yet == geofencing is off for
+// that org.
 model OfficeLocation {
   id           String   @id @default(cuid())
   name         String
@@ -587,11 +646,14 @@ model OfficeLocation {
   radiusMeters Float    @default(50)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
 
-// Singleton app-wide config (see lib/settings.ts) — exactly one row, created
-// on first read if missing. Start here for future toggles rather than adding
-// more one-off models.
+// One row per organization (see lib/settings.ts), created on first read if
+// missing. Start here for future org-level toggles rather than adding more
+// one-off models.
 model AppSettings {
   id                    String   @id @default(cuid())
   checkOutPhotoRequired Boolean  @default(false)
@@ -620,22 +682,35 @@ model AppSettings {
   // Persistent counter backing allocateNextEmployeeCode() (lib/credentials.ts)
   // — deliberately separate from MAX(User.employeeCode), which silently
   // reuses a deleted employee's code once lib/employeeCleanup.ts hard-deletes
-  // them. Only ever written by that function; never exposed to
-  // updateSettings()/the admin settings UI, since letting it be set backward
-  // would reintroduce the exact collision this exists to prevent.
+  // them. Scoped per-organization (via this row's own organizationId) so
+  // each organization's employee codes start from EMP001 independently. Only
+  // ever written by that function; never exposed to updateSettings()/the
+  // admin settings UI, since letting it be set backward would reintroduce
+  // the exact collision this exists to prevent.
   lastEmployeeCodeNumber Int @default(0)
 
   updatedAt DateTime @updatedAt
+
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
 
-// A holiday that applies to everyone — excluded from a TimeOffRequest's day
-// count (see TimeOffRequest.days) and shown in the leave calendar so a
-// request spanning one isn't mistaken for a gap in the record.
+// A holiday that applies to everyone *within one organization* — excluded
+// from a TimeOffRequest's day count (see TimeOffRequest.days) and shown in
+// the leave calendar so a request spanning one isn't mistaken for a gap in
+// the record. Uniqueness is per-organization (see @@unique below), not
+// global — two organizations can each hold a holiday on the same calendar
+// date.
 model PublicHoliday {
   id        String   @id @default(cuid())
-  date      DateTime @unique
+  date      DateTime
   name      String
   createdAt DateTime @default(now())
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, date])
 }
 
 enum TimeOffType {
@@ -751,6 +826,13 @@ model DeletedEmployeeArchive {
   attendanceCsv    String
   reimbursementCsv String
   leaveRequestsCsv String
+
+  // Deliberately no onDelete cascade (unlike every other direct-FK model
+  // here) — an audit trail should never vanish just because its organization
+  // is later deleted (not a feature this app has anyway; the default
+  // Restrict behavior just documents the intent either way).
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
 
   @@index([deletedAt])
 }

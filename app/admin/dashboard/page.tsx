@@ -1,3 +1,5 @@
+import { notFound } from "next/navigation";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import DashboardWorkspace from "@/components/DashboardWorkspace";
 import PendingPermissionsPanel from "@/components/PendingPermissionsPanel";
@@ -6,13 +8,17 @@ import { startOfISTDay, todayDateOnlyIST } from "@/lib/istTime";
 export const dynamic = "force-dynamic";
 
 export default async function AdminDashboard() {
+  const session = await auth();
+  if (!session?.user.organizationId) notFound();
+  const organizationId = session.user.organizationId;
+
   // Explicit `select` at both levels — this is the admin's landing page,
   // re-fetched on every navigation to it (`force-dynamic`), and was
   // previously pulling every active employee's full User row (pinHash
   // included) plus every one of today's Attendance rows in full (photo
   // bytes included) just to compute a few booleans and two numbers.
   const employeesRaw = await prisma.user.findMany({
-    where: { role: "EMPLOYEE", active: true },
+    where: { organizationId, role: "EMPLOYEE", active: true },
     // Join order (oldest first), matching /admin/employees and /admin/shifts.
     orderBy: { createdAt: "asc" },
     select: {
@@ -53,7 +59,12 @@ export default async function AdminDashboard() {
   // classification, despite the similar name — see its own schema comment).
   const todayDateOnly = todayDateOnlyIST();
   const leaveTodayRaw = await prisma.timeOffRequest.findMany({
-    where: { status: "APPROVED", startDate: { lte: todayDateOnly }, endDate: { gte: todayDateOnly } },
+    where: {
+      status: "APPROVED",
+      startDate: { lte: todayDateOnly },
+      endDate: { gte: todayDateOnly },
+      user: { organizationId },
+    },
     select: { id: true, userId: true, type: true, markedByAdmin: true },
   });
   const leaveByUser = new Map(leaveTodayRaw.map((r) => [r.userId, r]));
@@ -85,7 +96,7 @@ export default async function AdminDashboard() {
   const lateToday = employees.filter((e) => e.lateMinutes !== null && e.lateMinutes > 0).length;
 
   const pendingPermissionsRaw = await prisma.timedPermission.findMany({
-    where: { approvalStatus: "PENDING" },
+    where: { approvalStatus: "PENDING", attendance: { user: { organizationId } } },
     orderBy: { createdAt: "asc" },
     include: { attendance: { select: { user: { select: { id: true, employeeCode: true, name: true } } } } },
   });

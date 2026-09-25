@@ -8,8 +8,8 @@ const VALID_STATUSES = ["PENDING", "APPROVED", "REJECTED"] as const;
  * (the "needs a decision" queue an admin actually acts on) unless a
  * specific status is asked for. */
 export async function GET(req: NextRequest) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const statusParam = req.nextUrl.searchParams.get("status")?.toUpperCase();
   const approvalStatus = (VALID_STATUSES as readonly string[]).includes(statusParam ?? "")
@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
     : "PENDING";
 
   const permissions = await prisma.timedPermission.findMany({
-    where: { approvalStatus },
+    where: { approvalStatus, attendance: { user: { organizationId: admin.organizationId } } },
     orderBy: { createdAt: "asc" },
     include: {
       attendance: {

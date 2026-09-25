@@ -39,8 +39,8 @@ const MAX_REQUEST_BYTES = 6 * 1024 * 1024;
 // server-side so it covers every employee, not just the currently-loaded
 // page.
 export async function GET(req: NextRequest) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = req.nextUrl;
   const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10) || 1);
@@ -48,6 +48,7 @@ export async function GET(req: NextRequest) {
   const q = searchParams.get("q")?.trim();
 
   const where = {
+    organizationId: admin.organizationId,
     role: "EMPLOYEE" as const,
     ...(q
       ? {
@@ -84,8 +85,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await requireAdmin();
-    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const admin = await requireAdmin();
+    if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     let json: unknown;
     try {
@@ -119,8 +120,8 @@ export async function POST(req: NextRequest) {
 
     let shift: { id: string; name: string | null; startTime: string; endTime: string } | null = null;
     if (parsed.data.shiftId) {
-      shift = await prisma.shift.findUnique({
-        where: { id: parsed.data.shiftId },
+      shift = await prisma.shift.findFirst({
+        where: { id: parsed.data.shiftId, organizationId: admin.organizationId },
         select: { id: true, name: true, startTime: true, endTime: true },
       });
       if (!shift) {
@@ -128,15 +129,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Atomically allocated, persistent counter — see allocateNextEmployeeCode's
-    // own comment for why this can't just be MAX(employeeCode).
-    const employeeCode = await allocateNextEmployeeCode();
+    // Atomically allocated, persistent counter, scoped to this org — see
+    // allocateNextEmployeeCode's own comment for why this can't just be
+    // MAX(employeeCode).
+    const employeeCode = await allocateNextEmployeeCode(admin.organizationId);
 
-    const pin = await generateUniquePin();
+    const pin = await generateUniquePin(admin.organizationId);
     const pinHash = await hashPin(pin);
 
     const user = await prisma.user.create({
       data: {
+        organizationId: admin.organizationId,
         name: parsed.data.name,
         email: parsed.data.email,
         role: "EMPLOYEE",
@@ -167,7 +170,7 @@ export async function POST(req: NextRequest) {
     let faceEnrollment: { status: "enrolled" | "failed" | "unavailable"; message?: string } | null =
       null;
     if (photoBuffer) {
-      const result = await embedFace(employeeCode, photoBuffer);
+      const result = await embedFace(admin.organizationId, employeeCode, photoBuffer);
       if (result.outcome === "enrolled") {
         await prisma.user.update({
           where: { id: user.id },

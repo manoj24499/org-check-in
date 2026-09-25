@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { ArrowLeft, Download } from "lucide-react";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +24,11 @@ function formatDate(d: Date) {
  * taken in the same transaction as the delete (see DeletedEmployeeArchive).
  */
 export default async function DeletedEmployeesPage() {
+  const session = await auth();
+  if (!session?.user.organizationId) notFound();
+
   const archives = await prisma.deletedEmployeeArchive.findMany({
+    where: { organizationId: session.user.organizationId },
     orderBy: { deletedAt: "desc" },
   });
 

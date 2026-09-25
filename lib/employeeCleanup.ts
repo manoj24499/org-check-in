@@ -78,7 +78,15 @@ export async function runDeactivatedEmployeeCleanup(): Promise<{ deletedCount: n
   const cutoff = daysAgo(RETENTION_DAYS);
   const due = await prisma.user.findMany({
     where: { role: "EMPLOYEE", active: false, deactivatedAt: { lte: cutoff } },
-    select: { id: true, employeeCode: true, name: true, email: true, workMode: true, deactivatedAt: true },
+    select: {
+      id: true,
+      employeeCode: true,
+      name: true,
+      email: true,
+      workMode: true,
+      deactivatedAt: true,
+      organizationId: true,
+    },
   });
 
   let deletedCount = 0;
@@ -103,6 +111,7 @@ export async function runDeactivatedEmployeeCleanup(): Promise<{ deletedCount: n
       await prisma.$transaction([
         prisma.deletedEmployeeArchive.create({
           data: {
+            organizationId: user.organizationId,
             employeeCode: user.employeeCode,
             name: user.name,
             email: user.email,
@@ -126,12 +135,16 @@ export async function runDeactivatedEmployeeCleanup(): Promise<{ deletedCount: n
       // cleanup — the User row is already deleted by this point, so there's
       // nothing left to roll back to. A failure here just leaves a stale
       // enrollment on the service to be retried/cleaned up later; it's
-      // logged, not thrown.
-      const faceDelete = await deleteFaceEnrollment(user.employeeCode);
-      if (faceDelete.outcome === "unavailable") {
-        console.error(
-          `[employeeCleanup] Failed to delete face enrollment for ${user.employeeCode}: ${faceDelete.reason}`,
-        );
+      // logged, not thrown. `organizationId` should always be set by this
+      // point (every row has been backfilled) — skip, rather than crash,
+      // on the one theoretical case where it isn't.
+      if (user.organizationId) {
+        const faceDelete = await deleteFaceEnrollment(user.organizationId, user.employeeCode);
+        if (faceDelete.outcome === "unavailable") {
+          console.error(
+            `[employeeCleanup] Failed to delete face enrollment for ${user.employeeCode}: ${faceDelete.reason}`,
+          );
+        }
       }
 
       deletedCount++;

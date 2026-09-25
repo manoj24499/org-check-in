@@ -22,7 +22,13 @@ function formatDuration(ms: number) {
 
 export default async function MyPage() {
   const session = await auth();
-  if (!session) return null;
+  // The organizationId check matters on its own, not just the session check:
+  // a session issued before organizationId existed on the JWT (see
+  // lib/auth.config.ts's jwt callback, which only sets it on fresh sign-in)
+  // would otherwise pass `undefined` into queries below — Prisma treats an
+  // undefined filter value as "no filter", not "match nothing", which would
+  // silently return every organization's data instead of none.
+  if (!session || !session.user.organizationId) return null;
 
   const [records, me, specialDays] = await Promise.all([
     // Explicit `select` — same reasoning as /api/mobile/me/attendance: the
@@ -45,7 +51,7 @@ export default async function MyPage() {
       where: { id: session.user.id },
       select: { workMode: true },
     }),
-    getCalendarSpecialDays(session.user.id),
+    getCalendarSpecialDays(session.user.id, session.user.organizationId),
   ]);
 
   const last = records[0];

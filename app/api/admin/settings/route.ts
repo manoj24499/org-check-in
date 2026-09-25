@@ -16,16 +16,16 @@ const putSchema = z.object({
 });
 
 export async function GET() {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const settings = await getSettings();
+  const settings = await getSettings(admin.organizationId);
   return NextResponse.json({ settings });
 }
 
 export async function PUT(req: NextRequest) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const json = await req.json().catch(() => null);
   const parsed = putSchema.safeParse(json);
@@ -33,6 +33,6 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: "Invalid input." }, { status: 400 });
   }
 
-  const settings = await updateSettings(parsed.data);
+  const settings = await updateSettings(admin.organizationId, parsed.data);
   return NextResponse.json({ settings });
 }

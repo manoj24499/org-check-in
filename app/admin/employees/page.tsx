@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import AddEmployeeForm from "@/components/AddEmployeeForm";
 import BulkAddEmployeeForm from "@/components/BulkAddEmployeeForm";
@@ -8,6 +10,10 @@ import { EMPLOYEES_PAGE_SIZE } from "@/lib/pagination";
 export const dynamic = "force-dynamic";
 
 export default async function EmployeesPage() {
+  const session = await auth();
+  if (!session?.user.organizationId) notFound();
+  const organizationId = session.user.organizationId;
+
   // Only page 1 (unfiltered) is fetched server-side, for a fast first
   // paint with no client round-trip — paging/searching from here on is
   // handled by EmployeeTable itself against GET /api/admin/employees,
@@ -15,7 +21,7 @@ export default async function EmployeesPage() {
   // clause shape.
   const [employees, total, shifts] = await Promise.all([
     prisma.user.findMany({
-      where: { role: "EMPLOYEE" },
+      where: { organizationId, role: "EMPLOYEE" },
       // Join order (oldest first) rather than alphabetical — employeeCode
       // is allocated sequentially at creation (see allocateNextEmployeeCode)
       // but createdAt is the more direct, unambiguous signal for "who
@@ -30,8 +36,9 @@ export default async function EmployeesPage() {
         active: true,
       },
     }),
-    prisma.user.count({ where: { role: "EMPLOYEE" } }),
+    prisma.user.count({ where: { organizationId, role: "EMPLOYEE" } }),
     prisma.shift.findMany({
+      where: { organizationId },
       orderBy: { startTime: "asc" },
       select: { id: true, name: true, startTime: true, endTime: true },
     }),

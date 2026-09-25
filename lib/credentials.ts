@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 /** Generates a random numeric PIN, e.g. "483920" */
@@ -42,10 +43,14 @@ const MAX_GENERATE_ATTEMPTS = 5;
  * system-generated PIN can't hand two employees the same one either, same
  * reasoning as isPinTakenByAnotherEmployee below.
  */
-export async function generateUniquePin(excludeUserId?: string, length = 6): Promise<string> {
+export async function generateUniquePin(
+  organizationId: string,
+  excludeUserId?: string,
+  length = 6,
+): Promise<string> {
   let pin = generatePin(length);
   for (let attempt = 1; attempt < MAX_GENERATE_ATTEMPTS; attempt++) {
-    if (!(await isPinTakenByAnotherEmployee(pin, excludeUserId))) return pin;
+    if (!(await isPinTakenByAnotherEmployee(pin, organizationId, excludeUserId))) return pin;
     console.warn(`[generateUniquePin] Collision on attempt ${attempt}, regenerating.`);
     pin = generatePin(length);
   }
@@ -54,25 +59,34 @@ export async function generateUniquePin(excludeUserId?: string, length = 6): Pro
 
 /**
  * True if the given plaintext PIN matches any OTHER active employee's
- * currently-stored PIN. Verification itself (verifyPin above) is already
- * correctly scoped per-employee via employeeCode — a shared PIN can never
- * let one employee's login be mistaken for another's — but employeeCode
- * isn't secret (often sequential, visible in the app itself), so two
- * employees *knowingly* sharing a PIN is a real impersonation risk: either
- * one can deliberately log in as the other. This is the guard against that,
- * called wherever a PIN is set (self-service change-pin, and the admin
- * create/regenerate flows for defense in depth) — not a fix to the
- * verification logic, which was never the problem.
+ * currently-stored PIN, *within the same organization* — employeeCode is
+ * only unique per-organization now, so a PIN shared with an unrelated
+ * employee at a different company is not a risk worth scanning for.
+ * Verification itself (verifyPin above) is already correctly scoped
+ * per-employee via employeeCode — a shared PIN can never let one employee's
+ * login be mistaken for another's — but employeeCode isn't secret (often
+ * sequential, visible in the app itself), so two employees at the *same*
+ * organization *knowingly* sharing a PIN is a real impersonation risk:
+ * either one can deliberately log in as the other. This is the guard
+ * against that, called wherever a PIN is set (self-service change-pin, and
+ * the admin create/regenerate flows for defense in depth) — not a fix to
+ * the verification logic, which was never the problem.
  *
  * bcrypt hashes have no reversible/indexable lookup, so this is a linear
- * scan comparing against every other active employee's hash, with an early
- * exit on the first match. Fine at this app's employee-count scale; it
- * would need a separate keyed-hash index (not a bcrypt rework) to stay fast
+ * scan comparing against every other active employee's hash *in this
+ * organization*, with an early exit on the first match. Fine at this app's
+ * per-organization employee-count scale; it would need a separate
+ * keyed-hash index (not a bcrypt rework) to stay fast
  * into the thousands.
  */
-export async function isPinTakenByAnotherEmployee(pin: string, excludeUserId?: string): Promise<boolean> {
+export async function isPinTakenByAnotherEmployee(
+  pin: string,
+  organizationId: string,
+  excludeUserId?: string,
+): Promise<boolean> {
   const others = await prisma.user.findMany({
     where: {
+      organizationId,
       role: "EMPLOYEE",
       active: true,
       pinHash: { not: null },
@@ -119,17 +133,21 @@ export function nextEmployeeCode(prefix: "EMP" | "ADM", currentMax: number): str
  * the database level — concurrent callers (e.g. two admins creating
  * employees at once, or a bulk import racing a single create) serialize on
  * that row and can never receive the same value.
+ *
+ * Scoped per organization — the counter lives on that organization's own
+ * AppSettings row (organizationId is @unique there), so every organization's
+ * employee codes independently start from EMP001.
  */
-export async function allocateNextEmployeeCode(): Promise<string> {
+export async function allocateNextEmployeeCode(organizationId: string): Promise<string> {
   const [settings, maxActive, maxArchived] = await Promise.all([
-    prisma.appSettings.findFirst(),
+    prisma.appSettings.findUnique({ where: { organizationId } }),
     prisma.user.findFirst({
-      where: { employeeCode: { startsWith: "EMP" } },
+      where: { organizationId, employeeCode: { startsWith: "EMP" } },
       orderBy: { employeeCode: "desc" },
       select: { employeeCode: true },
     }),
     prisma.deletedEmployeeArchive.findFirst({
-      where: { employeeCode: { startsWith: "EMP" } },
+      where: { organizationId, employeeCode: { startsWith: "EMP" } },
       orderBy: { employeeCode: "desc" },
       select: { employeeCode: true },
     }),
@@ -143,20 +161,33 @@ export async function allocateNextEmployeeCode(): Promise<string> {
     settings?.lastEmployeeCodeNumber ?? 0,
   );
 
-  const settingsId = settings?.id ?? (await prisma.appSettings.create({ data: {} })).id;
+  if (!settings) {
+    // Two concurrent callers for the same brand-new organization (e.g. two
+    // rows of a bulk import) can both see `settings === null` here — unlike
+    // the analogous OfficeLocation race (fixed via upsert in
+    // app/api/admin/office-location/route.ts), this create can't use upsert
+    // since there's no data to update with yet. Whichever caller loses the
+    // race just hits the unique constraint it was trying to avoid; that's
+    // fine, since it means the row it wanted now exists either way.
+    try {
+      await prisma.appSettings.create({ data: { organizationId } });
+    } catch (err) {
+      if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002")) throw err;
+    }
+  }
 
   // Only ever raises the counter, never lowers it — safe even if another
   // caller's identical check races this one, since both converge on the
   // same non-decreasing floor.
   if (floor > 0) {
     await prisma.appSettings.updateMany({
-      where: { id: settingsId, lastEmployeeCodeNumber: { lt: floor } },
+      where: { organizationId, lastEmployeeCodeNumber: { lt: floor } },
       data: { lastEmployeeCodeNumber: floor },
     });
   }
 
   const updated = await prisma.appSettings.update({
-    where: { id: settingsId },
+    where: { organizationId },
     data: { lastEmployeeCodeNumber: { increment: 1 } },
     select: { lastEmployeeCodeNumber: true },
   });

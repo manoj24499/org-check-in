@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Inzivo design system reference</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  /* Tokens inlined (not linked to ../tokens.css) so this file is fully
+     self-contained and opens correctly with a plain double-click, no
+     local server required. Keep in sync with ../tokens.css by hand. */
+  :root {
+    --inzivo-background: #FBF9F7;
+    --inzivo-surface: #FFFFFF;
+    --inzivo-surface-muted: #F4F1ED;
+    --inzivo-border: rgba(26, 21, 18, 0.10);
+    --inzivo-primary: #ef6c00;
+    --inzivo-primary-dark: #C25200;
+    --inzivo-primary-muted: rgba(239, 108, 0, 0.10);
+    --inzivo-primary-text: #FFFFFF;
+    --inzivo-primary-soft-text: #F7B27A;
+    --inzivo-success: #2E6F52;
+    --inzivo-success-muted: rgba(46, 111, 82, 0.10);
+    --inzivo-warning: #B8860B;
+    --inzivo-warning-muted: rgba(184, 134, 11, 0.10);
+    --inzivo-danger: #B3453F;
+    --inzivo-danger-muted: rgba(179, 69, 63, 0.10);
+    --inzivo-text-primary: #1A1512;
+    --inzivo-text-secondary: #86776F;
+    --inzivo-text-muted: #A0938B;
+    --inzivo-text-inverse: #FFFFFF;
+    --inzivo-panel-dark: #241E19;
+    --inzivo-panel-darker: #231D18;
+    --inzivo-text-on-dark: #F7F3EF;
+    --inzivo-text-on-dark-muted: rgba(247, 243, 239, 0.6);
+    --inzivo-overlay: rgba(26, 21, 18, 0.55);
+    --inzivo-font-family: "Inter", system-ui, sans-serif;
+    --inzivo-weight-regular: 400;
+    --inzivo-weight-medium: 500;
+    --inzivo-weight-semibold: 600;
+    --inzivo-weight-bold: 700;
+    --inzivo-h1-size: 28px;
+    --inzivo-h2-size: 22px;
+    --inzivo-h3-size: 18px;
+    --inzivo-body-size: 15px;
+    --inzivo-caption-size: 13px;
+    --inzivo-space-xs: 4px;
+    --inzivo-space-sm: 8px;
+    --inzivo-space-md: 16px;
+    --inzivo-space-lg: 24px;
+    --inzivo-space-xl: 32px;
+    --inzivo-space-xxl: 48px;
+    --inzivo-radius-sm: 8px;
+    --inzivo-radius-md: 12px;
+    --inzivo-radius-lg: 16px;
+    --inzivo-radius-sheet: 14px;
+    --inzivo-radius-full: 999px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--inzivo-background);
+    color: var(--inzivo-text-primary);
+    font-family: var(--inzivo-font-family);
+    padding: var(--inzivo-space-xl);
+  }
+  h1 { font-size: var(--inzivo-h1-size); font-weight: var(--inzivo-weight-bold); margin: 0 0 4px; }
+  .subtitle { color: var(--inzivo-text-secondary); font-size: var(--inzivo-body-size); margin: 0 0 var(--inzivo-space-xl); }
+  section { margin-bottom: var(--inzivo-space-xxl); }
+  h2 { font-size: var(--inzivo-h2-size); font-weight: var(--inzivo-weight-bold); margin: 0 0 var(--inzivo-space-md); }
+  h3 { font-size: var(--inzivo-h3-size); font-weight: var(--inzivo-weight-semibold); margin: 0 0 var(--inzivo-space-sm); }
+
+  .row { display: flex; flex-wrap: wrap; gap: var(--inzivo-space-md); align-items: flex-start; }
+
+  /* Logo */
+  .logo-mark rect { fill: var(--inzivo-text-primary); }
+  .logo-mark path { fill: var(--inzivo-primary); }
+
+  /* Color swatches */
+  .swatch {
+    width: 140px;
+    border-radius: var(--inzivo-radius-sm);
+    overflow: hidden;
+    border: 1px solid var(--inzivo-border);
+    background: var(--inzivo-surface);
+  }
+  .swatch-color { height: 64px; }
+  .swatch-label { padding: 8px 10px; font-size: var(--inzivo-caption-size); }
+  .swatch-label .name { font-weight: var(--inzivo-weight-semibold); display: block; }
+  .swatch-label .value { color: var(--inzivo-text-secondary); font-family: ui-monospace, monospace; font-size: 11px; }
+
+  /* Typography */
+  .type-row { display: flex; align-items: baseline; gap: var(--inzivo-space-md); padding: 10px 0; border-bottom: 1px solid var(--inzivo-border); }
+  .type-row .tag { width: 100px; flex-shrink: 0; font-size: var(--inzivo-caption-size); color: var(--inzivo-text-secondary); font-family: ui-monospace, monospace; }
+
+  /* Buttons */
+  .btn {
+    min-height: 50px;
+    border-radius: var(--inzivo-radius-sm);
+    padding: 0 var(--inzivo-space-lg);
+    font-size: var(--inzivo-body-size);
+    font-weight: var(--inzivo-weight-semibold);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .btn-primary { background: transparent; border: 1px solid var(--inzivo-primary); color: var(--inzivo-primary); }
+  .btn-secondary { background: var(--inzivo-surface-muted); border: none; color: var(--inzivo-text-primary); }
+  .btn-danger { background: transparent; border: 1px solid var(--inzivo-danger); color: var(--inzivo-danger); }
+  .btn-ghost { background: transparent; border: none; color: var(--inzivo-primary); }
+
+  /* Cards */
+  .card {
+    background: var(--inzivo-surface);
+    border: 1px solid var(--inzivo-border);
+    border-radius: var(--inzivo-radius-sm);
+    padding: var(--inzivo-space-md);
+    width: 260px;
+  }
+  .card h3 { margin-bottom: 4px; }
+  .card p { margin: 0; color: var(--inzivo-text-secondary); font-size: var(--inzivo-body-size); }
+
+  .card-dark {
+    background: var(--inzivo-panel-dark);
+    color: var(--inzivo-text-on-dark);
+    border-radius: var(--inzivo-radius-lg);
+    padding: var(--inzivo-space-lg);
+    width: 260px;
+  }
+  .card-dark .stat { font-size: 28px; font-weight: var(--inzivo-weight-bold); }
+  .card-dark .stat-label { color: var(--inzivo-text-on-dark-muted); font-size: var(--inzivo-caption-size); }
+
+  /* Badges */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: var(--inzivo-radius-full);
+    font-size: var(--inzivo-caption-size);
+    font-weight: var(--inzivo-weight-semibold);
+  }
+  .badge-success { background: var(--inzivo-success-muted); color: var(--inzivo-success); }
+  .badge-warning { background: var(--inzivo-warning-muted); color: var(--inzivo-warning); }
+  .badge-danger { background: var(--inzivo-danger-muted); color: var(--inzivo-danger); }
+  .badge-primary { background: var(--inzivo-primary-muted); color: var(--inzivo-primary); }
+
+  /* Inputs */
+  .field { display: flex; flex-direction: column; gap: 6px; width: 260px; }
+  .field label { font-size: var(--inzivo-caption-size); font-weight: var(--inzivo-weight-semibold); color: var(--inzivo-text-secondary); }
+  .field input {
+    height: 44px;
+    border-radius: var(--inzivo-radius-sm);
+    border: 1px solid var(--inzivo-border);
+    background: var(--inzivo-surface);
+    padding: 0 12px;
+    font-size: var(--inzivo-body-size);
+    font-family: inherit;
+    color: var(--inzivo-text-primary);
+  }
+  .field input:focus { outline: none; border-color: var(--inzivo-primary); }
+  .field input::placeholder { color: var(--inzivo-text-muted); }
+
+  /* Spacing scale */
+  .space-row { display: flex; align-items: center; gap: 12px; }
+  .space-box { background: var(--inzivo-primary-muted); border: 1px solid var(--inzivo-primary); }
+  .space-tag { font-family: ui-monospace, monospace; font-size: var(--inzivo-caption-size); color: var(--inzivo-text-secondary); width: 90px; }
+
+  /* Radius scale */
+  .radius-box {
+    width: 72px; height: 72px;
+    background: var(--inzivo-surface);
+    border: 2px solid var(--inzivo-primary);
+    display: flex; align-items: flex-end; justify-content: center;
+    padding-bottom: 6px;
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    color: var(--inzivo-text-secondary);
+  }
+</style>
+</head>
+<body>
+
+<svg class="logo-mark" width="48" height="48" viewBox="0 0 104 104" fill="none" role="img" aria-label="Inzivo">
+  <rect x="16" y="16" width="72" height="14" />
+  <path d="M88 16 L38 88 H16 L66 16 Z" />
+  <rect x="16" y="74" width="72" height="14" />
+</svg>
+<h1>Inzivo design system</h1>
+<p class="subtitle">Visual reference for the canonical brand tokens (see ../BRAND.md, ../tokens.css). Values are inlined here for a self-contained file — keep in sync by hand.</p>
+
+<section>
+  <h2>Color</h2>
+  <div class="row">
+    <div class="swatch"><div class="swatch-color" style="background:var(--inzivo-background); border-bottom:1px solid var(--inzivo-border);"></div><div class="swatch-label"><span class="name">background</span><span class="value">#FBF9F7</span></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:var(--inzivo-surface); border-bottom:1px solid var(--inzivo-border);"></div><div class="swatch-label"><span class="name">surface</span><span class="value">#FFFFFF</span></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:var(--inzivo-surface-muted); border-bottom:1px solid var(--inzivo-border);"></div><div class="swatch-label"><span class="name">surfaceMuted</span><span class="value">#F4F1ED</span></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:var(--inzivo-primary);"></div><div class="swatch-label"><span class="name">primary</span><span class="value">#ef6c00</span></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:var(--inzivo-primary-dark);"></div><div class="swatch-label"><span class="name">primaryDark</span><span class="value">#C25200</span></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:var(--inzivo-primary-muted); border-bottom:1px solid var(--inzivo-border);"></div><div class="swatch-label"><span class="name">primaryMuted</span><span class="value">10% primary</span></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:var(--inzivo-success);"></div><div class="swatch-label"><span class="name">success</span><span class="value">#2E6F52</span></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:var(--inzivo-warning);"></div><div class="swatch-label"><span class="name">warning</span><span class="value">#B8860B</span></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:var(--inzivo-danger);"></div><div class="swatch-label"><span class="name">danger</span><span class="value">#B3453F</span></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:var(--inzivo-text-primary);"></div><div class="swatch-label"><span class="name">textPrimary</span><span class="value">#1A1512</span></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:var(--inzivo-text-secondary);"></div><div class="swatch-label"><span class="name">textSecondary</span><span class="value">#86776F</span></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:var(--inzivo-text-muted);"></div><div class="swatch-label"><span class="name">textMuted</span><span class="value">#A0938B</span></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:var(--inzivo-panel-dark);"></div><div class="swatch-label"><span class="name">panelDark</span><span class="value">#241E19</span></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:var(--inzivo-panel-darker);"></div><div class="swatch-label"><span class="name">panelDarker</span><span class="value">#231D18</span></div></div>
+    <div class="swatch"><div class="swatch-color" style="background:var(--inzivo-overlay);"></div><div class="swatch-label"><span class="name">overlay</span><span class="value">55% #1A1512</span></div></div>
+  </div>
+</section>
+
+<section>
+  <h2>Typography — Inter</h2>
+  <div class="type-row"><span class="tag">h1 / 28 / 700</span><span style="font-size:28px; font-weight:700;">The quick brown fox</span></div>
+  <div class="type-row"><span class="tag">h2 / 22 / 700</span><span style="font-size:22px; font-weight:700;">The quick brown fox</span></div>
+  <div class="type-row"><span class="tag">h3 / 18 / 600</span><span style="font-size:18px; font-weight:600;">The quick brown fox</span></div>
+  <div class="type-row"><span class="tag">body / 15 / 400</span><span style="font-size:15px; font-weight:400;">The quick brown fox jumps over the lazy dog</span></div>
+  <div class="type-row"><span class="tag">bodyStrong / 15 / 600</span><span style="font-size:15px; font-weight:600;">The quick brown fox jumps over the lazy dog</span></div>
+  <div class="type-row"><span class="tag">caption / 13 / 400</span><span style="font-size:13px; font-weight:400;">The quick brown fox jumps over the lazy dog</span></div>
+  <div class="type-row"><span class="tag">label / 13 / 600</span><span style="font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:0.04em;">Employee status</span></div>
+</section>
+
+<section>
+  <h2>Buttons</h2>
+  <p class="subtitle" style="margin-bottom:12px;">Primary is outlined, not filled — the only rule with zero exceptions in the shipped app.</p>
+  <div class="row">
+    <button class="btn btn-primary">Check In</button>
+    <button class="btn btn-secondary">Cancel</button>
+    <button class="btn btn-danger">Delete</button>
+    <button class="btn btn-ghost">Skip</button>
+  </div>
+</section>
+
+<section>
+  <h2>Badges</h2>
+  <div class="row">
+    <span class="badge badge-success">Approved</span>
+    <span class="badge badge-warning">Pending</span>
+    <span class="badge badge-danger">Rejected</span>
+    <span class="badge badge-primary">Checked in</span>
+  </div>
+</section>
+
+<section>
+  <h2>Cards</h2>
+  <div class="row">
+    <div class="card">
+      <h3>Leave request</h3>
+      <p>Sept 22 &ndash; Sept 24 &middot; Annual leave</p>
+    </div>
+    <div class="card-dark">
+      <div class="stat-label">Worked today</div>
+      <div class="stat">6h 42m</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Inputs</h2>
+  <div class="row">
+    <div class="field">
+      <label>Employee ID</label>
+      <input type="text" placeholder="EMP001" />
+    </div>
+    <div class="field">
+      <label>PIN</label>
+      <input type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;" />
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Spacing scale</h2>
+  <div style="display:flex; flex-direction:column; gap:8px;">
+    <div class="space-row"><span class="space-tag">xs / 4</span><div class="space-box" style="width:4px; height:16px;"></div></div>
+    <div class="space-row"><span class="space-tag">sm / 8</span><div class="space-box" style="width:8px; height:16px;"></div></div>
+    <div class="space-row"><span class="space-tag">md / 16</span><div class="space-box" style="width:16px; height:16px;"></div></div>
+    <div class="space-row"><span class="space-tag">lg / 24</span><div class="space-box" style="width:24px; height:16px;"></div></div>
+    <div class="space-row"><span class="space-tag">xl / 32</span><div class="space-box" style="width:32px; height:16px;"></div></div>
+    <div class="space-row"><span class="space-tag">xxl / 48</span><div class="space-box" style="width:48px; height:16px;"></div></div>
+  </div>
+</section>
+
+<section>
+  <h2>Radius scale</h2>
+  <div class="row">
+    <div class="radius-box" style="border-radius:8px;">sm / 8</div>
+    <div class="radius-box" style="border-radius:12px;">md / 12</div>
+    <div class="radius-box" style="border-radius:16px;">lg / 16</div>
+    <div class="radius-box" style="border-radius:14px;">xl / 14 (sheet)</div>
+    <div class="radius-box" style="border-radius:999px;">full</div>
+  </div>
+</section>
+</body>
+</html>

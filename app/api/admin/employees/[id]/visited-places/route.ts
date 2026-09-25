@@ -22,10 +22,16 @@ function parseDateParam(value: string | null): Date {
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  const employee = await prisma.user.findUnique({
+    where: { id, organizationId: admin.organizationId },
+    select: { id: true },
+  });
+  if (!employee) return NextResponse.json({ error: "Not found." }, { status: 404 });
+
   const day = parseDateParam(req.nextUrl.searchParams.get("date"));
 
   const [pings, mostRecentPing, dayRecords, settings, existingReimbursement] = await Promise.all([
@@ -48,7 +54,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         workSegments: { select: { mode: true, startedAt: true, endedAt: true } },
       },
     }),
-    getSettings(),
+    getSettings(admin.organizationId),
     // Reimbursement.date is that same date-only key, unchanged — no
     // IST-window conversion here (see reimbursement/route.ts).
     prisma.reimbursement.findUnique({ where: { userId_date: { userId: id, date: day } } }),

@@ -15,6 +15,9 @@ type StatusClientProps = {
   // lib/attendanceHours.ts's computeFieldOfficeSplit) — null for everyone else.
   fieldHours: number | null;
   officeHours: number | null;
+  // Which organization's kiosk to return to (see app/kiosk/[orgSlug]) —
+  // undefined for the plain, org-less /kiosk route.
+  orgSlug?: string;
 };
 
 const INSPIRING_MESSAGES = [
@@ -34,8 +37,10 @@ export default function StatusClient({
   checkInTime,
   fieldHours,
   officeHours,
+  orgSlug,
 }: StatusClientProps) {
   const router = useRouter();
+  const kioskHref = orgSlug ? `/kiosk/${orgSlug}` : "/kiosk";
   const [timeLeft, setTimeLeft] = useState(30);
   // Lazy initialisers run once on mount — no effect needed, no cascading render.
   const [message] = useState(() =>
@@ -51,7 +56,7 @@ export default function StatusClient({
 
   useEffect(() => {
     if (timeLeft <= 0) {
-      router.push("/kiosk");
+      router.push(kioskHref);
       return;
     }
 
@@ -60,7 +65,7 @@ export default function StatusClient({
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [timeLeft, router]);
+  }, [timeLeft, router, kioskHref]);
 
   const isCheckIn = type === "CHECK_IN";
 
@@ -113,7 +118,7 @@ export default function StatusClient({
         )}
 
         <button
-          onClick={() => router.push("/kiosk")}
+          onClick={() => router.push(kioskHref)}
           className="w-full py-4 rounded-xl bg-primary text-white font-semibold hover:bg-primary-dark transition-colors shadow-md shadow-primary/20 hover:shadow-lg flex items-center justify-center gap-2"
         >
           <Clock size={20} />

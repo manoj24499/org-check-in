@@ -49,6 +49,18 @@ interface FaceVerifyResponse {
 
 const DEFAULT_TIMEOUT_MS = 10000;
 
+// This app identifies people to the external face-verification service by a
+// single string (its `employee_id` form field) — now composed from the
+// immutable organizationId plus employeeCode, not employeeCode alone, since
+// employeeCode is only unique *within* an organization (see the schema
+// comment on User.employeeCode). organizationId, not the admin-editable
+// `slug`, is used deliberately: if an org's slug were ever renamed, an
+// identity built from it would silently orphan every already-enrolled
+// embedding on the external service, whereas organizationId never changes.
+function faceServiceIdentity(organizationId: string, employeeCode: string): string {
+  return `${organizationId}_${employeeCode}`;
+}
+
 /**
  * Calls the face-verification service for one check-in photo. Never throws —
  * any network error, timeout, or unparseable response comes back as
@@ -56,6 +68,7 @@ const DEFAULT_TIMEOUT_MS = 10000;
  * apply its own fail-open policy instead of this helper deciding that.
  */
 export async function verifyFace(
+  organizationId: string,
   employeeCode: string,
   photo: Uint8Array<ArrayBuffer>,
 ): Promise<FaceVerifyResult> {
@@ -74,7 +87,7 @@ export async function verifyFace(
 
   try {
     const form = new FormData();
-    form.set("employee_id", employeeCode);
+    form.set("employee_id", faceServiceIdentity(organizationId, employeeCode));
     form.set("image", new Blob([photo], { type: "image/jpeg" }), "checkin.jpg");
 
     const res = await fetch(new URL("/verify", baseUrl), {
@@ -119,6 +132,7 @@ export async function verifyFace(
  * request.
  */
 export async function embedFace(
+  organizationId: string,
   employeeCode: string,
   photo: Uint8Array<ArrayBuffer>,
 ): Promise<FaceEmbedResult> {
@@ -137,7 +151,7 @@ export async function embedFace(
 
   try {
     const form = new FormData();
-    form.set("employee_id", employeeCode);
+    form.set("employee_id", faceServiceIdentity(organizationId, employeeCode));
     form.set("image", new Blob([photo], { type: "image/jpeg" }), "enroll.jpg");
 
     const res = await fetch(new URL("/embed", baseUrl), {
@@ -190,6 +204,7 @@ export async function embedFace(
  * never be treated as blocking; the caller just logs it.
  */
 export async function deleteFaceEnrollment(
+  organizationId: string,
   employeeCode: string,
 ): Promise<FaceDeleteResult> {
   const baseUrl = process.env.FACE_VERIFY_URL;
@@ -214,7 +229,7 @@ export async function deleteFaceEnrollment(
 
   try {
     const res = await fetch(
-      new URL(`/employees/${encodeURIComponent(employeeCode)}`, baseUrl),
+      new URL(`/employees/${encodeURIComponent(faceServiceIdentity(organizationId, employeeCode))}`, baseUrl),
       {
         method: "DELETE",
         headers: { "x-api-key": apiKey },

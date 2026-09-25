@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { getClientIp, isRateLimited, isPinGuessLimited } from "@/lib/rateLimit";
+import { resolveOrgBySlug } from "@/lib/organization";
 import { authConfig } from "./auth.config";
 
 // Every other PIN/password-checking endpoint in the app (kiosk scan, mobile
@@ -41,8 +42,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!email || !password) return null;
         if (await checkLoginRateLimit("admin-login", request, email)) return null;
 
-        const user = await prisma.user.findUnique({ where: { email } });
-        if (!user || user.role !== "ADMIN" || !user.passwordHash || !user.active) {
+        const user = await prisma.user.findUnique({
+          where: { email },
+          include: { organization: { select: { status: true } } },
+        });
+        if (
+          !user ||
+          user.role !== "ADMIN" ||
+          !user.passwordHash ||
+          !user.active ||
+          !user.organizationId ||
+          user.organization.status === "SUSPENDED"
+        ) {
           return null;
         }
 
@@ -55,27 +66,38 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           email: user.email,
           role: user.role,
           employeeCode: user.employeeCode,
+          organizationId: user.organizationId,
         };
       },
     }),
 
-    // Employee: employee code + PIN (used for "My Page" login, not the kiosk)
+    // Employee: organization code + employee code + PIN (used for "My Page"
+    // login, not the kiosk)
     Credentials({
       id: "employee-login",
       name: "Employee Login",
       credentials: {
+        organizationCode: { label: "Organization Code", type: "text" },
         employeeCode: { label: "Employee ID", type: "text" },
         pin: { label: "PIN", type: "password" },
       },
       async authorize(credentials, request) {
+        const organizationCode = credentials?.organizationCode as string | undefined;
         const employeeCode = credentials?.employeeCode as string | undefined;
         const pin = credentials?.pin as string | undefined;
-        if (!employeeCode || !pin) return null;
+        if (!organizationCode || !employeeCode || !pin) return null;
         if (await checkLoginRateLimit("employee-login", request, employeeCode)) return null;
-        if (await isPinGuessLimited(employeeCode)) return null;
 
-        const user = await prisma.user.findUnique({ where: { employeeCode } });
-        if (!user || user.role !== "EMPLOYEE" || !user.pinHash || !user.active) {
+        const org = await resolveOrgBySlug(organizationCode);
+        // Rejected the same way as any other failed login here (no
+        // differentiated error message) — matching the existing precedent
+        // for a deactivated account (!user.active below), which this app
+        // has never distinguished from a wrong PIN either.
+        if (!org || org.status === "SUSPENDED") return null;
+        if (await isPinGuessLimited(org.id, employeeCode)) return null;
+
+        const user = await prisma.user.findFirst({ where: { organizationId: org.id, employeeCode } });
+        if (!user || user.role !== "EMPLOYEE" || !user.pinHash || !user.active || !user.organizationId) {
           return null;
         }
 
@@ -88,6 +110,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           email: user.email,
           role: user.role,
           employeeCode: user.employeeCode,
+          organizationId: user.organizationId,
         };
       },
     }),

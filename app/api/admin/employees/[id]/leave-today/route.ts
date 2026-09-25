@@ -26,8 +26,8 @@ const bodySchema = z.object({
  * below relies on to avoid ever touching a real employee-submitted request.
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
   const json = await req.json().catch(() => null);
@@ -36,7 +36,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
 
-  const user = await prisma.user.findUnique({ where: { id }, select: { id: true, active: true } });
+  const user = await prisma.user.findUnique({
+    where: { id, organizationId: admin.organizationId },
+    select: { id: true, active: true },
+  });
   if (!user || !user.active) {
     return NextResponse.json({ error: "Employee not found." }, { status: 404 });
   }
@@ -57,7 +60,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     );
   }
 
-  const days = await countLeaveDays(today, today);
+  const days = await countLeaveDays(today, today, admin.organizationId);
 
   const request = await prisma.timeOffRequest.create({
     data: {
@@ -69,7 +72,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       reason: parsed.data.reason || null,
       status: "APPROVED",
       reviewedAt: new Date(),
-      reviewedByName: session.user.name ?? session.user.email ?? "Admin",
+      reviewedByName: admin.session.user.name ?? admin.session.user.email ?? "Admin",
       markedByAdmin: true,
     },
   });
@@ -92,10 +95,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
  * today) — that should only ever be managed from the Leave page.
  */
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  const employee = await prisma.user.findUnique({
+    where: { id, organizationId: admin.organizationId },
+    select: { id: true },
+  });
+  if (!employee) return NextResponse.json({ error: "Employee not found." }, { status: 404 });
+
   const today = todayDateOnlyIST();
 
   const existing = await prisma.timeOffRequest.findFirst({
@@ -110,7 +119,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     data: {
       status: "CANCELLED",
       reviewedAt: new Date(),
-      reviewedByName: session.user.name ?? session.user.email ?? "Admin",
+      reviewedByName: admin.session.user.name ?? admin.session.user.email ?? "Admin",
     },
   });
 

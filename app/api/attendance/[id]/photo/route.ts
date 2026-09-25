@@ -15,16 +15,22 @@ export async function GET(
 
   // `photo` is omitted by the Prisma client's global default — opt back in
   // for this one lookup, since it's the only place the bytes are ever read.
+  // Includes the owning user's organizationId so an admin's access below can
+  // be scoped to their own organization, not every organization's records.
   const record = await prisma.attendance.findUnique({
     where: { id },
     omit: { photo: false },
+    include: { user: { select: { id: true, organizationId: true } } },
   });
 
   if (!record || !record.photo) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  if (session.user.role !== "ADMIN" && session.user.id !== record.userId) {
+  const isOwnRecord = session.user.id === record.user.id;
+  const isSameOrgAdmin =
+    session.user.role === "ADMIN" && session.user.organizationId === record.user.organizationId;
+  if (!isOwnRecord && !isSameOrgAdmin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

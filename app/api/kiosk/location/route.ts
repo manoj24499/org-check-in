@@ -77,7 +77,7 @@ async function resolveSessionTarget(
   checkInMode: CheckInMode | null,
 ): Promise<GeofenceTarget | null> {
   if (user.workMode === "WFH" && checkInMode === "OFFICE") {
-    return resolveOfficeLocationTarget();
+    return user.organizationId ? resolveOfficeLocationTarget(user.organizationId) : null;
   }
   return resolveGeofenceTarget(user);
 }
@@ -203,6 +203,7 @@ async function evaluatePauseState(
 async function evaluateWorkSegment(
   checkIn: { id: string; userId: string },
   ping: { latitude: number; longitude: number; timestamp: Date },
+  organizationId: string | null,
 ): Promise<{ mode: "OFFICE" | "FIELD"; officeTarget: GeofenceTarget | null } | null> {
   try {
     const current = await prisma.workSegment.findFirst({
@@ -211,7 +212,7 @@ async function evaluateWorkSegment(
     });
     if (!current) return null;
 
-    const officeTarget = await resolveOfficeLocationTarget();
+    const officeTarget = organizationId ? await resolveOfficeLocationTarget(organizationId) : null;
     if (!officeTarget) return { mode: current.mode, officeTarget: null };
 
     const { inRange, confirmed } = await evaluateRangeStreak(
@@ -498,7 +499,8 @@ export async function POST(req: NextRequest) {
   // Field/office segment tracking runs regardless of pause state — where
   // someone physically is doesn't depend on whether their time is paused.
   // Not applicable at all outside FIELD-workMode profiles.
-  const segmentResult = user.workMode === "FIELD" ? await evaluateWorkSegment(checkIn, ping) : null;
+  const segmentResult =
+    user.workMode === "FIELD" ? await evaluateWorkSegment(checkIn, ping, user.organizationId) : null;
 
   // A timed permission's pause is managed on its own timeline — skip the
   // geofence auto-pause entirely while one is open, so the two never both

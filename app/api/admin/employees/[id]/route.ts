@@ -43,12 +43,12 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
   const user = await prisma.user.findUnique({
-    where: { id },
+    where: { id, organizationId: admin.organizationId },
     select: {
       id: true,
       employeeCode: true,
@@ -70,8 +70,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
   let json: unknown;
@@ -88,13 +88,13 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid input." }, { status: 400 });
   }
 
-  const user = await prisma.user.findUnique({ where: { id } });
+  const user = await prisma.user.findUnique({ where: { id, organizationId: admin.organizationId } });
   if (!user || user.role !== "EMPLOYEE") {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
   if (parsed.data.action === "regenerate-pin") {
-    const pin = await generateUniquePin(id);
+    const pin = await generateUniquePin(admin.organizationId, id);
     const pinHash = await hashPin(pin);
     await prisma.user.update({ where: { id }, data: { pinHash } });
     return NextResponse.json({ pin });
@@ -168,7 +168,7 @@ export async function PATCH(
         return NextResponse.json({ error: "Photo is too large." }, { status: 413 });
       }
 
-      const result = await embedFace(user.employeeCode, photoBuffer);
+      const result = await embedFace(admin.organizationId, user.employeeCode, photoBuffer);
       if (result.outcome !== "enrolled") {
         const message = result.outcome === "failed" ? result.message : result.reason;
         return NextResponse.json({

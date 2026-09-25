@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCalendarSpecialDays } from "@/lib/timeOff";
 import EmployeeActions from "@/components/EmployeeActions";
@@ -33,14 +34,18 @@ export default async function EmployeeDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const session = await auth();
+  if (!session?.user.organizationId) notFound();
 
   // Explicit `select` on the attendances relation — same egress-audit fix as
   // my-page/api/admin/employees/[id]/attendance: this was pulling up to 2000
   // full Attendance rows (photo bytes included) per employee-detail-page
   // view, and the RecentActivityList/AttendanceCalendar below never render
   // photo bytes directly (only `hasPhoto`).
+  // Scoped to the admin's own organization — not found (rather than someone
+  // else's data) if this id belongs to a different org.
   const employee = await prisma.user.findUnique({
-    where: { id },
+    where: { id, organizationId: session.user.organizationId },
     include: {
       attendances: {
         orderBy: { timestamp: "desc" },
@@ -63,12 +68,13 @@ export default async function EmployeeDetailPage({
   if (!employee || employee.role !== "EMPLOYEE") notFound();
 
   const [specialDays, shiftAssignments, shifts] = await Promise.all([
-    getCalendarSpecialDays(employee.id),
+    getCalendarSpecialDays(employee.id, session.user.organizationId),
     prisma.shiftAssignment.findMany({
       where: { userId: employee.id },
       select: { weekday: true, shiftId: true },
     }),
     prisma.shift.findMany({
+      where: { organizationId: session.user.organizationId },
       orderBy: { startTime: "asc" },
       select: { id: true, name: true, startTime: true, endTime: true },
     }),

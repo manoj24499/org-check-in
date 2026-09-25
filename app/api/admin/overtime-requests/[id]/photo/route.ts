@@ -6,16 +6,16 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
 
   // `photo` is omitted by the Prisma client's global default (see
   // lib/prisma.ts) — opt back in for this one lookup, matching the other
   // photo routes' pattern.
-  const request = await prisma.overtimeRequest.findUnique({
-    where: { id },
+  const request = await prisma.overtimeRequest.findFirst({
+    where: { id, attendance: { user: { organizationId: admin.organizationId } } },
     omit: { photo: false },
   });
 

@@ -1,11 +1,16 @@
+import { notFound } from "next/navigation";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import FieldWorkersPanel from "@/components/FieldWorkersPanel";
 
 export const dynamic = "force-dynamic";
 
 export default async function FieldWorkersPage() {
+  const session = await auth();
+  if (!session?.user.organizationId) notFound();
+
   const fieldEmployees = await prisma.user.findMany({
-    where: { role: "EMPLOYEE", active: true, workMode: "FIELD" },
+    where: { organizationId: session.user.organizationId, role: "EMPLOYEE", active: true, workMode: "FIELD" },
     orderBy: { name: "asc" },
     select: { id: true, name: true, employeeCode: true },
   });

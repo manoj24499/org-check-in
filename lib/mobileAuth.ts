@@ -164,7 +164,9 @@ function tokenVersionMatches(payload: MobileTokenPayload, user: { tokenVersion: 
  * per-route, so every current and future caller of requireMobileUser gets
  * it automatically instead of relying on each route remembering to check.
  */
-export async function requireMobileUser(req: Request): Promise<MobileTokenPayload | null> {
+export async function requireMobileUser(
+  req: Request,
+): Promise<(MobileTokenPayload & { organizationId: string }) | null> {
   const header = req.headers.get("authorization");
   if (!header?.startsWith("Bearer ")) return null;
   const token = header.slice("Bearer ".length).trim();
@@ -172,10 +174,13 @@ export async function requireMobileUser(req: Request): Promise<MobileTokenPayloa
   const payload = await verifyMobileToken(token, "access");
   if (!payload) return null;
 
-  const user = await prisma.user.findUnique({ where: { id: payload.sub }, select: { active: true, tokenVersion: true } });
-  if (!user?.active || !tokenVersionMatches(payload, user)) return null;
+  const user = await prisma.user.findUnique({
+    where: { id: payload.sub },
+    select: { active: true, tokenVersion: true, organizationId: true },
+  });
+  if (!user?.active || !user.organizationId || !tokenVersionMatches(payload, user)) return null;
 
-  return payload;
+  return { ...payload, organizationId: user.organizationId };
 }
 
 export { tokenVersionMatches };

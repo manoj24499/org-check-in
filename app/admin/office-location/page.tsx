@@ -1,3 +1,5 @@
+import { notFound } from "next/navigation";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import OfficeLocationForm from "@/components/OfficeLocationForm";
 import WfhLocationTable from "@/components/WfhLocationTable";
@@ -6,10 +8,14 @@ import FieldLocationTable from "@/components/FieldLocationTable";
 export const dynamic = "force-dynamic";
 
 export default async function OfficeLocationPage() {
+  const session = await auth();
+  if (!session?.user.organizationId) notFound();
+  const organizationId = session.user.organizationId;
+
   const [officeLocation, wfhEmployees, fieldEmployees, allEmployees] =
     await Promise.all([
-      prisma.officeLocation.findFirst({
-        orderBy: { createdAt: "asc" },
+      prisma.officeLocation.findUnique({
+        where: { organizationId },
         select: {
           name: true,
           latitude: true,
@@ -18,7 +24,7 @@ export default async function OfficeLocationPage() {
         },
       }),
       prisma.user.findMany({
-        where: { role: "EMPLOYEE", workMode: "WFH" },
+        where: { organizationId, role: "EMPLOYEE", workMode: "WFH" },
         orderBy: { name: "asc" },
         select: {
           id: true,
@@ -31,13 +37,13 @@ export default async function OfficeLocationPage() {
         },
       }),
       prisma.user.findMany({
-        where: { role: "EMPLOYEE", workMode: "FIELD" },
+        where: { organizationId, role: "EMPLOYEE", workMode: "FIELD" },
         orderBy: { name: "asc" },
         select: { id: true, employeeCode: true, name: true, active: true },
       }),
       // Shared candidate list for both tables' "Add" pickers.
       prisma.user.findMany({
-        where: { role: "EMPLOYEE" },
+        where: { organizationId, role: "EMPLOYEE" },
         orderBy: { name: "asc" },
         select: {
           id: true,

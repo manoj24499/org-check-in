@@ -6,17 +6,16 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
 
   // `photo` is omitted by the Prisma client's global default — opt back in
   // for this one lookup, matching the other photo routes' pattern. Admin can
-  // view any employee's visit photo, so no ownership check like the mobile
-  // route needs.
-  const visit = await prisma.fieldVisit.findUnique({
-    where: { id },
+  // view any employee's visit photo within their own organization.
+  const visit = await prisma.fieldVisit.findFirst({
+    where: { id, attendance: { user: { organizationId: admin.organizationId } } },
     omit: { photo: false },
   });
 

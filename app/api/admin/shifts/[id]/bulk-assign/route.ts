@@ -19,8 +19,8 @@ const bodySchema = z.object({
  * (see BulkAssignModal's conflict banner).
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
   const json = await req.json().catch(() => null);
@@ -29,10 +29,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Invalid input." }, { status: 400 });
   }
 
-  const shift = await prisma.shift.findUnique({ where: { id } });
+  const shift = await prisma.shift.findFirst({ where: { id, organizationId: admin.organizationId } });
   if (!shift) return NextResponse.json({ error: "Shift not found." }, { status: 404 });
 
-  const employeeCount = await prisma.user.count({ where: { id: { in: parsed.data.employeeIds } } });
+  // Scoped to this admin's org too — otherwise an id list could silently
+  // assign a shift to another organization's employee.
+  const employeeCount = await prisma.user.count({
+    where: { id: { in: parsed.data.employeeIds }, organizationId: admin.organizationId },
+  });
   if (employeeCount !== parsed.data.employeeIds.length) {
     return NextResponse.json({ error: "One or more employees no longer exist." }, { status: 400 });
   }

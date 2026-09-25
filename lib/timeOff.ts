@@ -33,12 +33,12 @@ function enumerateDates(start: Date, end: Date): Date[] {
 /** Calendar days in [start, end] minus any PublicHoliday dates. See
  * TimeOffRequest.days for why this is snapshotted at submission time rather
  * than recomputed later. */
-export async function countLeaveDays(start: Date, end: Date): Promise<number> {
+export async function countLeaveDays(start: Date, end: Date, organizationId: string): Promise<number> {
   const dates = enumerateDates(start, end);
   if (dates.length === 0) return 0;
 
   const holidays = await prisma.publicHoliday.findMany({
-    where: { date: { gte: dates[0], lte: dates[dates.length - 1] } },
+    where: { organizationId, date: { gte: dates[0], lte: dates[dates.length - 1] } },
   });
   const holidaySet = new Set(holidays.map((h) => startOfDay(h.date).getTime()));
 
@@ -69,9 +69,12 @@ export interface CalendarSpecialDay {
  * countLeaveDays treating a holiday as the stronger classification — it's
  * excluded from the leave day count too).
  */
-export async function getCalendarSpecialDays(userId: string): Promise<Record<string, CalendarSpecialDay>> {
+export async function getCalendarSpecialDays(
+  userId: string,
+  organizationId: string,
+): Promise<Record<string, CalendarSpecialDay>> {
   const [holidays, approvedLeave] = await Promise.all([
-    prisma.publicHoliday.findMany(),
+    prisma.publicHoliday.findMany({ where: { organizationId } }),
     prisma.timeOffRequest.findMany({ where: { userId, status: "APPROVED" } }),
   ]);
 
@@ -104,8 +107,8 @@ export interface LeaveBalance {
  * type, for one employee — always derived from APPROVED TimeOffRequest rows
  * rather than a stored running counter, so a later quota change (see
  * AppSettings) never has to rewrite anyone's history. */
-export async function getLeaveBalances(userId: string): Promise<LeaveBalance[]> {
-  const settings = await getSettings();
+export async function getLeaveBalances(userId: string, organizationId: string): Promise<LeaveBalance[]> {
+  const settings = await getSettings(organizationId);
   // The IST calendar year, not the server's local one — right after IST
   // midnight on Jan 1, the server (UTC) is still in the old year for the
   // next 5.5 hours, which would otherwise show last year's balances.

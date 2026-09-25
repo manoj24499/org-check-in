@@ -11,11 +11,11 @@ const putSchema = z.object({
 });
 
 export async function GET() {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const officeLocation = await prisma.officeLocation.findFirst({
-    orderBy: { createdAt: "asc" },
+  const officeLocation = await prisma.officeLocation.findUnique({
+    where: { organizationId: admin.organizationId },
   });
 
   return NextResponse.json({ officeLocation });
@@ -23,8 +23,8 @@ export async function GET() {
 
 export async function PUT(req: NextRequest) {
   try {
-    const session = await requireAdmin();
-    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const admin = await requireAdmin();
+    if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const json = await req.json().catch(() => null);
     const parsed = putSchema.safeParse(json);
@@ -32,16 +32,11 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: "Invalid input." }, { status: 400 });
     }
 
-    const existing = await prisma.officeLocation.findFirst({
-      orderBy: { createdAt: "asc" },
+    const officeLocation = await prisma.officeLocation.upsert({
+      where: { organizationId: admin.organizationId },
+      create: { organizationId: admin.organizationId, ...parsed.data },
+      update: parsed.data,
     });
-
-    const officeLocation = existing
-      ? await prisma.officeLocation.update({
-          where: { id: existing.id },
-          data: parsed.data,
-        })
-      : await prisma.officeLocation.create({ data: parsed.data });
 
     return NextResponse.json({ officeLocation });
   } catch (err) {

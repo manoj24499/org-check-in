@@ -4,6 +4,7 @@ declare module "next-auth" {
   interface User {
     role: "ADMIN" | "EMPLOYEE";
     employeeCode: string;
+    organizationId: string;
   }
 
   interface Session {
@@ -11,6 +12,7 @@ declare module "next-auth" {
       id: string;
       role: "ADMIN" | "EMPLOYEE";
       employeeCode: string;
+      organizationId: string;
     } & DefaultSession["user"];
   }
 }
@@ -20,5 +22,6 @@ declare module "next-auth/jwt" {
     id: string;
     role: "ADMIN" | "EMPLOYEE";
     employeeCode: string;
+    organizationId: string;
   }
 }

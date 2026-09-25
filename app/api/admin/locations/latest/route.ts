@@ -5,11 +5,11 @@ import { requireAdmin } from "@/lib/requireAdmin";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const employees = await prisma.user.findMany({
-    where: { role: "EMPLOYEE", active: true },
+    where: { organizationId: admin.organizationId, role: "EMPLOYEE", active: true },
     select: {
       id: true,
       locationPings: {

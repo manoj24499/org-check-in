@@ -30,8 +30,8 @@ const bulkCreateSchema = z.array(
 );
 
 export async function POST(req: NextRequest) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const json = await req.json().catch(() => null);
   const parsed = bulkCreateSchema.safeParse(json);
@@ -92,9 +92,9 @@ export async function POST(req: NextRequest) {
   const pinsUsedInBatch = new Set<string>();
   const rowsWithPins: Array<(typeof parsed.data)[number] & { pin: string; pinHash: string }> = [];
   for (const empData of parsed.data) {
-    let pin = await generateUniquePin();
+    let pin = await generateUniquePin(admin.organizationId);
     while (pinsUsedInBatch.has(pin)) {
-      pin = await generateUniquePin();
+      pin = await generateUniquePin(admin.organizationId);
     }
     pinsUsedInBatch.add(pin);
     const pinHash = await hashPin(pin);
@@ -120,11 +120,12 @@ export async function POST(req: NextRequest) {
         // collisions with currently-active employees. PIN + hash are
         // already computed above, so this loop is just the DB write.
         for (const empData of rowsWithPins) {
-          const employeeCode = await allocateNextEmployeeCode();
+          const employeeCode = await allocateNextEmployeeCode(admin.organizationId);
           const { pin, pinHash } = empData;
 
           const user = await tx.user.create({
             data: {
+              organizationId: admin.organizationId,
               name: empData.name,
               email: empData.email,
               role: "EMPLOYEE",

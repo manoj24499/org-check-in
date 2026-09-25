@@ -26,10 +26,11 @@ const createSchema = z
 // only manages the shift's own name/start/end. GET still reports the
 // resulting roster (read-only) so this page can show it.
 export async function GET() {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const shifts = await prisma.shift.findMany({
+    where: { organizationId: admin.organizationId },
     orderBy: { startTime: "asc" },
     include: {
       assignments: {
@@ -42,8 +43,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const json = await req.json().catch(() => null);
   const parsed = createSchema.safeParse(json);
@@ -53,6 +54,7 @@ export async function POST(req: NextRequest) {
 
   const shift = await prisma.shift.create({
     data: {
+      organizationId: admin.organizationId,
       name: parsed.data.name || null,
       startTime: parsed.data.startTime,
       endTime: parsed.data.endTime,

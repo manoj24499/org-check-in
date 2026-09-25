@@ -1,0 +1,70 @@
+/*
+ * Inzivo design tokens — CSS custom properties.
+ * Source of truth: Native/checkin-app/src/theme/{colors,typography,spacing}.ts
+ * (the "Inzivo Redesign" mobile theme). See BRAND.md for usage guidance and
+ * for the note on the web app's currently-divergent "Nocturne" palette.
+ */
+:root {
+  /* Surfaces */
+  --inzivo-background: #FBF9F7;
+  --inzivo-surface: #FFFFFF;
+  --inzivo-surface-muted: #F4F1ED;
+  --inzivo-border: rgba(26, 21, 18, 0.10);
+
+  /* Brand */
+  --inzivo-primary: #ef6c00;
+  --inzivo-primary-dark: #C25200;
+  --inzivo-primary-muted: rgba(239, 108, 0, 0.10);
+  --inzivo-primary-text: #FFFFFF;
+  --inzivo-primary-soft-text: #F7B27A;
+
+  /* Semantic */
+  --inzivo-success: #2E6F52;
+  --inzivo-success-muted: rgba(46, 111, 82, 0.10);
+  --inzivo-warning: #B8860B;
+  --inzivo-warning-muted: rgba(184, 134, 11, 0.10);
+  --inzivo-danger: #B3453F;
+  --inzivo-danger-muted: rgba(179, 69, 63, 0.10);
+
+  /* Text */
+  --inzivo-text-primary: #1A1512;
+  --inzivo-text-secondary: #86776F;
+  --inzivo-text-muted: #A0938B;
+  --inzivo-text-inverse: #FFFFFF;
+
+  /* Dark presence panels */
+  --inzivo-panel-dark: #241E19;
+  --inzivo-panel-darker: #231D18;
+  --inzivo-text-on-dark: #F7F3EF;
+  --inzivo-text-on-dark-muted: rgba(247, 243, 239, 0.6);
+
+  --inzivo-overlay: rgba(26, 21, 18, 0.55);
+
+  /* Typography */
+  --inzivo-font-family: "Inter", system-ui, sans-serif;
+  --inzivo-weight-regular: 400;
+  --inzivo-weight-medium: 500;
+  --inzivo-weight-semibold: 600;
+  --inzivo-weight-bold: 700;
+
+  --inzivo-h1-size: 28px;
+  --inzivo-h2-size: 22px;
+  --inzivo-h3-size: 18px;
+  --inzivo-body-size: 15px;
+  --inzivo-caption-size: 13px;
+
+  /* Spacing */
+  --inzivo-space-xs: 4px;
+  --inzivo-space-sm: 8px;
+  --inzivo-space-md: 16px;
+  --inzivo-space-lg: 24px;
+  --inzivo-space-xl: 32px;
+  --inzivo-space-xxl: 48px;
+
+  /* Radius */
+  --inzivo-radius-sm: 8px;
+  --inzivo-radius-md: 12px;
+  --inzivo-radius-lg: 16px;
+  --inzivo-radius-sheet: 14px; /* bottom sheets / blocking dialogs only */
+  --inzivo-radius-full: 999px;
+}

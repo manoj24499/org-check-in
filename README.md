@@ -1,13 +1,28 @@
 # Employee Check-In / Check-Out App
 
-Internal attendance system built with Next.js (App Router), PostgreSQL, and Prisma.
+Multi-tenant attendance system built with Next.js (App Router), PostgreSQL, and Prisma. Each organization that registers gets its own fully isolated employees, shifts, settings, and attendance history — none of it is ever visible to another organization.
 
 ## Features
 
-- **Kiosk mode** (`/kiosk`) — public shared-device screen. Employees type their Employee ID + PIN to check in or out.
-- **Admin dashboard** (`/admin`) — email/password login. See who's currently checked in, today's activity log, manage employees (add, deactivate, regenerate PIN), export all attendance as CSV.
-- **Employee "My Page"** (`/my-page`) — employees log in with Employee ID + PIN to see their own attendance history only.
-- Roles are enforced by middleware; employees can never see other employees' data, and only admins can manage employees.
+- **Self-serve organization signup** (`/register`) — any organization can register itself and get its own admin, with no manual setup on your part. See [Multi-tenancy](#multi-tenancy) below.
+- **Kiosk mode** (`/kiosk/<organization-code>`) — public shared-device screen for one specific organization. Employees type their Employee ID + PIN to check in or out.
+- **Admin dashboard** (`/admin`) — email/password login, scoped to the admin's own organization. See who's currently checked in, today's activity log, manage employees (add, deactivate, regenerate PIN), export all attendance as CSV, and add other admins to the organization.
+- **Employee "My Page"** (`/my-page`) — employees log in with their organization code + Employee ID + PIN to see their own attendance history only.
+- Roles are enforced by middleware; employees can never see other employees' data (in their own or any other organization), and only admins can manage employees (in their own organization only).
+
+## Multi-tenancy
+
+Every organization is fully isolated: its own employees, shifts, office location/geofence, leave policy, and attendance history. A new organization gets started at `/register` — no admin intervention needed. That flow creates the organization and its first admin (marked as the organization's owner) in one step; that admin can then add more admins for their own organization from **Settings**.
+
+Every organization is identified by a short, URL-safe **organization code** (e.g. `acme-corp`) — chosen at registration, shown to admins, and used three places:
+
+- The kiosk URL for that organization: `/kiosk/acme-corp` (bookmark this on the physical kiosk device).
+- The mobile app's login screen, alongside Employee ID + PIN.
+- The "My Page" web login, alongside Employee ID + PIN.
+
+The plain `/kiosk` route (no organization code in the URL) still works, for backward compatibility with already-deployed kiosk devices — it's treated as the one organization seeded via `prisma db seed` (see below), not a general-purpose default. Every organization registered through `/register` gets its own `/kiosk/<code>` URL and should use that.
+
+An organization's admin can suspend it (support/billing action, not exposed in the UI yet — set `Organization.status` to `SUSPENDED` directly in the database) to immediately block every login surface (kiosk, mobile, "My Page", and admin dashboard) for that organization, while its data is preserved untouched.
 
 ## 1. Prerequisites
 
@@ -29,15 +44,22 @@ Edit `.env`:
 - `DATABASE_URL` — connection string from your Postgres provider
 - `AUTH_SECRET` — generate with `npx auth secret` or `openssl rand -base64 32`
 - `NEXTAUTH_URL` — `http://localhost:3000` for local dev; your real domain in production
-- `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` / `SEED_ADMIN_NAME` — your first admin account
+- `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` / `SEED_ADMIN_NAME` — optional, only for `prisma db seed` below
 
-Then create the database tables and seed the first admin:
+Then create the database tables:
 
 ```bash
 npx prisma generate
 npx prisma migrate deploy
+```
+
+`prisma db seed` (below) is a **local-dev-only bootstrap** — it creates one "Default Organization" and its first admin directly in the database, skipping the real signup flow, so a fresh local database has something to log into immediately:
+
+```bash
 npx prisma db seed
 ```
+
+A **real** organization (including this one, in production) should sign up through `/register` instead — see [Multi-tenancy](#multi-tenancy) above. Don't run `db seed` against a production database that already has real organizations in it.
 
 Run it:
 
@@ -46,28 +68,31 @@ npm run dev
 ```
 
 - Landing page: http://localhost:3000
-- Kiosk: http://localhost:3000/kiosk
-- Login: http://localhost:3000/login (use the admin email/password you set in `.env`)
+- Register a new organization: http://localhost:3000/register
+- Kiosk for the locally-seeded org: http://localhost:3000/kiosk
+- Login: http://localhost:3000/login
 
 ## 3. Using it
 
-1. Log in as admin → **Employees** → **+ Add Employee**. This shows a one-time PIN — write it down or share it with the employee (e.g. via a private message). It cannot be retrieved again, only regenerated.
-2. Point the kiosk device (tablet/laptop) at `/kiosk`. Employees type their Employee ID + PIN.
-3. Every PIN entry automatically alternates between Check In and Check Out — no separate buttons needed.
-4. Employees can check their own history any time at `/my-page` (Employee ID + PIN login). Admins see everyone's status live on `/admin/dashboard`.
+1. New organization: go to `/register`, fill in your organization's name and pick an organization code (e.g. `acme-corp`) — this creates your organization and signs you in as its first admin.
+2. As admin → **Employees** → **+ Add Employee**. This shows a one-time PIN — write it down or share it with the employee (e.g. via a private message). It cannot be retrieved again, only regenerated.
+3. Point the kiosk device (tablet/laptop) at `/kiosk/<your-organization-code>` and bookmark it there — that URL is specific to your organization. Employees type their Employee ID + PIN.
+4. Every PIN entry automatically alternates between Check In and Check Out — no separate buttons needed.
+5. Employees can check their own history any time at `/my-page` (organization code + Employee ID + PIN login). Admins see everyone's status live on `/admin/dashboard`.
+6. Need a second admin for your organization? Add one from **Settings → Admins**.
 
 ## 4. Deploying (Vercel + Neon/Supabase)
 
-1. Push this project to a GitHub repo (keep it **private**, since this is for internal use).
+1. Push this project to a GitHub repo.
 2. Import it into [Vercel](https://vercel.com/new).
 3. Add the same environment variables from `.env` in the Vercel project settings. Set `NEXTAUTH_URL` to your production URL (e.g. `https://checkin.yourcompany.com`).
-4. After the first deploy, apply migrations and seed the production database:
+4. After the first deploy, apply migrations to the production database:
    ```bash
    DATABASE_URL="<your production url>" npx prisma migrate deploy
-   DATABASE_URL="<your production url>" SEED_ADMIN_EMAIL=... SEED_ADMIN_PASSWORD=... npx prisma db seed
    ```
    (Run this from your local machine — it just needs network access to your DB.)
-5. Since this is private/internal, also consider putting Vercel's [password protection](https://vercel.com/docs/deployment-protection) or restricting the kiosk device to your office network/VPN.
+5. **Don't run `prisma db seed` against production** — every real organization, including your own first one, signs up through `/register` at your production URL instead (see [Multi-tenancy](#multi-tenancy) above). `db seed` is a local-dev-only shortcut.
+6. If you'd rather keep this instance private to your own organization only (not offering self-serve signup to the public), put Vercel's [password protection](https://vercel.com/docs/deployment-protection) in front of `/register`, or remove/gate that route entirely.
 
 ## 5. Notes on scale
 

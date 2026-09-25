@@ -1,3 +1,5 @@
+import { notFound } from "next/navigation";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import SupportTicketList from "@/components/SupportTicketList";
 
@@ -9,7 +11,11 @@ export const dynamic = "force-dynamic";
  * unlike Leave/Overtime this has no "currently in progress, live" concept
  * worth a separate panel, so a single list is enough. */
 export default async function SupportPage() {
+  const session = await auth();
+  if (!session?.user.organizationId) notFound();
+
   const tickets = await prisma.supportTicket.findMany({
+    where: { user: { organizationId: session.user.organizationId } },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,

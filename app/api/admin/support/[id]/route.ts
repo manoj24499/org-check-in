@@ -19,8 +19,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
   const json = await req.json().catch(() => null);
@@ -29,7 +29,10 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
 
-  const existing = await prisma.supportTicket.findUnique({ where: { id }, select: { id: true, userId: true, status: true } });
+  const existing = await prisma.supportTicket.findFirst({
+    where: { id, user: { organizationId: admin.organizationId } },
+    select: { id: true, userId: true, status: true },
+  });
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const updated = await prisma.supportTicket.update({

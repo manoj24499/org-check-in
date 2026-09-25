@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getClientIp, isRateLimited } from "@/lib/rateLimit";
 import { getSettings } from "@/lib/settings";
+import { resolveActiveOrgBySlug } from "@/lib/organization";
 import { requireMobileUser } from "@/lib/mobileAuth";
 import { resolveGeofenceTarget } from "@/lib/geofenceTarget";
 import { haversineDistanceMeters } from "@/lib/geofence";
@@ -29,7 +30,22 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ exists: false });
   }
 
-  const user = await prisma.user.findUnique({ where: { employeeCode } });
+  // Authenticated (mobile app) caller: resolve organization from its own
+  // bearer token, not the (kiosk-only) orgSlug param below — the mobile app
+  // never sends one, and trusting a caller-supplied org for an already-
+  // authenticated identity would be backwards. Anonymous (kiosk) caller:
+  // resolve from the orgSlug in its URL (see app/kiosk/[orgSlug]), defaulting
+  // to "default" for the plain, org-less /kiosk route kept for backward
+  // compatibility.
+  const auth = await requireMobileUser(req);
+  const orgId = auth
+    ? auth.organizationId
+    : (await resolveActiveOrgBySlug(req.nextUrl.searchParams.get("orgSlug") ?? "default"))?.id;
+  if (!orgId) {
+    return NextResponse.json({ exists: false });
+  }
+
+  const user = await prisma.user.findFirst({ where: { organizationId: orgId, employeeCode } });
   if (!user || user.role !== "EMPLOYEE" || !user.active) {
     return NextResponse.json({ exists: false });
   }
@@ -37,7 +53,6 @@ export async function GET(req: NextRequest) {
   // Authenticated (mobile app) caller: only ever allowed to look up their
   // own record — the app never asks for anyone else's, so this closes off
   // "use my own login to snoop on a co-worker's name/attendance" for free.
-  const auth = await requireMobileUser(req);
   if (auth && auth.sub !== user.id) {
     return NextResponse.json({ exists: false });
   }
@@ -95,7 +110,8 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const settings = await getSettings();
+  // `user` (and thus its organizationId) is already resolved above.
+  const settings = user.organizationId ? await getSettings(user.organizationId) : null;
 
   // Fetch every pause today (not just the open one) so the mobile app can
   // compute a live, pause-adjusted "worked so far" figure the same way
@@ -132,7 +148,7 @@ export async function GET(req: NextRequest) {
     checkedIn: Boolean(checkIn),
     checkedOut: Boolean(checkOut),
     checkInAt: checkIn?.timestamp ?? null,
-    checkOutPhotoRequired: settings.checkOutPhotoRequired,
+    checkOutPhotoRequired: settings?.checkOutPhotoRequired ?? false,
     isPaused,
     pauses,
     lateMinutes: checkIn?.lateMinutes ?? null,

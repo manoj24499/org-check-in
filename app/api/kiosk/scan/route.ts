@@ -7,6 +7,7 @@ import { getClientIp, isRateLimited, isPinGuessLimited } from "@/lib/rateLimit";
 import { haversineDistanceMeters } from "@/lib/geofence";
 import { resolveGeofenceTarget } from "@/lib/geofenceTarget";
 import { getSettings } from "@/lib/settings";
+import { resolveOrgBySlug } from "@/lib/organization";
 import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
 import { verifyFace } from "@/lib/faceVerify";
 import { PayloadTooLargeError, readJsonWithLimit } from "@/lib/readJsonBody";
@@ -16,6 +17,10 @@ import { startOfISTDay, endOfISTDay, todayDateOnlyIST, istDateKey } from "@/lib/
 import { findActiveCheckIn } from "@/lib/activeSession";
 
 const scanSchema = z.object({
+  // Which organization this kiosk belongs to — sent by app/kiosk/[orgSlug]
+  // (or defaulted to "default" by the plain, org-less /kiosk route kept for
+  // backward compatibility with already-bookmarked physical devices).
+  orgSlug: z.string().min(1).default("default"),
   employeeCode: z.string().min(1),
   pin: z.string().min(4).max(10),
   action: z.enum(["CHECK_IN", "CHECK_OUT"]),
@@ -200,16 +205,27 @@ async function handlePost(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
 
+  // Resolves which organization this kiosk belongs to, from the slug in its
+  // own URL (see app/kiosk/[orgSlug]/page.tsx) — everything else below is
+  // scoped to it.
+  const org = await resolveOrgBySlug(parsed.data.orgSlug);
+  if (!org) {
+    return NextResponse.json({ error: "This kiosk isn't linked to an organization." }, { status: 401 });
+  }
+  if (org.status === "SUSPENDED") {
+    return NextResponse.json({ error: "This organization is currently disabled." }, { status: 403 });
+  }
+
   // The IP-based limit above only slows a single-source attacker — a kiosk
   // is shared by every employee behind one office IP, so it can't be tuned
   // tight enough to also block someone who spreads guesses across many
   // IPs/proxies (or switches to the mobile app or web login to get a fresh
   // budget) without breaking legitimate shared-kiosk use. isPinGuessLimited
-  // is shared across every PIN-checking surface, keyed only on employeeCode,
-  // so guesses against one account are capped regardless of source IP or
-  // entry point. Checked before any photo decoding — no reason to make an
-  // attacker do that work first.
-  if (await isPinGuessLimited(parsed.data.employeeCode)) {
+  // is shared across every PIN-checking surface, keyed on organizationId +
+  // employeeCode, so guesses against one account are capped regardless of
+  // source IP or entry point. Checked before any photo decoding — no reason
+  // to make an attacker do that work first.
+  if (await isPinGuessLimited(org.id, parsed.data.employeeCode)) {
     return NextResponse.json(
       { error: "Too many attempts for this employee code. Please wait a few minutes and try again." },
       { status: 429 },
@@ -217,6 +233,13 @@ async function handlePost(req: NextRequest) {
   }
 
   await expireOldPhotos();
+
+  // Independent of each other (both only need org.id) — run concurrently
+  // rather than as two sequential round-trips.
+  const [candidate, settings] = await Promise.all([
+    prisma.user.findFirst({ where: { organizationId: org.id, employeeCode: parsed.data.employeeCode } }),
+    getSettings(org.id),
+  ]);
 
   // A presence photo is always mandatory for check-in; for check-out it
   // depends on the admin-configured setting. Only the cheap presence check
@@ -227,7 +250,6 @@ async function handlePost(req: NextRequest) {
   // employeeCode, so an attacker supplying a fresh/nonexistent code on every
   // request always passes it, then this used to decode a full photo before
   // ever checking whether the credentials were even plausible.
-  const settings = await getSettings();
   const photoRequired =
     parsed.data.action === "CHECK_IN" ||
     (parsed.data.action === "CHECK_OUT" && settings.checkOutPhotoRequired);
@@ -237,9 +259,6 @@ async function handlePost(req: NextRequest) {
     return NextResponse.json({ error: `A photo is required to ${verb}.` }, { status: 400 });
   }
 
-  const candidate = await prisma.user.findUnique({
-    where: { employeeCode: parsed.data.employeeCode },
-  });
   const user =
     candidate?.pinHash && (await verifyPin(parsed.data.pin, candidate.pinHash)) ? candidate : null;
 
@@ -274,7 +293,7 @@ async function handlePost(req: NextRequest) {
   let faceSimilarity: number | null = null;
 
   if (user.faceVerificationEnabled && photoBuffer) {
-    const result = await verifyFace(user.employeeCode, photoBuffer);
+    const result = await verifyFace(org.id, user.employeeCode, photoBuffer);
     if (result.outcome === "matched") {
       faceVerifyStatus = "MATCHED";
       faceSimilarity = result.similarity;

@@ -17,7 +17,10 @@ export type { GeofenceTarget };
  * haversineDistanceMeters math.
  */
 export async function resolveGeofenceTarget(
-  user: Pick<User, "workMode" | "homeLatitude" | "homeLongitude" | "homeRadiusMeters">,
+  user: Pick<
+    User,
+    "workMode" | "homeLatitude" | "homeLongitude" | "homeRadiusMeters" | "organizationId"
+  >,
 ): Promise<GeofenceTarget | null> {
   if (user.workMode === "FIELD") return null;
 
@@ -30,13 +33,8 @@ export async function resolveGeofenceTarget(
     };
   }
 
-  const officeLocation = await prisma.officeLocation.findFirst({ orderBy: { createdAt: "asc" } });
-  if (!officeLocation) return null;
-  return {
-    latitude: officeLocation.latitude,
-    longitude: officeLocation.longitude,
-    radiusMeters: officeLocation.radiusMeters,
-  };
+  if (!user.organizationId) return null;
+  return resolveOfficeLocationTarget(user.organizationId);
 }
 
 /**
@@ -47,8 +45,8 @@ export async function resolveGeofenceTarget(
  * from "should this profile be geofenced at all". Returns null only if no
  * OfficeLocation has been configured yet.
  */
-export async function resolveOfficeLocationTarget(): Promise<GeofenceTarget | null> {
-  const officeLocation = await prisma.officeLocation.findFirst({ orderBy: { createdAt: "asc" } });
+export async function resolveOfficeLocationTarget(organizationId: string): Promise<GeofenceTarget | null> {
+  const officeLocation = await prisma.officeLocation.findUnique({ where: { organizationId } });
   if (!officeLocation) return null;
   return {
     latitude: officeLocation.latitude,

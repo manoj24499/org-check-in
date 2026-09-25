@@ -20,8 +20,8 @@ function formatTime(date: Date) {
  * still-PENDING row — once decided, a decision is final (no re-review).
  */
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
   const json = await req.json().catch(() => null);
@@ -30,8 +30,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
 
-  const request = await prisma.overtimeRequest.findUnique({
-    where: { id },
+  const request = await prisma.overtimeRequest.findFirst({
+    where: { id, attendance: { user: { organizationId: admin.organizationId } } },
     include: { attendance: { select: { userId: true } } },
   });
   if (!request) {
@@ -46,7 +46,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     data: {
       status: parsed.data.decision,
       reviewedAt: new Date(),
-      reviewedByName: session.user.name ?? session.user.email ?? "Admin",
+      reviewedByName: admin.session.user.name ?? admin.session.user.email ?? "Admin",
     },
   });
 

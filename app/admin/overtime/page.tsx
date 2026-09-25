@@ -1,3 +1,5 @@
+import { notFound } from "next/navigation";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import OvertimeHistoryList from "@/components/OvertimeHistoryList";
 import OvertimeStatusPanel from "@/components/OvertimeStatusPanel";
@@ -12,14 +14,18 @@ export const dynamic = "force-dynamic";
  * request moves from left to right the instant it's closed out at a
  * checkout — never shown in both at once. */
 export default async function OvertimePage() {
+  const session = await auth();
+  if (!session?.user.organizationId) notFound();
+  const organizationId = session.user.organizationId;
+
   const [activeRaw, completedRaw] = await Promise.all([
     prisma.overtimeRequest.findMany({
-      where: { submittedAt: null },
+      where: { submittedAt: null, attendance: { user: { organizationId } } },
       orderBy: { createdAt: "asc" },
       include: { attendance: { select: { user: { select: { id: true, employeeCode: true, name: true } } } } },
     }),
     prisma.overtimeRequest.findMany({
-      where: { submittedAt: { not: null } },
+      where: { submittedAt: { not: null }, attendance: { user: { organizationId } } },
       orderBy: { createdAt: "desc" },
       select: {
         id: true,

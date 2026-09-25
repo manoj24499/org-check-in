@@ -7,13 +7,13 @@ import { requireAdmin } from "@/lib/requireAdmin";
  * lib/prisma.ts), only the `hasPhoto` flag; the dedicated
  * /api/admin/support/[id]/photo route serves the actual image when needed. */
 export async function GET(req: NextRequest) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const status = req.nextUrl.searchParams.get("status");
 
   const tickets = await prisma.supportTicket.findMany({
-    where: status ? { status } : {},
+    where: { user: { organizationId: admin.organizationId }, ...(status ? { status } : {}) },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,

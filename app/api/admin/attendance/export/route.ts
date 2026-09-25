@@ -5,8 +5,8 @@ import { buildCsv, csvField, CSV_EXPORT_ROW_CAP } from "@/lib/csv";
 import { parseDateOnlyKey, endOfISTDay } from "@/lib/istTime";
 
 export async function GET(req: NextRequest) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   // Optional scoping — an admin can request just a date range (e.g. "this
   // year's payroll cycle") instead of the full, ever-growing table. Omitted
@@ -26,7 +26,12 @@ export async function GET(req: NextRequest) {
   // this unbounded-by-default is exactly the kind of place a wasted-bytes
   // pattern like that adds up fastest.
   const records = await prisma.attendance.findMany({
-    where: from || to ? { timestamp: { ...(from ? { gte: from } : {}), ...(to ? { lte: endOfISTDay(to) } : {}) } } : undefined,
+    where: {
+      user: { organizationId: admin.organizationId },
+      ...(from || to
+        ? { timestamp: { ...(from ? { gte: from } : {}), ...(to ? { lte: endOfISTDay(to) } : {}) } }
+        : {}),
+    },
     orderBy: { timestamp: "desc" },
     select: {
       type: true,

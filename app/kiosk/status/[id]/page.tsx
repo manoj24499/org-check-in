@@ -4,9 +4,16 @@ import { computeWorkedMs, computeFieldOfficeSplit } from "@/lib/attendanceHours"
 import { startOfISTDay } from "@/lib/istTime";
 import StatusClient from "./StatusClient";
 
-export default async function KioskStatusPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function KioskStatusPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ orgSlug?: string }>;
+}) {
   const { id } = await params;
-  
+  const { orgSlug } = await searchParams;
+
   // Explicit `select` — this renders on the kiosk screen after every single
   // check-in/check-out, so pulling the full row (photo bytes) plus the full
   // related `user` row (pinHash included) each time was a real, frequent cost.
@@ -79,6 +86,7 @@ export default async function KioskStatusPage({ params }: { params: Promise<{ id
       checkInTime={checkInTime}
       fieldHours={fieldHours}
       officeHours={officeHours}
+      orgSlug={orgSlug}
     />
   );
 }

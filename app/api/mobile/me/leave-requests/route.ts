@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const days = await countLeaveDays(startDate, endDate);
+  const days = await countLeaveDays(startDate, endDate, auth.organizationId);
   if (days === 0) {
     return NextResponse.json(
       { error: "Every day in this range is a public holiday — nothing to request." },
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const balances = await getLeaveBalances(auth.sub);
+  const balances = await getLeaveBalances(auth.sub, auth.organizationId);
   const balance = balances.find((b) => b.type === parsed.data.type);
   if (balance && days > balance.remaining) {
     return NextResponse.json(
@@ -136,7 +136,7 @@ export async function GET(req: NextRequest) {
       },
       orderBy: { startDate: "desc" },
     }),
-    getLeaveBalances(auth.sub),
+    getLeaveBalances(auth.sub, auth.organizationId),
   ]);
 
   return NextResponse.json({

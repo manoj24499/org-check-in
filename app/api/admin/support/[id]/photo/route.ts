@@ -6,16 +6,16 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
 
   // `photo` is omitted by the Prisma client's global default (see
   // lib/prisma.ts) — opt back in for this one lookup, matching every other
   // dedicated photo route in this app.
-  const ticket = await prisma.supportTicket.findUnique({
-    where: { id },
+  const ticket = await prisma.supportTicket.findFirst({
+    where: { id, user: { organizationId: admin.organizationId } },
     omit: { photo: false },
   });
 

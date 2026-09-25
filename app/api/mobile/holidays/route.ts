@@ -14,7 +14,10 @@ export async function GET(req: NextRequest) {
   // `new Date().getFullYear()`.
   const year = Number(istDateKey().slice(0, 4));
   const holidays = await prisma.publicHoliday.findMany({
-    where: { date: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) } },
+    where: {
+      organizationId: auth.organizationId,
+      date: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) },
+    },
     orderBy: { date: "asc" },
   });
 

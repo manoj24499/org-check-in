@@ -7,13 +7,16 @@ import { parseDateOnlyKey, istDateKey } from "@/lib/istTime";
 /** This year's public holidays (or a given ?year=), for the holiday
  * calendar manager. */
 export async function GET(req: NextRequest) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const yearParam = req.nextUrl.searchParams.get("year");
   const year = yearParam ? Number(yearParam) : Number(istDateKey().slice(0, 4));
   const holidays = await prisma.publicHoliday.findMany({
-    where: { date: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) } },
+    where: {
+      organizationId: admin.organizationId,
+      date: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) },
+    },
     orderBy: { date: "asc" },
   });
 
@@ -28,8 +31,8 @@ const postSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const json = await req.json().catch(() => null);
   const parsed = postSchema.safeParse(json);
@@ -43,8 +46,12 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // Uniqueness is [organizationId, date] (see the schema), so this only
+    // conflicts with a holiday already set for this exact date *within this
+    // organization* — a different organization can freely hold one on the
+    // same calendar date.
     const holiday = await prisma.publicHoliday.create({
-      data: { date, name: parsed.data.name },
+      data: { organizationId: admin.organizationId, date, name: parsed.data.name },
     });
     return NextResponse.json({
       holiday: { id: holiday.id, date: holiday.date.toISOString(), name: holiday.name },

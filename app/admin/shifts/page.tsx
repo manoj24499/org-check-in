@@ -1,3 +1,5 @@
+import { notFound } from "next/navigation";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import ShiftTable from "@/components/ShiftTable";
 
@@ -8,8 +10,13 @@ export const dynamic = "force-dynamic";
 // drives the shift-end reminder push and stale-checkin auto-checkout for
 // everyone with one assigned, regardless of workMode.
 export default async function ShiftsPage() {
+  const session = await auth();
+  if (!session?.user.organizationId) notFound();
+  const organizationId = session.user.organizationId;
+
   const [shifts, employees] = await Promise.all([
     prisma.shift.findMany({
+      where: { organizationId },
       orderBy: { startTime: "asc" },
       include: {
         assignments: {
@@ -26,7 +33,7 @@ export default async function ShiftsPage() {
     // the stale-checkin auto-checkout (see /api/kiosk/location and
     // /api/kiosk/scan), both of which apply to WFH/FIELD employees too.
     prisma.user.findMany({
-      where: { role: "EMPLOYEE", active: true },
+      where: { organizationId, role: "EMPLOYEE", active: true },
       // Join order (oldest first), matching /admin/employees — see that
       // page's comment for why createdAt over employeeCode/name.
       orderBy: { createdAt: "asc" },

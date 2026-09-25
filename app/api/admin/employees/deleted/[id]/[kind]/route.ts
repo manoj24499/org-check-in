@@ -15,8 +15,8 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string; kind: string }> },
 ) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id, kind } = await params;
   if (!(kind in CSV_FIELD_BY_KIND)) {
@@ -24,7 +24,9 @@ export async function GET(
   }
   const field = CSV_FIELD_BY_KIND[kind as keyof typeof CSV_FIELD_BY_KIND];
 
-  const archive = await prisma.deletedEmployeeArchive.findUnique({ where: { id } });
+  const archive = await prisma.deletedEmployeeArchive.findFirst({
+    where: { id, organizationId: admin.organizationId },
+  });
   if (!archive) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
   return new NextResponse(archive[field], {

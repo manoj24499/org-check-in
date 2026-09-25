@@ -3,9 +3,11 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { verifyPin } from "@/lib/credentials";
 import { getClientIp, isRateLimited, isPinGuessLimited } from "@/lib/rateLimit";
+import { resolveOrgBySlug } from "@/lib/organization";
 import { signAccessToken, issueRefreshToken } from "@/lib/mobileAuth";
 
 const bodySchema = z.object({
+  organizationCode: z.string().min(1),
   employeeCode: z.string().min(1),
   pin: z.string().min(4).max(10),
 });
@@ -40,22 +42,30 @@ async function handlePost(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
 
+  const org = await resolveOrgBySlug(parsed.data.organizationCode);
+  if (!org) {
+    return NextResponse.json({ error: "Invalid organization code." }, { status: 401 });
+  }
+  if (org.status === "SUSPENDED") {
+    return NextResponse.json({ error: "This organization is currently disabled." }, { status: 403 });
+  }
+
   // The IP-based limit above only slows down a single-source attacker — it
   // does nothing against one who spreads guesses across many IPs/proxies, or
   // who switches to a different PIN-checking surface (the kiosk, or the "My
   // Page" web login) to get a fresh budget. isPinGuessLimited is shared
-  // across all of them, keyed only on employeeCode, so guesses against one
-  // specific account are capped no matter which entry point or how many
-  // source IPs an attacker uses.
-  if (await isPinGuessLimited(parsed.data.employeeCode)) {
+  // across all of them, keyed on organizationId + employeeCode, so guesses
+  // against one specific account are capped no matter which entry point or
+  // how many source IPs an attacker uses.
+  if (await isPinGuessLimited(org.id, parsed.data.employeeCode)) {
     return NextResponse.json(
       { error: "Too many attempts for this employee code. Please wait a few minutes and try again." },
       { status: 429 },
     );
   }
 
-  const user = await prisma.user.findUnique({
-    where: { employeeCode: parsed.data.employeeCode },
+  const user = await prisma.user.findFirst({
+    where: { organizationId: org.id, employeeCode: parsed.data.employeeCode },
   });
 
   const valid =

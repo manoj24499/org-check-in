@@ -19,6 +19,7 @@ export default function EmployeeLoginPage() {
     const form = new FormData(e.currentTarget);
 
     const res = await signIn("employee-login", {
+      organizationCode: form.get("organizationCode"),
       employeeCode: form.get("employeeCode"),
       pin: form.get("pin"),
       redirect: false,
@@ -26,7 +27,7 @@ export default function EmployeeLoginPage() {
 
     setLoading(false);
     if (res?.error) {
-      setError("Invalid employee ID or PIN.");
+      setError("Invalid organization code, employee ID, or PIN.");
     } else {
       sessionStorage.setItem("tab_auth", "true");
       router.push("/my-page");
@@ -57,6 +58,17 @@ export default function EmployeeLoginPage() {
         </div>
 
         <form onSubmit={handleEmployeeSubmit} className="mt-6 flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs text-muted">Organization Code</label>
+            <input
+              name="organizationCode"
+              type="text"
+              required
+              autoCapitalize="none"
+              className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-[15px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
+              placeholder="acme-corp"
+            />
+          </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-xs text-muted">Employee ID</label>
             <input

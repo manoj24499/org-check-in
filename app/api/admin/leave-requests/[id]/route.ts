@@ -16,8 +16,8 @@ function formatDate(date: Date) {
 /** Approve or reject a pending leave request. Only ever acts on a
  * still-PENDING row — once decided, a decision is final (no re-review). */
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
   const json = await req.json().catch(() => null);
@@ -26,7 +26,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
 
-  const request = await prisma.timeOffRequest.findUnique({ where: { id } });
+  const request = await prisma.timeOffRequest.findFirst({
+    where: { id, user: { organizationId: admin.organizationId } },
+  });
   if (!request) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }
@@ -39,7 +41,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     data: {
       status: parsed.data.decision,
       reviewedAt: new Date(),
-      reviewedByName: session.user.name ?? session.user.email ?? "Admin",
+      reviewedByName: admin.session.user.name ?? admin.session.user.email ?? "Admin",
       // Only meaningful alongside a decline — a note on an approval has
       // nothing to attach to, so don't store one even if somehow sent.
       reviewNote: parsed.data.decision === "REJECTED" ? (parsed.data.note ?? null) : null,

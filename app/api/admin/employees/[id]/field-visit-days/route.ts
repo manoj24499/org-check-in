@@ -31,10 +31,16 @@ const MIN_TRAVEL_DISTANCE_METERS = 300;
  *    action, so FieldVisit alone badly under-reports actual travel.
  */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAdmin();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  const employee = await prisma.user.findUnique({
+    where: { id, organizationId: admin.organizationId },
+    select: { id: true },
+  });
+  if (!employee) return NextResponse.json({ error: "Not found." }, { status: 404 });
+
   const month = req.nextUrl.searchParams.get("month");
   if (!month || !MONTH_PATTERN.test(month)) {
     return NextResponse.json({ error: "Invalid month." }, { status: 400 });
