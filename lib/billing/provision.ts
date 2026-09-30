@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { issueUserToken } from "@/lib/userToken";
 import { APP_BASE_URL } from "@/lib/appUrl";
-import { isProductionRuntime } from "@/lib/isProduction";
+import { sendEmail, activationEmail } from "@/lib/email";
 
 const ACTIVATION_TTL_MS = 72 * 60 * 60_000;
 
@@ -19,17 +19,9 @@ export type ProvisionOutcome =
   | { outcome: "duplicate" }
   | { outcome: "needs_attention"; reason: string };
 
-// TODO(email infra phase): replace both of these with lib/email.ts's
-// sendEmail() once a real provider exists — gated to non-production for
-// the same reason as app/api/activate/resend/route.ts's identical interim
-// pattern (the activation link is a bearer credential; never log it in
-// production where nothing would ever deliver it anyway).
-function logWorkspaceReadyEmail(email: string, slug: string, rawToken: string) {
-  if (!isProductionRuntime()) {
-    console.info(
-      `[provision] workspace-ready email for ${email}: org=${slug} activate=${APP_BASE_URL}/activate?token=${rawToken}`,
-    );
-  }
+async function sendWorkspaceReadyEmail(email: string, orgName: string, rawToken: string) {
+  const link = `${APP_BASE_URL}/activate?token=${rawToken}`;
+  await sendEmail({ to: email, ...activationEmail({ orgName, link, hours: ACTIVATION_TTL_MS / 3_600_000 }) });
 }
 function sendOpsAlert(message: string) {
   console.error(`[ops-alert] ${message}`);
@@ -139,7 +131,7 @@ export async function provisionPaidSignup(checkoutId: string, payment: Provision
     }
 
     try {
-      logWorkspaceReadyEmail(result.adminEmail, result.organization.slug, result.rawToken);
+      await sendWorkspaceReadyEmail(result.adminEmail, result.organization.name, result.rawToken);
       await prisma.signupCheckout.update({ where: { id: checkout.id }, data: { activationEmailSentAt: new Date() } });
     } catch (err) {
       // Provisioning already succeeded and committed — a failed email is
