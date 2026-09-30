@@ -491,9 +491,10 @@ model User {
 enum UserTokenPurpose {
   // A paid signup's admin User is created with passwordHash: null (see
   // lib/billing/provision.ts) — this is the single-use link emailed to them
-  // to set their own password. No PASSWORD_RESET flow exists yet, but the
-  // purpose enum leaves room for it without a second token model.
+  // to set their own password.
   ACCOUNT_ACTIVATION
+  // Emailed by the "Forgot password?" flow to an already-activated admin.
+  PASSWORD_RESET
 }
 
 // A single-use, expiring token for an action that shouldn't require a

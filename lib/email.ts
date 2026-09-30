@@ -52,3 +52,15 @@ export function activationEmail(opts: { orgName?: string; link: string; hours: n
 </div>`;
   return { subject, html, text };
 }
+
+export function passwordResetEmail(opts: { link: string; minutes: number }): Omit<EmailMessage, "to"> {
+  const subject = "Reset your password";
+  const text = `We received a request to reset your password. Choose a new one here:\n\n${opts.link}\n\nThis link expires in ${opts.minutes} minutes and can be used once. If you didn't ask for this, you can ignore this email - your password won't change.`;
+  const html = `<div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:24px">
+<h2 style="margin:0 0 12px">Reset your password</h2>
+<p>We received a request to reset your password.</p>
+<p><a href="${escapeHtml(opts.link)}" style="display:inline-block;background:#111;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none">Choose a new password</a></p>
+<p style="color:#666;font-size:13px">This link expires in ${opts.minutes} minutes and can be used once. If you didn't ask for this, you can ignore this email - your password won't change.</p>
+</div>`;
+  return { subject, html, text };
+}

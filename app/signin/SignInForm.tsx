@@ -15,7 +15,7 @@ import { Logo } from "@/components/Logo";
  * exists so a visitor arriving from the marketing site doesn't land on a
  * page framed as "Restricted" for internal use.
  */
-export default function SignInForm({ callbackUrl }: { callbackUrl: string }) {
+export default function SignInForm({ callbackUrl, passwordReset = false }: { callbackUrl: string; passwordReset?: boolean }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -58,6 +58,12 @@ export default function SignInForm({ callbackUrl }: { callbackUrl: string }) {
           <p className="text-sm text-muted">Manage your workspace, employees, and plan.</p>
         </div>
 
+        {passwordReset && (
+          <p className="mt-5 text-sm text-green-800 bg-green-50 p-3 rounded-lg border border-green-100">
+            Password updated. Sign in with your new password.
+          </p>
+        )}
+
         <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <label className="text-xs text-muted">Email</label>
@@ -79,6 +85,9 @@ export default function SignInForm({ callbackUrl }: { callbackUrl: string }) {
               className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-[15px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
               placeholder="••••••••"
             />
+            <Link href="/forgot-password" className="text-xs text-primary-dark hover:underline self-end">
+              Forgot password?
+            </Link>
           </div>
 
           {error && (
