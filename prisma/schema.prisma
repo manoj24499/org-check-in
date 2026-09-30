@@ -47,6 +47,28 @@ model RefreshToken {
   @@index([userId])
 }
 
+// Dedupe/audit record for an inbound payment-gateway webhook call (see
+// lib/billing/provision.ts and app/api/billing/webhook/route.ts) — a gateway
+// retries webhooks it didn't get a 200 for, and (eventId, provider) is the
+// idempotency key that makes a retried delivery a no-op instead of a second
+// provisioning attempt. Deliberately holds no raw payload/amount/customer
+// data — that's PII/payment detail already captured on SignupCheckout once
+// verified; this table exists purely to answer "have I already handled this
+// exact event," so it stays small and safe to keep indefinitely (though see
+// lib/billing/cleanup.ts for its best-effort pruning after 180 days).
+model PaymentEvent {
+  id                 String   @id @default(cuid())
+  provider           String
+  eventId            String
+  type               String
+  providerCheckoutId String?
+  // provisioned | duplicate | ignored | failure_recorded | needs_attention
+  outcome            String?
+  receivedAt         DateTime @default(now())
+
+  @@unique([provider, eventId])
+}
+
 // An employee-submitted "something's wrong" report from the mobile app's
 // Profile > Help screen (replaces what used to be static, made-up HR
 // contact info there) — free text plus an optional photo, reviewed by an
@@ -105,8 +127,11 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Forward-compatible only — unused until a future billing pass; no code
-  // reads or writes these yet.
+  // Written by lib/billing/provision.ts once a paid SignupCheckout is
+  // confirmed (planTier/seatLimit from the purchased plan+seat count,
+  // billingCustomerId from the payment gateway) — still null for every
+  // free-trial (/register) organization. seatLimit is not enforced anywhere
+  // yet when employees are added.
   planTier          String?
   seatLimit         Int?
   billingCustomerId String?
@@ -117,6 +142,170 @@ model Organization {
   appSettings             AppSettings?
   publicHolidays          PublicHoliday[]
   deletedEmployeeArchives DeletedEmployeeArchive[]
+  signupCheckout          SignupCheckout?
+  apiKeys                 OrganizationApiKey[]
+  planChangeCheckouts     PlanChangeCheckout[]
+}
+
+enum PlanChangeStatus {
+  PENDING
+  APPLIED
+  CANCELLED
+  NEEDS_ATTENTION
+}
+
+// A signed-in admin's self-serve change to their OWN, already-existing
+// organization's plan/seat count — see lib/billing/planChange.ts. Distinct
+// from SignupCheckout, which never touches an Organization until paid: this
+// model exists specifically because the organization already exists (and
+// already has an admin), so there's no provisioning step, just an update to
+// Organization.planTier/seatLimit once payment is confirmed. Works the same
+// way whether the org is currently on the free trial (planTier: null) or
+// already paying — either way it's "pick a plan/seat count, pay, done."
+//
+// No proration: the new plan/seats/cycle is charged at full price for a
+// fresh term, same as a brand-new signup — this app has no auto-renewing
+// subscription to prorate against (see the top-level plan's "deliberately
+// out of scope" list), so a mid-term upgrade is simply a new one-time
+// charge, not a delta.
+model PlanChangeCheckout {
+  id        String           @id @default(cuid())
+  publicRef String           @unique
+  status    PlanChangeStatus @default(PENDING)
+
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requestedByUserId String
+
+  planId            String
+  billingCycle      String
+  seats             Int
+  pricePerSeatPaise Int
+  subtotalPaise     Int
+  taxPaise          Int
+  amountPaise       Int
+  currency          String @default("INR")
+  pricingVersion    String
+
+  provider           String
+  providerCheckoutId String? @unique
+  providerPaymentId  String? @unique
+  providerCustomerId String?
+  lastPaymentError   String?
+  attentionReason    String?
+
+  holdExpiresAt DateTime
+  paidAt        DateTime?
+  appliedAt     DateTime?
+
+  createdIp String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, status])
+}
+
+// A credential issued to an external partner integration (e.g. the Payroll
+// app's /v1/* pull) to call the read-only partner API on behalf of one
+// organization — see lib/partnerApi/. Follows UserToken's precedent: only
+// sha256(rawKey) is ever stored, so a database read alone can never yield a
+// usable key; the raw value is shown to the admin exactly once, at creation,
+// and is never recoverable afterward. keyPrefix (the first characters of the
+// raw value, itself not secret) lets the admin UI identify which key is
+// which without ever displaying the full secret again. revokedAt (never
+// deleted, same precedent as RefreshToken) keeps a revoked key's audit trail.
+model OrganizationApiKey {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Admin-supplied label, e.g. "Payroll integration" — purely descriptive.
+  name           String
+  keyPrefix      String
+  keyHash        String       @unique
+  createdAt      DateTime     @default(now())
+  lastUsedAt     DateTime?
+  revokedAt      DateTime?
+
+  @@index([organizationId])
+}
+
+enum SignupCheckoutStatus {
+  PENDING
+  PROVISIONED
+  CANCELLED
+  NEEDS_ATTENTION
+}
+
+// A paid self-serve signup, from the moment someone starts checkout on the
+// marketing site's pricing page through payment confirmation and org
+// provisioning — see lib/billing/provision.ts. Deliberately NOT an
+// Organization.status value (e.g. "PENDING_PAYMENT"): lib/auth.ts only ever
+// rejects login for status === SUSPENDED, so any other status would be
+// silently treated as a fully working org on every login surface. An unpaid
+// signup must never have an Organization row at all — this table is where
+// it lives instead, until provisionPaidSignup() creates the real
+// Organization/AppSettings/User in one transaction.
+//
+// holdExpiresAt (45 min from creation) is what keeps someone from
+// permanently squatting a slug/email by starting checkout and abandoning it
+// — see lib/billing/holds.ts's findActiveHold, which both this flow and the
+// free-trial /register route check before accepting a slug/email. Once the
+// hold expires, the slug/email is simply free again; nothing needs to be
+// cleaned up for that alone (see lib/billing/cleanup.ts for eventual row
+// pruning, which is unrelated to the hold itself).
+model SignupCheckout {
+  id     String               @id @default(cuid())
+  // Random, URL-safe — used in /signup/complete and /api/signup/status
+  // instead of `id`, so the checkout row's cuid (and therefore its creation
+  // order) is never exposed to the browser.
+  publicRef String               @unique
+  status    SignupCheckoutStatus @default(PENDING)
+
+  // Frozen server-computed quote (see lib/billing/quote.ts) — never trust a
+  // client-supplied price; this is what the webhook checks the actual
+  // payment amount against.
+  planId            String
+  billingCycle      String // "monthly" | "annual"
+  seats             Int
+  pricePerSeatPaise Int
+  subtotalPaise     Int
+  taxPaise          Int
+  amountPaise       Int
+  currency          String @default("INR")
+  pricingVersion    String
+
+  // What to provision once payment is confirmed.
+  organizationName String
+  slug             String
+  adminName        String
+  adminEmail       String
+
+  // Payment gateway (opaque strings; meaning owned by whichever adapter in
+  // lib/billing/adapters/ is active — see lib/billing/gateway.ts).
+  provider           String
+  providerCheckoutId String? @unique
+  providerPaymentId  String? @unique
+  providerCustomerId String?
+  lastPaymentError   String?
+  // Only set when status is NEEDS_ATTENTION — e.g. "amount_mismatch",
+  // "slug_taken", "email_taken" — see lib/billing/provision.ts.
+  attentionReason    String?
+
+  holdExpiresAt         DateTime
+  paidAt                DateTime?
+  provisionedAt         DateTime?
+  activationEmailSentAt DateTime?
+
+  organizationId String?       @unique
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  adminUserId    String?
+
+  createdIp String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([slug, status])
+  @@index([adminEmail, status])
 }
 
 enum AttendanceType {
@@ -285,6 +474,7 @@ model User {
   // exactly one shift for every day.
   shiftAssignments ShiftAssignment[]
   supportTickets   SupportTicket[]
+  userTokens       UserToken[]
 
   // Replaces the old bare @unique on employeeCode — see that field's own
   // comment.
@@ -296,6 +486,37 @@ model User {
   // list) and lib/employeeCleanup.ts's deactivated-employee sweep — all of
   // them filter on some leftmost prefix of this exact combination.
   @@index([role, active, workMode])
+}
+
+enum UserTokenPurpose {
+  // A paid signup's admin User is created with passwordHash: null (see
+  // lib/billing/provision.ts) — this is the single-use link emailed to them
+  // to set their own password. No PASSWORD_RESET flow exists yet, but the
+  // purpose enum leaves room for it without a second token model.
+  ACCOUNT_ACTIVATION
+}
+
+// A single-use, expiring token for an action that shouldn't require a
+// password (see lib/userToken.ts) — currently just account activation.
+// Follows the closest existing precedent, RefreshToken: only the token's
+// hash is ever stored (sha256, not bcrypt — this is a high-entropy random
+// value looked up by exact match, not a low-entropy secret needing a slow
+// compare), so a database read alone can never yield a usable link. Reading
+// a token (e.g. rendering the activation page) must never consume it —
+// email clients/security scanners prefetch links — only the actual submit
+// action may set usedAt, via one atomic conditional update requiring exactly
+// one row affected (see consumeUserToken).
+model UserToken {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose   UserTokenPurpose
+  tokenHash String           @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, purpose])
 }
 
 // A named time slot (e.g. "General Shift", 09:00–18:00) an employee can be
@@ -415,6 +636,15 @@ model Attendance {
   // the same 10-minute window.
   shiftReminderSentAt DateTime?
 
+  // Added for the partner API's `updatedSince` sync (lib/partnerApi/
+  // attendanceRecords.ts) — before this, an admin correcting a past
+  // check-in/check-out had no separate "last changed" marker distinct from
+  // `timestamp` (which is the punch time itself, not a modification time),
+  // so a downstream consumer polling incrementally had no way to notice the
+  // correction. Existing rows were backfilled to their migration time (see
+  // that migration's comment) since their real edit history isn't known.
+  updatedAt DateTime @updatedAt
+
   @@unique([userId, type, dayKey])
   @@index([userId, timestamp])
   // The admin CSV export (app/api/admin/attendance/export/route.ts) is the
@@ -422,6 +652,7 @@ model Attendance {
   // at all — it sorts the entire table by timestamp. This lets that ORDER
   // BY be served by an index scan instead of a full sort.
   @@index([timestamp])
+  @@index([updatedAt])
 }
 
 enum TimedPermissionApprovalStatus {

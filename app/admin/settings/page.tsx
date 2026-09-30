@@ -7,19 +7,28 @@ import ReimbursementRateForm from "@/components/ReimbursementRateForm";
 import LeaveQuotaForm from "@/components/LeaveQuotaForm";
 import LatenessThresholdForm from "@/components/LatenessThresholdForm";
 import AdminsPanel from "@/components/AdminsPanel";
+import OrgCodePanel from "@/components/OrgCodePanel";
+import ApiKeysPanel from "@/components/ApiKeysPanel";
+import PlanPanel from "@/components/PlanPanel";
+import { listApiKeys } from "@/lib/partnerApi/apiKey";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const session = await auth();
   if (!session?.user.organizationId) notFound();
-  const [settings, admins] = await Promise.all([
+  const [settings, admins, organization, apiKeys] = await Promise.all([
     getSettings(session.user.organizationId),
     prisma.user.findMany({
       where: { organizationId: session.user.organizationId, role: "ADMIN" },
       orderBy: { createdAt: "asc" },
       select: { id: true, name: true, email: true, isOwner: true, active: true },
     }),
+    prisma.organization.findUniqueOrThrow({
+      where: { id: session.user.organizationId },
+      select: { name: true, slug: true, planTier: true, seatLimit: true },
+    }),
+    listApiKeys(session.user.organizationId),
   ]);
 
   return (
@@ -51,7 +60,19 @@ export default async function SettingsPage() {
           }}
         />
         <LatenessThresholdForm lateThresholdMinutes={settings.lateThresholdMinutes} />
+        <OrgCodePanel name={organization.name} slug={organization.slug} />
+        <PlanPanel planId={organization.planTier} seatLimit={organization.seatLimit} />
         <AdminsPanel admins={admins} />
+        <ApiKeysPanel
+          keys={apiKeys.map((k) => ({
+            id: k.id,
+            name: k.name,
+            keyPrefix: k.keyPrefix,
+            createdAt: k.createdAt.toISOString(),
+            lastUsedAt: k.lastUsedAt ? k.lastUsedAt.toISOString() : null,
+            revokedAt: k.revokedAt ? k.revokedAt.toISOString() : null,
+          }))}
+        />
       </div>
     </div>
   );

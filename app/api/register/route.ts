@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { getClientIp, isRateLimited } from "@/lib/rateLimit";
 import { normalizeOrgSlug, isValidOrgSlug } from "@/lib/orgSlug";
+import { findActiveHold } from "@/lib/billing/holds";
 
 const bodySchema = z.object({
   organizationName: z.string().trim().min(1).max(120),
@@ -56,11 +57,15 @@ async function handlePost(req: NextRequest) {
     );
   }
 
-  const [slugTaken, emailTaken] = await Promise.all([
+  const [slugTaken, emailTaken, slugHeld] = await Promise.all([
     prisma.organization.findUnique({ where: { slug }, select: { id: true } }),
     prisma.user.findUnique({ where: { email: parsed.data.adminEmail }, select: { id: true } }),
+    // A slug an in-progress paid checkout is actively holding (see
+    // lib/billing/holds.ts) — a free-trial signup can't grab it out from
+    // under a paying buyer.
+    findActiveHold({ slug }),
   ]);
-  if (slugTaken) {
+  if (slugTaken || slugHeld) {
     return NextResponse.json({ error: "That organization code is already taken." }, { status: 409 });
   }
   if (emailTaken) {

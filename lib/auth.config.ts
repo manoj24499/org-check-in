@@ -7,6 +7,24 @@ export const authConfig = {
   },
   trustHost: true,
   providers: [],
+  // SameSite=None (rather than the default Lax) on the CSRF cookie only —
+  // the marketing site's own /signin form (a different origin) fetches
+  // /api/auth/csrf and must be able to send that same cookie back on its
+  // follow-up cross-origin POST to /api/auth/callback/admin-login; Lax
+  // cookies are excluded from cross-site requests entirely, which would
+  // otherwise make that double-submit CSRF check fail unconditionally.
+  // None requires Secure, which is fine here — http://localhost is treated
+  // as a secure context by browsers for exactly this reason. The session
+  // cookie itself is untouched (stays at the default Lax): it's only ever
+  // read back once the browser has actually navigated to this app's own
+  // origin, which is a same-origin request regardless of where sign-in
+  // started, so it never needs to survive a cross-site request itself.
+  cookies: {
+    csrfToken: {
+      name: "authjs.csrf-token",
+      options: { httpOnly: true, sameSite: "none", path: "/", secure: true },
+    },
+  },
   callbacks: {
     async jwt({ token, user }) {
       if (user) {

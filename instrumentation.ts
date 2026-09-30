@@ -49,6 +49,7 @@ export async function register() {
 
   const { runDeactivatedEmployeeCleanup } = await import("@/lib/employeeCleanup");
   const { pruneExpiredRefreshTokens } = await import("@/lib/refreshTokenCleanup");
+  const { pruneBillingRecords } = await import("@/lib/billing/cleanup");
 
   async function tick() {
     try {
@@ -70,6 +71,17 @@ export async function register() {
       }
     } catch (err) {
       console.error("[refreshTokenCleanup] Scheduled run failed:", err);
+    }
+
+    try {
+      const { signupCheckouts, planChangeCheckouts, userTokens, paymentEvents } = await pruneBillingRecords();
+      if (signupCheckouts > 0 || planChangeCheckouts > 0 || userTokens > 0 || paymentEvents > 0) {
+        console.log(
+          `[billingCleanup] Pruned ${signupCheckouts} signup checkout(s), ${planChangeCheckouts} plan-change checkout(s), ${userTokens} token(s), ${paymentEvents} payment event(s).`,
+        );
+      }
+    } catch (err) {
+      console.error("[billingCleanup] Scheduled run failed:", err);
     }
   }
 
