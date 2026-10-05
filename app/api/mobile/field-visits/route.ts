@@ -13,6 +13,7 @@ const MAX_REQUEST_BYTES = 6 * 1024 * 1024;
 
 const createSchema = z.object({
   name: z.string().trim().min(1).max(120),
+  description: z.string().trim().max(500).optional(),
   photo: z.string(),
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
@@ -40,13 +41,14 @@ export async function GET(req: NextRequest) {
   const visits = await prisma.fieldVisit.findMany({
     where: { attendanceId: checkIn.id },
     orderBy: { reachedAt: "asc" },
-    select: { id: true, name: true, reachedAt: true, latitude: true, longitude: true, hasPhoto: true },
+    select: { id: true, name: true, description: true, reachedAt: true, latitude: true, longitude: true, hasPhoto: true },
   });
 
   return NextResponse.json({
     visits: visits.map((v) => ({
       id: v.id,
       name: v.name,
+      description: v.description,
       reachedAt: v.reachedAt.toISOString(),
       latitude: v.latitude,
       longitude: v.longitude,
@@ -93,6 +95,7 @@ export async function POST(req: NextRequest) {
     data: {
       attendanceId: checkIn.id,
       name: parsed.data.name,
+      description: parsed.data.description || null,
       photo: photoBuffer,
       hasPhoto: true,
       latitude: parsed.data.latitude,
@@ -103,6 +106,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     id: visit.id,
     name: visit.name,
+    description: visit.description,
     reachedAt: visit.reachedAt.toISOString(),
     latitude: visit.latitude,
     longitude: visit.longitude,

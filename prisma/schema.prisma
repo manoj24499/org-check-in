@@ -791,6 +791,9 @@ model FieldVisit {
   attendanceId String
   attendance   Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
   name         String
+  // Optional free-text note the field worker adds under the place name
+  // (e.g. "Met the owner, quote requested"). Null when left blank.
+  description  String?
   reachedAt    DateTime   @default(now())
   // Same retention convention as Attendance.photo/hasPhoto: always set at
   // creation (a photo is mandatory to log a visit — see the mobile route),

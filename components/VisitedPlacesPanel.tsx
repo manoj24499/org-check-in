@@ -24,6 +24,7 @@ interface Visit {
 interface FieldVisit {
   id: string;
   name: string;
+  description: string | null;
   reachedAt: string;
   latitude: number;
   longitude: number;
@@ -324,6 +325,11 @@ export default function VisitedPlacesPanel({
                         <p className="text-sm font-semibold text-foreground truncate">
                           {v.name}
                         </p>
+                        {v.description && (
+                          <p className="text-xs text-foreground/80 mt-0.5 whitespace-pre-line break-words">
+                            {v.description}
+                          </p>
+                        )}
                         <p className="text-xs text-secondary mt-0.5">
                           Reached {formatTime(v.reachedAt)}
                         </p>

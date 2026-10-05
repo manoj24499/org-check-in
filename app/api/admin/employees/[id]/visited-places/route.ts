@@ -86,7 +86,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     ? await prisma.fieldVisit.findMany({
         where: { attendanceId: { in: todaysCheckIns.map((c) => c.id) } },
         orderBy: { reachedAt: "asc" },
-        select: { id: true, name: true, reachedAt: true, latitude: true, longitude: true, hasPhoto: true },
+        select: { id: true, name: true, description: true, reachedAt: true, latitude: true, longitude: true, hasPhoto: true },
       })
     : [];
 
@@ -118,6 +118,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     fieldVisits: fieldVisits.map((v) => ({
       id: v.id,
       name: v.name,
+      description: v.description,
       reachedAt: v.reachedAt,
       latitude: v.latitude,
       longitude: v.longitude,
