@@ -8,6 +8,7 @@ import { haversineDistanceMeters } from "@/lib/geofence";
 import { resolveGeofenceTarget } from "@/lib/geofenceTarget";
 import { getSettings } from "@/lib/settings";
 import { resolveOrgBySlug } from "@/lib/organization";
+import { requireMobileUser } from "@/lib/mobileAuth";
 import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
 import { verifyFace } from "@/lib/faceVerify";
 import { PayloadTooLargeError, readJsonWithLimit } from "@/lib/readJsonBody";
@@ -208,7 +209,14 @@ async function handlePost(req: NextRequest) {
   // Resolves which organization this kiosk belongs to, from the slug in its
   // own URL (see app/kiosk/[orgSlug]/page.tsx) — everything else below is
   // scoped to it.
-  const org = await resolveOrgBySlug(parsed.data.orgSlug);
+  // An authenticated mobile-app caller is scoped by its own bearer token: the
+  // app never sends an orgSlug, so without this every non-"default" org's
+  // employees would be looked up in the default org and rejected. Anonymous
+  // (kiosk) callers still resolve from the slug in their URL.
+  const mobileAuth = await requireMobileUser(req);
+  const org = mobileAuth
+    ? await prisma.organization.findUnique({ where: { id: mobileAuth.organizationId }, select: { id: true, status: true } })
+    : await resolveOrgBySlug(parsed.data.orgSlug);
   if (!org) {
     return NextResponse.json({ error: "This kiosk isn't linked to an organization." }, { status: 401 });
   }
