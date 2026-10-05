@@ -44,10 +44,10 @@ export default function EmployeePicker({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search by name or employee ID…"
-          className="w-full rounded-lg border border-border bg-surface-2 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+          className="w-full rounded-xl border border-black/10 bg-slate-50 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 focus:bg-white transition-all"
         />
       </div>
-      <div className="max-h-64 overflow-y-auto rounded-lg border border-border divide-y divide-border-soft">
+      <div className="max-h-64 overflow-y-auto rounded-xl border border-border divide-y divide-border-soft">
         {filtered.map((emp) => (
           <button
             key={emp.id}

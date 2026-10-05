@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { CalendarPlus } from "lucide-react";
 
 export interface OnLeaveToday {
   requestId: string;
@@ -78,7 +79,7 @@ export default function MarkLeaveControl({
         <button
           onClick={unmarkLeave}
           disabled={loading}
-          className="text-[11px] text-muted hover:text-red-600 transition disabled:opacity-50 text-left"
+          className="text-[12px] font-medium text-slate-500 transition hover:text-red-600 disabled:opacity-50 text-left"
         >
           {loading ? "Cancelling…" : "Cancel leave"}
         </button>
@@ -91,16 +92,17 @@ export default function MarkLeaveControl({
     <div className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="text-[11px] text-muted hover:text-primary-dark transition"
+        className="inline-flex items-center gap-1 text-[12px] font-medium text-slate-500 transition hover:text-orange-600"
       >
+        <CalendarPlus className="h-3.5 w-3.5" />
         Mark as leave
       </button>
       {open && (
-        <div className="absolute z-20 top-full left-0 mt-1 w-44 rounded-lg border border-border bg-surface-2 shadow-lg p-3 flex flex-col gap-2">
+        <div className="absolute left-0 top-full z-20 mt-1.5 flex w-48 flex-col gap-2 rounded-xl border border-black/10 bg-white p-3 shadow-[0_16px_40px_-12px_rgba(16,24,40,0.25)]">
           <select
             value={type}
             onChange={(e) => setType(e.target.value as "CASUAL" | "SICK" | "EARNED")}
-            className="rounded-lg border border-border px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+            className="rounded-lg border border-black/10 bg-slate-50 px-2 py-1.5 text-xs focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
           >
             <option value="CASUAL">Casual</option>
             <option value="SICK">Sick</option>
@@ -111,7 +113,7 @@ export default function MarkLeaveControl({
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="flex-1 rounded-lg border border-border py-1 text-xs text-muted hover:bg-surface transition"
+              className="flex-1 rounded-lg border border-black/10 py-1 text-xs text-slate-600 transition hover:bg-slate-50"
             >
               Cancel
             </button>
@@ -119,7 +121,7 @@ export default function MarkLeaveControl({
               type="button"
               onClick={markLeave}
               disabled={loading}
-              className="flex-1 rounded-lg border border-primary text-primary-dark py-1 text-xs font-medium hover:bg-primary/5 transition disabled:opacity-50"
+              className="flex-1 rounded-lg bg-orange-600 py-1 text-xs font-medium text-white transition hover:bg-orange-700 disabled:opacity-50"
             >
               {loading ? "…" : "Mark"}
             </button>

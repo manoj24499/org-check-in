@@ -91,8 +91,22 @@ async function handleGet(req: NextRequest) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }
 
+  // Provisioning only creates the admin with no password; the account is
+  // "activated" once they've followed the emailed link and set one. Opening
+  // the link alone doesn't count — peekUserToken is deliberately side-effect
+  // free — so a set passwordHash is the only reliable signal.
+  let activated = false;
+  if (checkout.status === "PROVISIONED" && checkout.adminUserId) {
+    const admin = await prisma.user.findUnique({
+      where: { id: checkout.adminUserId },
+      select: { passwordHash: true },
+    });
+    activated = admin?.passwordHash != null;
+  }
+
   return NextResponse.json({
     status: toUiStatus(checkout.status, checkout.lastPaymentError),
+    activated,
     emailMasked: maskEmail(checkout.adminEmail),
     lastPaymentError: checkout.lastPaymentError,
   });

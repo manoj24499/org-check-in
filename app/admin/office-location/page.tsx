@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import OfficeLocationForm from "@/components/OfficeLocationForm";
 import WfhLocationTable from "@/components/WfhLocationTable";
 import FieldLocationTable from "@/components/FieldLocationTable";
+import { Page, PageHeader } from "@/components/admin/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -56,16 +57,13 @@ export default async function OfficeLocationPage() {
     ]);
 
   return (
-    <div className="flex flex-col gap-8 px-5 sm:px-7 py-6 sm:py-7">
-      <div className="flex flex-col gap-5">
-        <div>
-          <h1 className="text-[28px] sm:text-[30px] font-medium tracking-[-0.025em] text-foreground">
-            Office location
-          </h1>
-          <p className="text-sm text-muted mt-1">
-            Employees must check in within the allowed radius of this location.
-          </p>
-        </div>
+    <Page>
+      <div className="flex flex-col gap-6">
+        <PageHeader
+          eyebrow="Workspace"
+          title="Office location"
+          subtitle="Employees must check in within the allowed radius of this location."
+        />
 
         <OfficeLocationForm officeLocation={officeLocation} />
       </div>
@@ -76,6 +74,6 @@ export default async function OfficeLocationPage() {
         employees={fieldEmployees}
         allEmployees={allEmployees}
       />
-    </div>
+    </Page>
   );
 }

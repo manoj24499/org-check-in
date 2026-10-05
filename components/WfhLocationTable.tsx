@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Pencil, Trash2, X, Plus, Search } from "lucide-react";
 import EmployeePicker, { type PickableEmployee } from "./EmployeePicker";
+import { Pill } from "./admin/ui";
 
 const OfficeLocationMap = dynamic(() => import("./OfficeLocationMap"), {
   ssr: false,
@@ -134,7 +135,7 @@ export default function WfhLocationTable({
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-medium text-foreground tracking-tight">
+          <h2 className="text-[20px] font-semibold tracking-[-0.02em] text-slate-900">
             Work From Home Locations
           </h2>
           <p className="text-secondary mt-1 text-sm font-medium">
@@ -145,7 +146,7 @@ export default function WfhLocationTable({
         <button
           type="button"
           onClick={() => setPickerOpen(true)}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary-dark hover:bg-primary/5 transition-colors self-start"
+          className="inline-flex items-center gap-1.5 rounded-xl border border-transparent bg-orange-600 shadow-sm px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700 transition-colors self-start"
         >
           <Plus className="w-4 h-4" />
           Add
@@ -212,15 +213,7 @@ export default function WfhLocationTable({
                     {Math.round(emp.homeRadiusMeters)}m
                   </td>
                   <td className="px-6 py-4">
-                    <span
-                      className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium tracking-wide ${
-                        emp.active
-                          ? "bg-primary/10 text-primary border border-primary/20"
-                          : "bg-surface text-muted border border-border"
-                      }`}
-                    >
-                      {emp.active ? "Active" : "Inactive"}
-                    </span>
+                    <Pill tone={emp.active ? "green" : "slate"} dot>{emp.active ? "Active" : "Inactive"}</Pill>
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="inline-flex items-center gap-2">
@@ -270,7 +263,7 @@ export default function WfhLocationTable({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
-              <h2 className="text-lg font-medium text-foreground">
+              <h2 className="text-[16px] font-semibold tracking-[-0.01em] text-slate-900">
                 {editing.homeLatitude === null ? "Set" : "Edit"} home location —{" "}
                 {editing.name}
               </h2>
@@ -353,7 +346,7 @@ export default function WfhLocationTable({
                   <button
                     onClick={handleSave}
                     disabled={loading}
-                    className="flex-1 rounded-lg border border-primary bg-transparent text-primary-dark py-2.5 text-sm font-medium hover:bg-primary/5 transition disabled:opacity-50"
+                    className="flex-1 rounded-xl border border-transparent bg-orange-600 shadow-sm bg-transparent text-white py-2.5 text-sm font-medium hover:bg-orange-700 transition disabled:opacity-50"
                   >
                     {loading ? "Saving…" : "Save"}
                   </button>
@@ -374,7 +367,7 @@ export default function WfhLocationTable({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
-              <h2 className="text-lg font-medium text-foreground">
+              <h2 className="text-[16px] font-semibold tracking-[-0.01em] text-slate-900">
                 Add a WFH employee
               </h2>
               <button

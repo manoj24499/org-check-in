@@ -96,7 +96,7 @@ export default function ShiftScheduleEditor({
     <div>
       <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2 mb-4">
         {WEEKDAY_LABELS.map((label, weekday) => (
-          <div key={weekday} className="rounded-lg border border-border p-2.5">
+          <div key={weekday} className="rounded-xl border border-border p-2.5">
             <p className="text-xs font-medium text-secondary uppercase tracking-wide mb-1.5">
               {label}
             </p>
@@ -105,7 +105,7 @@ export default function ShiftScheduleEditor({
               onChange={(e) =>
                 setSelection((prev) => ({ ...prev, [weekday]: e.target.value }))
               }
-              className="w-full rounded-md border border-border px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+              className="w-full rounded-md border border-black/10 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 focus:bg-white transition-all"
             >
               <option value={NO_SHIFT}>No shift</option>
               {shifts.map((s) => (
@@ -119,7 +119,7 @@ export default function ShiftScheduleEditor({
       </div>
 
       {error && (
-        <div className="rounded-lg bg-red-50 text-red-600 p-2.5 text-sm border border-red-100 mb-3">
+        <div className="rounded-xl bg-red-50 text-red-600 p-2.5 text-sm border border-red-100 mb-3">
           {error}
         </div>
       )}
@@ -128,7 +128,7 @@ export default function ShiftScheduleEditor({
         <button
           onClick={handleSave}
           disabled={saving}
-          className="rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary-dark hover:bg-primary/5 transition disabled:opacity-50"
+          className="rounded-xl border border-transparent bg-orange-600 shadow-sm px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700 transition disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save schedule"}
         </button>

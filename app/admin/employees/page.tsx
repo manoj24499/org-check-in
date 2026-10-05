@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { Page, PageHeader } from "@/components/admin/ui";
 import AddEmployeeForm from "@/components/AddEmployeeForm";
 import BulkAddEmployeeForm from "@/components/BulkAddEmployeeForm";
 import EmployeeTable from "@/components/EmployeeTable";
@@ -45,26 +46,27 @@ export default async function EmployeesPage() {
   ]);
 
   return (
-    <div className="flex flex-col gap-5 px-5 sm:px-7 py-6 sm:py-7">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-[28px] sm:text-[30px] font-medium tracking-[-0.025em] text-foreground">
-            Employees
-          </h1>
-          <p className="text-sm text-muted mt-1">
-            {total} total employees ·{" "}
-            <Link href="/admin/employees/deleted" className="text-primary font-medium hover:text-primary-dark transition-colors">
+    <Page>
+      <PageHeader
+        eyebrow="Workforce"
+        title="Employees"
+        subtitle={
+          <>
+            Manage everyone on your team ·{" "}
+            <Link href="/admin/employees/deleted" className="font-medium text-orange-600 transition-colors hover:text-orange-700">
               Deleted employees
             </Link>
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2.5">
-          <BulkAddEmployeeForm />
-          <AddEmployeeForm shifts={shifts} />
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <>
+            <BulkAddEmployeeForm />
+            <AddEmployeeForm shifts={shifts} />
+          </>
+        }
+      />
 
       <EmployeeTable initialEmployees={employees} initialTotal={total} pageSize={EMPLOYEES_PAGE_SIZE} />
-    </div>
+    </Page>
   );
 }

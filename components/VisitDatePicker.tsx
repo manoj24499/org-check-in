@@ -88,7 +88,7 @@ export default function VisitDatePicker({
       <div className="flex items-center justify-between mb-2">
         <button
           onClick={() => changeMonth(-1)}
-          className="p-2.5 -m-1 rounded-lg hover:bg-surface-2 transition"
+          className="p-2.5 -m-1 rounded-xl hover:bg-surface-2 transition"
           aria-label="Previous month"
         >
           <ChevronLeft className="w-4 h-4 text-muted" />
@@ -101,7 +101,7 @@ export default function VisitDatePicker({
         </span>
         <button
           onClick={() => changeMonth(1)}
-          className="p-2.5 -m-1 rounded-lg hover:bg-surface-2 transition"
+          className="p-2.5 -m-1 rounded-xl hover:bg-surface-2 transition"
           aria-label="Next month"
         >
           <ChevronRight className="w-4 h-4 text-muted" />
@@ -133,21 +133,21 @@ export default function VisitDatePicker({
               key={key}
               onClick={() => onSelect(key)}
               disabled={isFuture}
-              className={`relative h-8 rounded-lg flex items-center justify-center text-xs font-medium transition-colors ${
-                isSelected
-                  ? "bg-primary text-white"
-                  : isToday
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-2 hover:bg-surface-2"
-              } ${isFuture ? "cursor-not-allowed opacity-30" : "cursor-pointer"}`}
+              className={`relative h-8 rounded-xl flex items-center justify-center text-xs font-medium transition-colors ${
+ isSelected
+ ? "bg-primary text-white"
+ : isToday
+ ? "bg-primary/10 text-primary"
+ : "text-muted-2 hover:bg-surface-2"
+ } ${isFuture ? "cursor-not-allowed opacity-30" : "cursor-pointer"}`}
               title={traveled ? "Logged a field visit this day" : undefined}
             >
               {day}
               {traveled && (
                 <span
                   className={`absolute bottom-1 w-1 h-1 rounded-full ${
-                    isSelected ? "bg-white" : "bg-emerald-500"
-                  }`}
+ isSelected ? "bg-white" : "bg-emerald-500"
+ }`}
                 />
               )}
             </button>

@@ -78,7 +78,7 @@ export default function EmployeeActions({
         <button
           onClick={() => call("regenerate-pin")}
           disabled={loading !== null}
-          className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface transition disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-medium hover:bg-surface transition disabled:opacity-50"
         >
           <KeyRound className="w-4 h-4" />
           {loading === "regenerate-pin" ? "Generating…" : "Regenerate PIN"}
@@ -86,18 +86,18 @@ export default function EmployeeActions({
         <button
           onClick={() => call("set-active", { active: !active })}
           disabled={loading !== null}
-          className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition disabled:opacity-50 ${
-            active
-              ? "border border-red-300 text-red-600 hover:bg-red-50"
-              : "border border-emerald-300 text-emerald-600 hover:bg-emerald-50"
-          }`}
+          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition disabled:opacity-50 ${
+ active
+ ? "border border-red-300 text-red-600 hover:bg-red-50"
+ : "border border-emerald-300 text-emerald-600 hover:bg-emerald-50"
+ }`}
         >
           <Power className="w-4 h-4" />
           {active ? "Deactivate" : "Reactivate"}
         </button>
       </div>
 
-      <div className="flex flex-col gap-3 rounded-lg border border-border px-4 py-3">
+      <div className="flex flex-col gap-3 rounded-xl border border-border px-4 py-3">
         <div className="flex items-start gap-3">
           <ScanFace className="w-4 h-4 mt-0.5 shrink-0 text-secondary" />
           <div className="flex-1 min-w-0">
@@ -112,10 +112,10 @@ export default function EmployeeActions({
             onClick={() => call("set-face-verification", { enabled: !faceVerificationEnabled })}
             disabled={loading !== null}
             className={`shrink-0 inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition disabled:opacity-50 ${
-              faceVerificationEnabled
-                ? "bg-primary/10 text-primary border border-primary/20"
-                : "bg-surface text-muted border border-border"
-            }`}
+ faceVerificationEnabled
+ ? "bg-primary/10 text-primary border border-primary/20"
+ : "bg-surface text-muted border border-border"
+ }`}
           >
             {loading === "set-face-verification" ? "…" : faceVerificationEnabled ? "On" : "Off"}
           </button>
@@ -132,7 +132,7 @@ export default function EmployeeActions({
           type="button"
           onClick={() => photoInputRef.current?.click()}
           disabled={loading !== null}
-          className="self-start inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted hover:bg-surface transition disabled:opacity-50"
+          className="self-start inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-1.5 text-xs font-medium text-muted hover:bg-surface transition disabled:opacity-50"
         >
           <Camera className="w-3.5 h-3.5" />
           {loading === "set-face-verification"
@@ -160,7 +160,7 @@ export default function EmployeeActions({
       </div>
 
       {!faceVerificationEnabled && (
-        <div className="flex items-start gap-3 rounded-lg border border-border px-4 py-3">
+        <div className="flex items-start gap-3 rounded-xl border border-border px-4 py-3">
           <ShieldOff className="w-4 h-4 mt-0.5 shrink-0 text-secondary" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-foreground">Mobile app enrollment exemption</p>
@@ -175,10 +175,10 @@ export default function EmployeeActions({
             onClick={() => call("set-face-verification-exempt", { exempt: !faceVerificationExempt })}
             disabled={loading !== null}
             className={`shrink-0 inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition disabled:opacity-50 ${
-              faceVerificationExempt
-                ? "bg-primary/10 text-primary border border-primary/20"
-                : "bg-surface text-muted border border-border"
-            }`}
+ faceVerificationExempt
+ ? "bg-primary/10 text-primary border border-primary/20"
+ : "bg-surface text-muted border border-border"
+ }`}
           >
             {loading === "set-face-verification-exempt" ? "…" : faceVerificationExempt ? "Exempt" : "Not exempt"}
           </button>
@@ -186,7 +186,7 @@ export default function EmployeeActions({
       )}
 
       {newPin && (
-        <div className="rounded-lg bg-primary/5 border border-primary/20 p-4 text-center">
+        <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 text-center">
           <p className="text-xs text-secondary font-medium">
             New PIN (shown once)
           </p>
@@ -195,7 +195,7 @@ export default function EmployeeActions({
           </p>
           <button
             onClick={copyPin}
-            className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-primary/30 text-primary px-3 py-1.5 text-xs font-semibold hover:bg-primary/10 transition"
+            className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-primary/30 text-primary px-3 py-1.5 text-xs font-semibold hover:bg-primary/10 transition"
           >
             {copied ? (
               <Check className="w-3.5 h-3.5" />

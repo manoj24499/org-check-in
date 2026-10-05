@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Logo } from "@/components/Logo";
+import AuthShell from "@/components/AuthShell";
 import { prisma } from "@/lib/prisma";
 import { peekUserToken } from "@/lib/userToken";
 import ResetForm from "./ResetForm";
@@ -32,23 +32,23 @@ export default async function ResetPasswordPage({
         : "This reset link is invalid.";
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-background p-6">
-      <div className="w-full max-w-[420px] rounded-lg border border-border bg-surface flex flex-col p-7 sm:p-8">
-        <Logo variant="static" size={20} className="text-foreground mb-5" />
-        <h1 className="mt-2 text-[26px] sm:text-[28px] font-medium tracking-[-0.025em] text-foreground">
-          Choose a new password
+    <AuthShell>
+      <div className="mt-7 flex flex-col gap-1.5">
+        <span className="text-[11px] font-medium tracking-[0.16em] uppercase text-primary-dark">Account recovery</span>
+        <h1 className="text-[28px] font-medium leading-tight tracking-[-0.03em] text-foreground">
+          Choose a <span className="text-primary">new password</span>
         </h1>
-        {email ? (
-          <ResetForm token={token!} email={email} />
-        ) : (
-          <div className="mt-6 flex flex-col gap-4">
-            <p className="text-sm text-red-700 bg-red-50 p-3 rounded-lg border border-red-100">{message}</p>
-            <Link href="/forgot-password" className="text-sm text-primary-dark hover:underline">
-              Request a new reset link
-            </Link>
-          </div>
-        )}
       </div>
-    </main>
+      {email ? (
+        <ResetForm token={token!} email={email} />
+      ) : (
+        <div className="mt-6 flex flex-col gap-4">
+          <p className="text-sm text-red-700 bg-red-50 p-3 rounded-lg border border-red-100">{message}</p>
+          <Link href="/forgot-password" className="text-sm text-primary-dark hover:underline">
+            Request a new reset link
+          </Link>
+        </div>
+      )}
+    </AuthShell>
   );
 }

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import SupportTicketList from "@/components/SupportTicketList";
+import { Page, PageHeader } from "@/components/admin/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -37,15 +38,14 @@ export default async function SupportPage() {
   }));
 
   return (
-    <div className="flex flex-col gap-5 px-5 sm:px-7 py-6 sm:py-7">
-      <div>
-        <h1 className="text-[28px] sm:text-[30px] font-medium tracking-[-0.025em] text-foreground">Support</h1>
-        <p className="text-sm text-muted mt-1">
-          Issues employees reported from the app — wrong hours, geofence trouble, or anything else.
-        </p>
-      </div>
+    <Page>
+      <PageHeader
+        eyebrow="Requests"
+        title="Support"
+        subtitle="Issues employees reported from the app: wrong hours, geofence trouble, or anything else."
+      />
 
       <SupportTicketList tickets={serialized} />
-    </div>
+    </Page>
   );
 }

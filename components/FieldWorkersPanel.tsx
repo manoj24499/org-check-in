@@ -26,12 +26,12 @@ export default function FieldWorkersPanel({
     // exact, but enough to give the map/calendar a real height instead of
     // the old short, mostly-whitespace card. The employee list keeps its
     // own scroll so a long roster doesn't push the detail panel off-screen.
-    <div className="rounded-lg border border-border bg-surface-2 shadow-[0_1px_2px_rgba(41,43,49,0.05)] p-6 md:h-[calc(100vh-200px)] md:min-h-[520px] md:flex md:flex-col">
+    <div className="rounded-2xl border border-black/[0.06] bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04),0_12px_32px_-20px_rgba(16,24,40,0.14)] p-6 md:h-[calc(100vh-200px)] md:min-h-[520px] md:flex md:flex-col">
       <div className="flex items-center gap-2.5 mb-4 shrink-0">
-        <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+        <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
           <MapPin className="w-4 h-4" />
         </div>
-        <h2 className="text-lg font-medium text-foreground">Field workers</h2>
+        <h2 className="text-[16px] font-semibold tracking-[-0.01em] text-slate-900">Field workers</h2>
       </div>
 
       {employees.length === 0 ? (
@@ -46,11 +46,11 @@ export default function FieldWorkersPanel({
               <button
                 key={e.id}
                 onClick={() => setSelectedId(e.id)}
-                className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
-                  e.id === selectedId
-                    ? "bg-primary/10 text-primary border border-primary/20"
-                    : "text-muted hover:bg-surface border border-transparent"
-                }`}
+                className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-colors ${
+ e.id === selectedId
+ ? "bg-primary/10 text-primary border border-primary/20"
+ : "text-muted hover:bg-surface border border-transparent"
+ }`}
               >
                 <User className="w-4 h-4 shrink-0" />
                 <span className="truncate">{e.name}</span>

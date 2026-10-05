@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, Plus, Trash2, X } from "lucide-react";
+import { BTN_PRIMARY, EmptyState, IconChip } from "./admin/ui";
 
 export interface Holiday {
   id: string;
@@ -23,6 +24,13 @@ function formatDate(iso: string) {
  * tucked behind the header's "Add" button rather than always shown, so this
  * panel's list gets the same compact treatment as LeaveRequestsPanel next
  * to it. */
+function monthOf(iso: string) {
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+}
+function dayOf(iso: string) {
+  return new Date(iso).toLocaleDateString("en-US", { day: "numeric", timeZone: "UTC" });
+}
+
 export default function HolidayManager({ holidays: initialHolidays }: { holidays: Holiday[] }) {
   const router = useRouter();
   const [holidays, setHolidays] = useState(initialHolidays);
@@ -81,17 +89,20 @@ export default function HolidayManager({ holidays: initialHolidays }: { holidays
   }
 
   return (
-    <div className="rounded-lg border border-border bg-surface-2 shadow-[0_1px_2px_rgba(41,43,49,0.05)] overflow-hidden flex flex-col lg:h-full lg:min-h-0">
-      <div className="px-4 py-3 border-b border-border-soft flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2">
-          <CalendarDays className="w-4 h-4 text-primary" />
-          <p className="text-sm font-medium text-foreground">Public holidays · {new Date().getFullYear()}</p>
+    <div className="rounded-2xl border border-black/[0.06] bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04),0_12px_32px_-20px_rgba(16,24,40,0.14)] overflow-hidden flex flex-col lg:max-h-[calc(100vh-240px)]">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+        <div className="flex items-center gap-3">
+          <IconChip icon={CalendarDays} tone="indigo" size="sm" />
+          <div>
+            <p className="text-[15px] font-semibold tracking-[-0.01em] text-slate-900">Public holidays</p>
+            <p className="text-[12px] text-slate-500">{new Date().getFullYear()} · days off for everyone</p>
+          </div>
         </div>
         {!adding && (
           <button
             type="button"
             onClick={openAdd}
-            className="inline-flex items-center gap-1 rounded-lg border border-primary px-2.5 py-1 text-xs font-semibold text-primary-dark hover:bg-primary/5 transition"
+            className={`${BTN_PRIMARY} !px-3 !py-1.5 !text-xs`}
           >
             <Plus className="w-3.5 h-3.5" />
             Add
@@ -106,21 +117,21 @@ export default function HolidayManager({ holidays: initialHolidays }: { holidays
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="rounded-lg border border-border px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+              className="rounded-xl border border-black/10 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 focus:bg-white transition-all"
             />
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Independence Day"
-              className="flex-1 min-w-[140px] rounded-lg border border-border px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+              className="flex-1 min-w-[140px] rounded-xl border border-black/10 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 focus:bg-white transition-all"
               autoFocus
             />
             <button
               type="button"
               onClick={handleAdd}
               disabled={loading}
-              className="rounded-lg border border-primary bg-transparent text-primary-dark hover:bg-primary/5 px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50"
+              className={`${BTN_PRIMARY} shrink-0 !px-3 !py-1.5 !text-xs`}
             >
               {loading ? "Adding…" : "Save"}
             </button>
@@ -128,7 +139,7 @@ export default function HolidayManager({ holidays: initialHolidays }: { holidays
               type="button"
               onClick={closeAdd}
               disabled={loading}
-              className="rounded-lg border border-border text-muted hover:bg-surface p-1.5 transition disabled:opacity-50"
+              className="rounded-xl border border-border text-muted hover:bg-surface p-1.5 transition disabled:opacity-50"
               aria-label="Cancel"
             >
               <X className="w-3.5 h-3.5" />
@@ -140,13 +151,16 @@ export default function HolidayManager({ holidays: initialHolidays }: { holidays
 
       <div className="flex-1 min-h-0 overflow-y-auto">
         {holidays.length === 0 ? (
-          <p className="px-4 py-10 text-center text-secondary text-sm">No holidays added for this year yet.</p>
+          <EmptyState icon={CalendarDays} title="No holidays yet" text="Add the public holidays your team gets off this year." />
         ) : (
           <div className="flex flex-col">
             {holidays.map((h) => (
-              <div key={h.id} className="flex items-center gap-3 px-4 py-2 border-b border-border-soft last:border-b-0">
-                <span className="text-xs text-secondary w-12 shrink-0 tabular-nums">{formatDate(h.date)}</span>
-                <p className="text-sm font-medium text-foreground flex-1 truncate">{h.name}</p>
+              <div key={h.id} className="flex items-center gap-3 border-b border-slate-100 px-5 py-3 last:border-b-0">
+                <span className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-100">
+                  <span className="text-[10px] font-semibold uppercase leading-none tracking-wider">{monthOf(h.date)}</span>
+                  <span className="mt-0.5 text-[17px] font-semibold leading-none tabular-nums">{dayOf(h.date)}</span>
+                </span>
+                <p className="flex-1 truncate text-sm font-medium text-slate-900">{h.name}</p>
                 <button
                   onClick={() => handleDelete(h)}
                   disabled={deletingId === h.id}

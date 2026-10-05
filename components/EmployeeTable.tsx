@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2, ChevronRight, Users } from "lucide-react";
+import { Avatar, BTN_SECONDARY, CARD, EmptyState, Pill, TABLE } from "./admin/ui";
 
 type Employee = {
   id: string;
@@ -96,98 +97,84 @@ export default function EmployeeTable({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="relative max-w-xs">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
-        <input
-          value={query}
-          onChange={(e) => handleQueryChange(e.target.value)}
-          placeholder="Search by name, email, or ID…"
-          className="w-full rounded-lg border border-border bg-surface-2 pl-9 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
-        />
-        {loading && (
-          <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted animate-spin" />
-        )}
-      </div>
+      <div className={`${CARD} overflow-hidden`}>
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+          <div className="relative w-full sm:w-80">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              value={query}
+              onChange={(e) => handleQueryChange(e.target.value)}
+              placeholder="Search by name, email, or ID…"
+              className="w-full rounded-xl border border-black/10 bg-slate-50 py-2 pl-9 pr-9 text-sm text-slate-800 placeholder:text-slate-400 transition-colors focus:border-orange-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500/30"
+            />
+            {loading && <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-400" />}
+          </div>
+          <p className="text-[13px] text-slate-500">
+            <span className="font-semibold tabular-nums text-slate-800">{total}</span> {total === 1 ? "employee" : "employees"}
+            {debouncedQuery ? " found" : ""}
+          </p>
+        </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="px-5 pb-3 text-sm text-red-600">{error}</p>}
 
-      <div className="rounded-lg border border-border bg-surface-2 shadow-[0_1px_2px_rgba(41,43,49,0.05)] overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-surface text-secondary text-left border-b border-border">
+        <div className={TABLE.wrap}>
+          <table className={TABLE.table}>
+            <thead className={TABLE.thead}>
               <tr>
-                <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">
-                  ID
-                </th>
-                <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">
-                  Name
-                </th>
-                <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">
-                  Email
-                </th>
-                <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">
-                  Status
-                </th>
-                <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs text-right">
-                  Action
-                </th>
+                <th className={TABLE.th}>Employee</th>
+                <th className={TABLE.th}>ID</th>
+                <th className={TABLE.th}>Email</th>
+                <th className={TABLE.th}>Status</th>
+                <th className={`${TABLE.th} text-right`}>Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border-soft">
+            <tbody className={TABLE.tbody}>
               {employees.map((emp) => (
-                <tr
-                  key={emp.id}
-                  className="hover:bg-primary/5 transition-colors duration-200"
-                >
-                  <td className="px-6 py-4 font-medium text-muted-2">
-                    {emp.employeeCode}
+                <tr key={emp.id} className={TABLE.tr}>
+                  <td className={TABLE.td}>
+                    <div className="flex items-center gap-3">
+                      <Avatar name={emp.name} />
+                      <p className="max-w-[200px] truncate font-medium text-slate-900">{emp.name}</p>
+                    </div>
                   </td>
-                  <td className="px-6 py-4 text-foreground font-semibold max-w-[180px] truncate">
-                    {emp.name}
-                  </td>
-                  <td className="px-6 py-4 text-secondary max-w-[220px] truncate">{emp.email}</td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium tracking-wide ${
-                        emp.active
-                          ? "bg-primary/10 text-primary border border-primary/20"
-                          : "bg-surface text-muted border border-border"
-                      }`}
-                    >
+                  <td className={`${TABLE.td} font-mono text-[13px] text-slate-600`}>{emp.employeeCode}</td>
+                  <td className={`${TABLE.td} max-w-[260px] truncate text-slate-500`}>{emp.email}</td>
+                  <td className={TABLE.td}>
+                    <Pill tone={emp.active ? "green" : "slate"} dot>
                       {emp.active ? "Active" : "Deactivated"}
-                    </span>
+                    </Pill>
                   </td>
-                  <td className="px-6 py-4 text-right">
+                  <td className={`${TABLE.td} text-right`}>
                     <Link
                       href={`/admin/employees/${emp.id}`}
-                      className="inline-flex items-center justify-center rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-muted-2 hover:bg-black/[0.03] transition-colors"
+                      className="inline-flex items-center gap-1 rounded-lg border border-black/10 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition-colors hover:border-orange-300 hover:text-orange-600"
                     >
                       Manage
+                      <ChevronRight className="h-3.5 w-3.5" />
                     </Link>
                   </td>
                 </tr>
               ))}
-              {employees.length === 0 && !loading && (
-                <tr>
-                  <td
-                    colSpan={5}
-                    className="px-6 py-12 text-center text-secondary"
-                  >
-                    {total === 0 && !debouncedQuery
-                      ? "No employees found. Add some to get started!"
-                      : "No employees match your search."}
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
+          {employees.length === 0 && !loading && (
+            <EmptyState
+              icon={Users}
+              title={total === 0 && !debouncedQuery ? "No employees yet" : "No employees match your search"}
+              text={
+                total === 0 && !debouncedQuery
+                  ? "Add your first employee, or import a whole team at once with Bulk add."
+                  : "Check the spelling or try a name, email or employee ID."
+              }
+            />
+          )}
         </div>
       </div>
 
       {/* Only shown once there's more than one page's worth — no need to
           clutter the UI for the common small-roster case. */}
       {total > pageSize && (
-        <div className="flex items-center justify-between text-sm text-secondary px-1">
+        <div className="flex items-center justify-between px-1 text-sm text-slate-500">
           <span>
             Page {page} of {totalPages} · {total} total
           </span>
@@ -196,7 +183,7 @@ export default function EmployeeTable({
               type="button"
               disabled={page <= 1}
               onClick={() => goToPage(Math.max(1, page - 1))}
-              className="rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-muted-2 hover:bg-black/[0.03] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className={`${BTN_SECONDARY} !px-3.5 !py-1.5 !text-xs`}
             >
               Prev
             </button>
@@ -204,7 +191,7 @@ export default function EmployeeTable({
               type="button"
               disabled={page >= totalPages}
               onClick={() => goToPage(Math.min(totalPages, page + 1))}
-              className="rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-muted-2 hover:bg-black/[0.03] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className={`${BTN_SECONDARY} !px-3.5 !py-1.5 !text-xs`}
             >
               Next
             </button>

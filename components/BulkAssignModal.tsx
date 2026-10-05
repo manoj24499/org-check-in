@@ -101,7 +101,7 @@ export default function BulkAssignModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md bg-surface-2 rounded-lg shadow-2xl border border-white/50 overflow-hidden max-h-[90vh] flex flex-col"
+        className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-white/50 overflow-hidden max-h-[90vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
@@ -132,10 +132,10 @@ export default function BulkAssignModal({
                   type="button"
                   onClick={() => toggleWeekday(weekday)}
                   className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                    weekdays.has(weekday)
-                      ? "bg-primary/10 text-primary border border-primary/20"
-                      : "bg-surface text-muted border border-border"
-                  }`}
+ weekdays.has(weekday)
+ ? "bg-primary/10 text-primary border border-primary/20"
+ : "bg-surface text-muted border border-border"
+ }`}
                 >
                   {label}
                 </button>
@@ -156,7 +156,7 @@ export default function BulkAssignModal({
           </div>
 
           {conflicts.count > 0 && (
-            <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800 flex gap-2.5">
+            <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800 flex gap-2.5">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
               <p>
                 {conflicts.count} employee{conflicts.count === 1 ? "" : "s"} already{" "}
@@ -167,7 +167,7 @@ export default function BulkAssignModal({
           )}
 
           {error && (
-            <div className="rounded-lg bg-red-50 text-red-600 p-3 text-sm border border-red-100">
+            <div className="rounded-xl bg-red-50 text-red-600 p-3 text-sm border border-red-100">
               {error}
             </div>
           )}
@@ -177,14 +177,14 @@ export default function BulkAssignModal({
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 rounded-lg bg-white border border-border py-2.5 text-sm font-medium text-muted hover:bg-surface transition"
+            className="flex-1 rounded-xl bg-white border border-border py-2.5 text-sm font-medium text-muted hover:bg-surface transition"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex-1 rounded-lg border border-primary bg-transparent text-primary-dark py-2.5 text-sm font-medium hover:bg-primary/5 transition disabled:opacity-50"
+            className="flex-1 rounded-xl border border-transparent bg-orange-600 shadow-sm text-white py-2.5 text-sm font-medium hover:bg-orange-700 transition disabled:opacity-50"
           >
             {saving
               ? "Saving…"

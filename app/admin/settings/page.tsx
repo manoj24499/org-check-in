@@ -11,6 +11,7 @@ import OrgCodePanel from "@/components/OrgCodePanel";
 import ApiKeysPanel from "@/components/ApiKeysPanel";
 import PlanPanel from "@/components/PlanPanel";
 import { listApiKeys } from "@/lib/partnerApi/apiKey";
+import { Page, PageHeader } from "@/components/admin/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -32,15 +33,12 @@ export default async function SettingsPage() {
   ]);
 
   return (
-    <div className="flex flex-col gap-5 px-5 sm:px-7 py-6 sm:py-7">
-      <div>
-        <h1 className="text-[28px] sm:text-[30px] font-medium tracking-[-0.025em] text-foreground">
-          Settings
-        </h1>
-        <p className="text-sm text-muted mt-1">
-          App-wide configuration for the kiosk and mobile check-in flows.
-        </p>
-      </div>
+    <Page>
+      <PageHeader
+        eyebrow="Workspace"
+        title="Settings"
+        subtitle="App-wide configuration for the kiosk and mobile check-in flows."
+      />
 
       {/* Grid instead of one long stack — each card sizes to its column
           rather than assuming it owns the full row (see each form's own
@@ -74,6 +72,6 @@ export default async function SettingsPage() {
           }))}
         />
       </div>
-    </div>
+    </Page>
   );
 }

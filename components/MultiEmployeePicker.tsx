@@ -84,11 +84,11 @@ export default function MultiEmployeePicker({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search by name or employee ID…"
-          className="w-full rounded-lg border border-border bg-surface-2 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+          className="w-full rounded-xl border border-black/10 bg-slate-50 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 focus:bg-white transition-all"
         />
       </div>
 
-      <div className="max-h-56 overflow-y-auto rounded-lg border border-border divide-y divide-border-soft">
+      <div className="max-h-56 overflow-y-auto rounded-xl border border-border divide-y divide-border-soft">
         {filtered.map((emp) => {
           const isSelected = selectedIds.includes(emp.id);
           return (
@@ -97,14 +97,14 @@ export default function MultiEmployeePicker({
               type="button"
               onClick={() => toggle(emp.id)}
               className={`w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between gap-3 ${
-                isSelected ? "bg-primary/5" : "hover:bg-surface"
-              }`}
+ isSelected ? "bg-primary/5" : "hover:bg-surface"
+ }`}
             >
               <span className="flex items-center gap-2.5 min-w-0">
                 <span
                   className={`shrink-0 w-4 h-4 rounded border flex items-center justify-center ${
-                    isSelected ? "bg-primary border-primary" : "border-border"
-                  }`}
+ isSelected ? "bg-primary border-primary" : "border-border"
+ }`}
                 >
                   {isSelected && (
                     <span className="w-1.5 h-1.5 rounded-sm bg-white" />

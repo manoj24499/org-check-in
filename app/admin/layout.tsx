@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import Providers from "@/components/Providers";
 import TabSecurity from "@/components/TabSecurity";
-import AdminHeader from "@/components/AdminHeader";
+import AdminShell from "@/components/AdminShell";
 import { FaceVerifyStatusBanner } from "@/components/FaceVerifyStatusBanner";
 import { checkFaceVerifyHealth } from "@/lib/faceVerify";
 import { startOfISTDay } from "@/lib/istTime";
@@ -17,6 +17,10 @@ export default async function AdminLayout({
   const organizationId = session?.user?.organizationId;
   // Server-rendered once per navigation (no live polling) — same "refresh to
   // see new state" pattern the rest of the admin panel already uses.
+  const orgName =
+    isAdmin && organizationId
+      ? (await prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } }))?.name
+      : null;
   const pendingLeaveCount =
     isAdmin && organizationId
       ? await prisma.timeOffRequest.count({ where: { status: "PENDING", user: { organizationId } } })
@@ -48,31 +52,23 @@ export default async function AdminLayout({
   return (
     <Providers>
       <TabSecurity />
-      {/* Fixed-height app shell, not a page that scrolls natively — `main`
-          below is the only thing that scrolls, so the header (and its nav)
-          stays put no matter how long a given admin page's content gets.
-          Used to be a bordered, rounded "floating panel" inset from the
-          browser edge on all sides (95% width + vertical padding), per the
-          original Nocturne mock — dropped in favor of true full-bleed
-          (both width AND height now, not just width) once the admin pages
-          themselves outgrew that inset: employee pagination/search, the
-          Support list, wider tables all wanted the room, and the leftover
-          gutter had nothing left to justify it. No border/rounded corners
-          on the inner panel anymore either — with zero inset on any edge,
-          a rounded corner would just clip a triangle of `bg-background`
-          into each corner of the screen instead of reading as a panel. */}
-      <div className="h-screen overflow-hidden bg-surface flex flex-col">
-        <AdminHeader
-          userName={session?.user?.name}
-          pendingLeaveCount={pendingLeaveCount}
-          pendingOvertimeCount={pendingOvertimeCount}
-          pendingSupportCount={pendingSupportCount}
-        />
-        {isAdmin && (
-          <FaceVerifyStatusBanner status={faceVerifyStatus} unavailableCheckInsToday={unavailableCheckInsToday} />
-        )}
-        <main className="flex-1 overflow-y-auto">{children}</main>
-      </div>
+      {/* Full-height app shell: a left sidebar plus a content column where
+          only `main` scrolls, so navigation stays put however long a page
+          gets (see components/AdminShell.tsx). */}
+      <AdminShell
+        userName={session?.user?.name}
+        orgName={orgName}
+        pendingLeaveCount={pendingLeaveCount}
+        pendingOvertimeCount={pendingOvertimeCount}
+        pendingSupportCount={pendingSupportCount}
+        banner={
+          isAdmin ? (
+            <FaceVerifyStatusBanner status={faceVerifyStatus} unavailableCheckInsToday={unavailableCheckInsToday} />
+          ) : null
+        }
+      >
+        {children}
+      </AdminShell>
     </Providers>
   );
 }

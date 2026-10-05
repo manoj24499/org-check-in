@@ -37,11 +37,11 @@ async function handlePost(req: NextRequest) {
   // activation link instead, and employees sign in with a PIN, not a password.
   const user = await prisma.user.findFirst({
     where: { email, role: "ADMIN", active: true, passwordHash: { not: null } },
-    select: { id: true },
+    select: { id: true, name: true },
   });
   if (!user) return;
 
   const raw = await prisma.$transaction((tx) => issueUserToken(tx, user.id, "PASSWORD_RESET", RESET_TTL_MS));
   const link = `${APP_BASE_URL}/reset-password?token=${raw}`;
-  await sendEmail({ to: email, ...passwordResetEmail({ link, minutes: RESET_TTL_MS / 60_000 }) });
+  await sendEmail({ to: email, ...passwordResetEmail({ link, minutes: RESET_TTL_MS / 60_000, name: user.name }) });
 }

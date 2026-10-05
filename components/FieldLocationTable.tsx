@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2, X, Search } from "lucide-react";
 import EmployeePicker, { type PickableEmployee } from "./EmployeePicker";
+import { Pill } from "./admin/ui";
 
 type FieldEmployee = {
   id: string;
@@ -84,7 +85,7 @@ export default function FieldLocationTable({
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-medium text-foreground tracking-tight">
+          <h2 className="text-[20px] font-semibold tracking-[-0.02em] text-slate-900">
             Anywhere (Field Workers)
           </h2>
           <p className="text-secondary mt-1 text-sm font-medium">
@@ -95,7 +96,7 @@ export default function FieldLocationTable({
         <button
           type="button"
           onClick={() => setPickerOpen(true)}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary-dark hover:bg-primary/5 transition-colors self-start"
+          className="inline-flex items-center gap-1.5 rounded-xl border border-transparent bg-orange-600 shadow-sm px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700 transition-colors self-start"
         >
           <Plus className="w-4 h-4" />
           Add
@@ -108,20 +109,20 @@ export default function FieldLocationTable({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search by name or ID…"
-          className="w-full rounded-lg border border-border bg-surface-2 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+          className="w-full rounded-xl border border-black/10 bg-slate-50 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 focus:bg-white transition-all"
         />
       </div>
 
       {error && (
-        <div className="rounded-lg bg-red-50 text-red-600 p-3 text-sm border border-red-100">
+        <div className="rounded-xl bg-red-50 text-red-600 p-3 text-sm border border-red-100">
           {error}
         </div>
       )}
 
-      <div className="rounded-lg border border-border bg-surface-2 shadow-[0_1px_2px_rgba(41,43,49,0.05)] overflow-hidden">
+      <div className="rounded-2xl border border-black/[0.06] bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04),0_12px_32px_-20px_rgba(16,24,40,0.14)] overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-surface text-secondary text-left border-b border-border">
+            <thead className="bg-slate-50/80 text-slate-500 text-left border-b border-slate-100">
               <tr>
                 <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">
                   Employee Name
@@ -141,7 +142,7 @@ export default function FieldLocationTable({
               {filtered.map((emp) => (
                 <tr
                   key={emp.id}
-                  className="hover:bg-primary/5 transition-colors duration-200"
+                  className="hover:bg-orange-50/40 transition-colors"
                 >
                   <td className="px-6 py-4 text-foreground font-semibold max-w-[200px] truncate">
                     {emp.name}
@@ -150,21 +151,13 @@ export default function FieldLocationTable({
                     {emp.employeeCode}
                   </td>
                   <td className="px-6 py-4">
-                    <span
-                      className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium tracking-wide ${
-                        emp.active
-                          ? "bg-primary/10 text-primary border border-primary/20"
-                          : "bg-surface text-muted border border-border"
-                      }`}
-                    >
-                      {emp.active ? "Active" : "Inactive"}
-                    </span>
+                    <Pill tone={emp.active ? "green" : "slate"} dot>{emp.active ? "Active" : "Inactive"}</Pill>
                   </td>
                   <td className="px-6 py-4 text-right">
                     <button
                       onClick={() => handleRemove(emp)}
                       disabled={removingId === emp.id}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 shadow-sm hover:bg-red-600 hover:text-white hover:border-red-600 transition-all duration-200 disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-white border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 shadow-sm hover:bg-red-600 hover:text-white hover:border-red-600 transition-all duration-200 disabled:opacity-50"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                       {removingId === emp.id ? "Removing…" : "Remove"}
@@ -195,11 +188,11 @@ export default function FieldLocationTable({
           onClick={() => setPickerOpen(false)}
         >
           <div
-            className="w-full max-w-md bg-surface-2 rounded-lg shadow-2xl border border-white/50 overflow-hidden max-h-[90vh] flex flex-col"
+            className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-white/50 overflow-hidden max-h-[90vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
-              <h2 className="text-lg font-medium text-foreground">
+              <h2 className="text-[16px] font-semibold tracking-[-0.01em] text-slate-900">
                 Add to Anywhere
               </h2>
               <button

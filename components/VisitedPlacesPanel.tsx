@@ -422,7 +422,7 @@ export default function VisitedPlacesPanel({
                 <button
                   onClick={handleSaveReimbursement}
                   disabled={savingReimbursement}
-                  className="rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary-dark hover:bg-primary/5 transition disabled:opacity-50"
+                  className="rounded-xl border border-transparent bg-orange-600 shadow-sm px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700 transition disabled:opacity-50"
                 >
                   {savingReimbursement
                     ? "Saving…"

@@ -1,9 +1,13 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
+import { CalendarOff, Clock, UserCheck, UserPlus, Users } from "lucide-react";
+import { BTN_PRIMARY, Card, Page, PageHeader, StatCard } from "@/components/admin/ui";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import DashboardWorkspace from "@/components/DashboardWorkspace";
 import PendingPermissionsPanel from "@/components/PendingPermissionsPanel";
 import { startOfISTDay, todayDateOnlyIST } from "@/lib/istTime";
+import { istGreeting } from "@/lib/greeting";
 
 export const dynamic = "force-dynamic";
 
@@ -107,51 +111,97 @@ export default async function AdminDashboard() {
     employee: p.attendance.user,
   }));
 
+  const total = employeesRaw.length;
+  const checkedOut = employees.filter((e) => e.checkOutAt).length;
+  const onLeave = employees.filter((e) => e.onLeaveToday).length;
+  const notIn = employees.filter((e) => !e.checkInAt && !e.onLeaveToday).length;
+  const presentPct = total ? Math.round((currentlyIn / total) * 100) : 0;
+
+  const { greeting, dateLabel } = istGreeting();
+  const firstName = session.user.name?.trim().split(/\s+/)[0];
+
+  // Today's attendance split, drawn as one stacked bar.
+  const segments = [
+    { label: "Working", value: currentlyIn, bar: "bg-emerald-500", dot: "bg-emerald-500" },
+    { label: "Checked out", value: checkedOut, bar: "bg-slate-400", dot: "bg-slate-400" },
+    { label: "On leave", value: onLeave, bar: "bg-indigo-500", dot: "bg-indigo-500" },
+    { label: "Not in yet", value: notIn, bar: "bg-amber-400", dot: "bg-amber-400" },
+  ];
+
   return (
-    <div className="flex flex-col">
-      <div className="px-5 sm:px-7 pt-6 sm:pt-7">
-        <h1 className="text-[28px] sm:text-[30px] font-medium tracking-[-0.025em] text-foreground">
-          Dashboard
-        </h1>
-        <p className="text-sm text-muted mt-1">Live attendance overview</p>
+    <Page>
+      <PageHeader
+        eyebrow={dateLabel}
+        title={`${greeting}${firstName ? `, ${firstName}` : ""}`}
+        subtitle="Here is how your team is doing today."
+        actions={
+          <Link href="/admin/employees" className={BTN_PRIMARY}>
+            <UserPlus className="h-4 w-4" />
+            Add employee
+          </Link>
+        }
+      />
+
+      {pendingPermissions.length > 0 ? <PendingPermissionsPanel initialPermissions={pendingPermissions} /> : null}
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Total employees" value={total} icon={Users} tone="indigo" hint="Active on your plan" />
+        <StatCard
+          label="Working now"
+          value={currentlyIn}
+          icon={UserCheck}
+          tone="green"
+          hint={`${presentPct}% of your team is in`}
+          progress={presentPct}
+        />
+        <StatCard
+          label="Late today"
+          value={lateToday}
+          icon={Clock}
+          tone="amber"
+          hint={lateToday === 0 ? "Everyone is on time" : "Checked in after their shift start"}
+        />
+        <StatCard
+          label="On leave"
+          value={onLeave}
+          icon={CalendarOff}
+          tone="slate"
+          hint={onLeave === 0 ? "No one is away today" : "Approved leave covering today"}
+        />
       </div>
 
-      {pendingPermissions.length > 0 ? (
-        <div className="px-5 sm:px-7 pt-5">
-          <PendingPermissionsPanel initialPermissions={pendingPermissions} />
+      <Card className="p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-slate-900">Today at a glance</h2>
+          <p className="text-[12px] text-slate-500">
+            {total} {total === 1 ? "employee" : "employees"}
+          </p>
         </div>
-      ) : null}
+        <div className="mt-4 flex h-3 overflow-hidden rounded-full bg-slate-100">
+          {total > 0 &&
+            segments
+              .filter((s) => s.value > 0)
+              .map((s) => (
+                <div
+                  key={s.label}
+                  className={`${s.bar} first:rounded-l-full last:rounded-r-full`}
+                  style={{ width: `${(s.value / total) * 100}%` }}
+                  title={`${s.label}: ${s.value}`}
+                />
+              ))}
+        </div>
+        <ul className="mt-4 flex flex-wrap gap-x-6 gap-y-2">
+          {segments.map((s) => (
+            <li key={s.label} className="flex items-center gap-2 text-[13px] text-slate-600">
+              <span className={`h-2.5 w-2.5 rounded-full ${s.dot}`} />
+              {s.label}
+              <span className="font-semibold tabular-nums text-slate-900">{s.value}</span>
+            </li>
+          ))}
+        </ul>
+      </Card>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 px-5 sm:px-7 py-5">
-        <div className="rounded-lg border border-border bg-surface-2 p-[17px] shadow-[0_1px_2px_rgba(41,43,49,0.05)]">
-          <p className="text-[11px] font-medium tracking-[0.14em] uppercase text-muted">
-            Total employees
-          </p>
-          <p className="text-4xl font-medium tracking-[-0.03em] mt-1.5 tabular-nums text-foreground">
-            {employeesRaw.length}
-          </p>
-        </div>
-        <div className="rounded-lg border border-primary/35 bg-surface-2 p-[17px] shadow-[0_1px_2px_rgba(41,43,49,0.05)]">
-          <p className="text-[11px] font-medium tracking-[0.14em] uppercase text-primary-dark">
-            Currently in
-          </p>
-          <p className="text-4xl font-medium tracking-[-0.03em] mt-1.5 tabular-nums text-foreground">
-            {currentlyIn}
-          </p>
-        </div>
-        <div className="rounded-lg border border-border bg-surface-2 p-[17px] shadow-[0_1px_2px_rgba(41,43,49,0.05)]">
-          <p className="text-[11px] font-medium tracking-[0.14em] uppercase text-muted">
-            Late today
-          </p>
-          <p className="text-4xl font-medium tracking-[-0.03em] mt-1.5 tabular-nums text-foreground">
-            {lateToday}
-          </p>
-        </div>
-      </div>
-
-      <div className="px-5 sm:px-7 pb-6 sm:pb-7">
-        <DashboardWorkspace employees={employees} />
-      </div>
-    </div>
+      <DashboardWorkspace employees={employees} />
+    </Page>
   );
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { KeyRound, Plus, X, Copy, Check, Ban } from "lucide-react";
+import { BTN_PRIMARY } from "./admin/ui";
 
 export interface ApiKeySummary {
   id: string;
@@ -86,10 +87,10 @@ export default function ApiKeysPanel({ keys: initialKeys }: { keys: ApiKeySummar
   }
 
   return (
-    <div className="rounded-lg bg-surface-2 border border-white/60 shadow-[0_1px_2px_rgba(41,43,49,0.05)] p-4 flex flex-col h-full">
+    <div className="rounded-xl bg-surface-2 border border-white/60 shadow-[0_1px_2px_rgba(41,43,49,0.05)] p-4 flex flex-col h-full">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+          <div className="w-7 h-7 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
             <KeyRound className="w-3.5 h-3.5" />
           </div>
           <div>
@@ -101,7 +102,7 @@ export default function ApiKeysPanel({ keys: initialKeys }: { keys: ApiKeySummar
           <button
             type="button"
             onClick={openAdd}
-            className="inline-flex items-center gap-1 rounded-lg border border-primary px-2.5 py-1 text-xs font-semibold text-primary-dark hover:bg-primary/5 transition shrink-0"
+            className="inline-flex items-center gap-1 rounded-xl border border-transparent bg-orange-600 shadow-sm px-2.5 py-1 text-xs font-semibold text-white hover:bg-orange-700 transition shrink-0"
           >
             <Plus className="w-3.5 h-3.5" />
             New key
@@ -110,7 +111,7 @@ export default function ApiKeysPanel({ keys: initialKeys }: { keys: ApiKeySummar
       </div>
 
       {revealedKey && (
-        <div className="mt-3 rounded-lg border border-primary/40 bg-primary/5 p-3 flex flex-col gap-2">
+        <div className="mt-3 rounded-xl border border-primary/40 bg-primary/5 p-3 flex flex-col gap-2">
           <p className="text-xs font-semibold text-foreground">
             Copy this now &mdash; you won&apos;t be able to see it again.
           </p>
@@ -119,7 +120,7 @@ export default function ApiKeysPanel({ keys: initialKeys }: { keys: ApiKeySummar
             <button
               type="button"
               onClick={copyRevealed}
-              className="inline-flex items-center gap-1 rounded-lg border border-primary px-2.5 py-1.5 text-xs font-semibold text-primary-dark hover:bg-primary/5 transition shrink-0"
+              className="inline-flex items-center gap-1 rounded-xl border border-transparent bg-orange-600 shadow-sm px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-orange-700 transition shrink-0"
             >
               {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
               {copied ? "Copied" : "Copy"}
@@ -168,7 +169,7 @@ export default function ApiKeysPanel({ keys: initialKeys }: { keys: ApiKeySummar
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Name, e.g. Payroll integration"
-            className="rounded-lg border border-border px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+            className="rounded-xl border border-black/10 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 focus:bg-white transition-all"
             autoFocus
           />
           <div className="flex items-center gap-2">
@@ -176,7 +177,7 @@ export default function ApiKeysPanel({ keys: initialKeys }: { keys: ApiKeySummar
               type="button"
               onClick={handleAdd}
               disabled={loading}
-              className="rounded-lg border border-primary bg-transparent text-primary-dark hover:bg-primary/5 px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50"
+              className={`${BTN_PRIMARY} shrink-0 !px-3 !py-1.5 !text-xs`}
             >
               {loading ? "Creating…" : "Create"}
             </button>
@@ -184,7 +185,7 @@ export default function ApiKeysPanel({ keys: initialKeys }: { keys: ApiKeySummar
               type="button"
               onClick={closeAdd}
               disabled={loading}
-              className="rounded-lg border border-border text-muted hover:bg-surface p-1.5 transition disabled:opacity-50"
+              className="rounded-xl border border-border text-muted hover:bg-surface p-1.5 transition disabled:opacity-50"
               aria-label="Cancel"
             >
               <X className="w-3.5 h-3.5" />

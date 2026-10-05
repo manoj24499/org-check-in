@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Download } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { Page, PageHeader } from "@/components/admin/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -33,30 +34,26 @@ export default async function DeletedEmployeesPage() {
   });
 
   return (
-    <div className="flex flex-col gap-5 px-5 sm:px-7 py-6 sm:py-7">
-      <div className="flex flex-col gap-2">
+    <Page>
+      <div className="flex flex-col gap-3">
         <Link
           href="/admin/employees"
-          className="inline-flex items-center gap-2 text-sm font-medium text-muted hover:text-foreground transition-colors w-fit"
+          className="inline-flex w-fit items-center gap-2 text-sm font-medium text-slate-500 transition-colors hover:text-slate-900"
         >
-          <ArrowLeft className="w-4 h-4" />
+          <ArrowLeft className="h-4 w-4" />
           Back to Employees
         </Link>
-        <div>
-          <h1 className="text-[28px] sm:text-[30px] font-medium tracking-[-0.025em] text-foreground">
-            Deleted employees
-          </h1>
-          <p className="text-sm text-muted mt-1 max-w-2xl">
-            Employees left deactivated for 7 days are permanently deleted automatically. Their record is gone, but a
-            CSV snapshot of attendance, reimbursements, and leave requests is kept here indefinitely.
-          </p>
-        </div>
+        <PageHeader
+          eyebrow="Workforce"
+          title="Deleted employees"
+          subtitle="Employees left deactivated for 7 days are permanently deleted automatically. Their record is gone, but a CSV snapshot of attendance, reimbursements, and leave requests is kept here indefinitely."
+        />
       </div>
 
-      <div className="rounded-lg border border-border bg-surface-2 shadow-[0_1px_2px_rgba(41,43,49,0.05)] overflow-hidden">
+      <div className="rounded-2xl border border-black/[0.06] bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04),0_12px_32px_-20px_rgba(16,24,40,0.14)] overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-surface text-secondary text-left border-b border-border">
+            <thead className="bg-slate-50/80 text-slate-500 text-left border-b border-slate-100">
               <tr>
                 <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">Employee</th>
                 <th className="px-6 py-4 font-semibold uppercase tracking-wider text-xs">Work mode</th>
@@ -91,7 +88,7 @@ export default async function DeletedEmployeesPage() {
                         <a
                           key={kind}
                           href={`/api/admin/employees/deleted/${a.id}/${kind}`}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-2.5 py-1.5 text-xs font-medium text-muted-2 hover:bg-black/[0.03] transition-colors"
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-surface-2 px-2.5 py-1.5 text-xs font-medium text-muted-2 hover:bg-black/[0.03] transition-colors"
                         >
                           <Download className="w-3.5 h-3.5" />
                           {label}
@@ -112,6 +109,6 @@ export default async function DeletedEmployeesPage() {
           </table>
         </div>
       </div>
-    </div>
+    </Page>
   );
 }

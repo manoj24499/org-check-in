@@ -27,7 +27,7 @@ export default function ResendForm() {
 
   if (sent) {
     return (
-      <p className="text-sm text-muted">
+      <p className="text-sm text-muted-2">
         If that email has a pending activation, we&apos;ve sent a new link.
       </p>
     );
@@ -35,7 +35,7 @@ export default function ResendForm() {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-      <label className="text-xs text-muted">Resend the activation link</label>
+      <label className="text-xs text-muted-2">Resend the activation link</label>
       <div className="flex gap-2">
         <input
           type="email"
@@ -43,11 +43,11 @@ export default function ResendForm() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@company.com"
-          className="flex-1 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
+          className="min-w-0 flex-1 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
         />
         <button
           disabled={loading}
-          className="rounded-lg border border-primary text-primary-dark px-3 py-2 text-sm font-medium hover:bg-primary/5 transition-colors disabled:opacity-50"
+          className="shrink-0 rounded-lg border border-primary text-primary-dark px-3 py-2 text-sm font-medium hover:bg-primary/5 transition-colors disabled:opacity-50"
         >
           {loading ? "Sending…" : "Resend"}
         </button>

@@ -99,3 +99,148 @@ body {
     transform: translateY(104px) !important;
   }
 }
+
+/* Auth-page backdrop (forgot/reset password): geofence radar + check-in blips. */
+@keyframes auth-grid-drift {
+  to { background-position: 56px 56px, 56px 56px; }
+}
+.auth-grid {
+  background-image:
+    linear-gradient(to right, var(--color-border-soft) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--color-border-soft) 1px, transparent 1px);
+  background-size: 56px 56px;
+  animation: auth-grid-drift 14s linear infinite;
+}
+@keyframes auth-blip {
+  0%, 100% { transform: scale(0.6); opacity: 0.25; }
+  40% { transform: scale(1); opacity: 1; }
+}
+.auth-blip { animation: auth-blip 4.8s ease-in-out infinite; }
+@keyframes auth-chip-cycle {
+  0% { opacity: 0; transform: translateY(14px) scale(0.96); }
+  8%, 30% { opacity: 1; transform: translateY(0) scale(1); }
+  38%, 100% { opacity: 0; transform: translateY(-10px) scale(0.98); }
+}
+.auth-chip { opacity: 0; animation: auth-chip-cycle 12s cubic-bezier(0.16, 1, 0.3, 1) infinite; }
+@keyframes auth-spin { to { transform: rotate(360deg); } }
+.auth-ring-spin { animation: auth-spin 60s linear infinite reverse; }
+.auth-sweep { animation: auth-spin 8s linear infinite; }
+@keyframes auth-pulse {
+  0% { transform: translate(-50%, -50%) scale(0.72); opacity: 0.55; }
+  70% { opacity: 0; }
+  100% { transform: translate(-50%, -50%) scale(2.1); opacity: 0; }
+}
+.auth-pulse { animation: auth-pulse 2.6s cubic-bezier(0.2, 0.6, 0.35, 1) infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-grid, .auth-blip, .auth-ring-spin, .auth-sweep, .auth-pulse { animation: none !important; }
+  .auth-chip { animation: none !important; opacity: 0 !important; }
+}
+
+/* ==========================================================================
+   Admin console: canvas + dark theme.
+   The admin shell carries `.admin-root`; the theme is the `data-admin-theme`
+   attribute on <html> (set early by app/admin/layout.tsx so there is no flash,
+   toggled from components/ThemeToggle.tsx). Tailwind v4 utilities reference
+   CSS variables, so remapping the palette under the dark scope re-themes every
+   admin page; the handful of classes where one variable serves two roles
+   (text vs. solid button, white surface vs. white text) are overridden below.
+   ========================================================================== */
+.admin-canvas {
+  background-image:
+    radial-gradient(900px 420px at 100% -8%, rgba(240, 100, 0, 0.07), transparent 65%),
+    radial-gradient(700px 380px at 0% 0%, rgba(99, 102, 241, 0.05), transparent 60%);
+}
+
+html[data-admin-theme="dark"] .admin-root {
+  color-scheme: dark;
+
+  /* Nocturne tokens still used by older components */
+  --background: #0d0f15;
+  --foreground: #e8eaf2;
+  --color-surface: #0d0f15;
+  --color-surface-2: #151821;
+  --color-muted: #9aa1b8;
+  --color-muted-2: #b4bacb;
+  --color-secondary: #9aa1b8;
+  --color-border: rgba(255, 255, 255, 0.11);
+  --color-border-soft: rgba(255, 255, 255, 0.07);
+  --color-primary-dark: #ff9a4d;
+
+  /* Slate scale, inverted for dark surfaces and light text */
+  --color-slate-50: #1a1e29;
+  --color-slate-100: #212633;
+  --color-slate-200: #2c3242;
+  --color-slate-300: #3b4256;
+  --color-slate-400: #6f7792;
+  --color-slate-500: #9aa1b8;
+  --color-slate-600: #b4bacb;
+  --color-slate-700: #cbd0de;
+  --color-slate-800: #e2e5ee;
+  --color-slate-900: #f1f3f8;
+
+  /* Tinted fills/borders become translucent so they sit on dark cards */
+  --color-orange-50: rgb(249 115 22 / 0.12);
+  --color-orange-100: rgb(249 115 22 / 0.18);
+  --color-orange-200: rgb(249 115 22 / 0.3);
+  --color-orange-300: rgb(249 115 22 / 0.45);
+  --color-red-50: rgb(239 68 68 / 0.12);
+  --color-red-100: rgb(239 68 68 / 0.2);
+  --color-red-200: rgb(239 68 68 / 0.32);
+  --color-red-300: rgb(239 68 68 / 0.45);
+  --color-amber-50: rgb(245 158 11 / 0.12);
+  --color-amber-100: rgb(245 158 11 / 0.18);
+  --color-amber-200: rgb(245 158 11 / 0.3);
+  --color-emerald-50: rgb(16 185 129 / 0.12);
+  --color-emerald-100: rgb(16 185 129 / 0.2);
+  --color-emerald-200: rgb(16 185 129 / 0.32);
+  --color-emerald-300: rgb(16 185 129 / 0.45);
+  --color-indigo-50: rgb(99 102 241 / 0.14);
+  --color-indigo-100: rgb(99 102 241 / 0.22);
+  --color-sky-50: rgb(14 165 233 / 0.12);
+
+  --admin-card: #151821;
+}
+
+/* White surfaces -> card colour (text-white is untouched) */
+html[data-admin-theme="dark"] .admin-root .bg-white { background-color: var(--admin-card); }
+html[data-admin-theme="dark"] .admin-root .bg-white\/70 { background-color: rgb(21 24 33 / 0.7); }
+html[data-admin-theme="dark"] .admin-root .to-white { --tw-gradient-to: var(--admin-card); }
+html[data-admin-theme="dark"] .admin-root .ring-white { --tw-ring-color: var(--admin-card); }
+html[data-admin-theme="dark"] .admin-root .border-white\/60,
+html[data-admin-theme="dark"] .admin-root .border-white\/50 { border-color: rgba(255, 255, 255, 0.08); }
+
+/* Hairlines and hover tints that were "black at low opacity" */
+html[data-admin-theme="dark"] .admin-root .border-black\/10,
+html[data-admin-theme="dark"] .admin-root .border-black\/\[0\.06\] { border-color: rgba(255, 255, 255, 0.1); }
+html[data-admin-theme="dark"] .admin-root .bg-black\/\[0\.03\],
+html[data-admin-theme="dark"] .admin-root .bg-black\/\[0\.04\],
+html[data-admin-theme="dark"] .admin-root .bg-black\/\[0\.05\],
+html[data-admin-theme="dark"] .admin-root .hover\:bg-black\/\[0\.03\]:hover,
+html[data-admin-theme="dark"] .admin-root .hover\:bg-black\/\[0\.04\]:hover,
+html[data-admin-theme="dark"] .admin-root .hover\:bg-black\/\[0\.05\]:hover { background-color: rgba(255, 255, 255, 0.06); }
+
+/* Solid dark chips (selected filters) would turn near-white with the inverted scale */
+html[data-admin-theme="dark"] .admin-root .bg-slate-900 { background-color: #3b4256; }
+html[data-admin-theme="dark"] .admin-root .ring-slate-900 { --tw-ring-color: #3b4256; }
+
+/* Coloured text: lighter shades for dark backgrounds (the 600/700 variables stay
+   dark because solid buttons use them as backgrounds) */
+html[data-admin-theme="dark"] .admin-root .text-red-600,
+html[data-admin-theme="dark"] .admin-root .text-red-700 { color: #f87171; }
+html[data-admin-theme="dark"] .admin-root .text-orange-600,
+html[data-admin-theme="dark"] .admin-root .text-orange-700 { color: #fb923c; }
+html[data-admin-theme="dark"] .admin-root .text-emerald-600,
+html[data-admin-theme="dark"] .admin-root .text-emerald-700,
+html[data-admin-theme="dark"] .admin-root .text-green-700 { color: #34d399; }
+html[data-admin-theme="dark"] .admin-root .text-amber-600,
+html[data-admin-theme="dark"] .admin-root .text-amber-700,
+html[data-admin-theme="dark"] .admin-root .text-amber-800 { color: #fbbf24; }
+html[data-admin-theme="dark"] .admin-root .text-indigo-700 { color: #a5b4fc; }
+html[data-admin-theme="dark"] .admin-root .text-sky-700 { color: #7dd3fc; }
+
+html[data-admin-theme="dark"] .admin-canvas {
+  background-image:
+    radial-gradient(900px 420px at 100% -8%, rgba(240, 100, 0, 0.1), transparent 65%),
+    radial-gradient(700px 380px at 0% 0%, rgba(99, 102, 241, 0.09), transparent 60%);
+}

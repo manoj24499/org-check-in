@@ -89,7 +89,7 @@ export default function OfficeLocationForm({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
-      <div className="rounded-lg overflow-hidden border border-white/60 shadow-[0_1px_2px_rgba(41,43,49,0.05)] ">
+      <div className="rounded-xl overflow-hidden border border-white/60 shadow-[0_1px_2px_rgba(41,43,49,0.05)]">
         <OfficeLocationMap
           latitude={latitude}
           longitude={longitude}
@@ -103,13 +103,13 @@ export default function OfficeLocationForm({
 
       <form
         onSubmit={handleSubmit}
-        className="flex flex-col gap-4 rounded-lg bg-surface-2 border border-white/60 shadow-[0_1px_2px_rgba(41,43,49,0.05)] p-6"
+        className="flex flex-col gap-4 rounded-xl bg-surface-2 border border-white/60 shadow-[0_1px_2px_rgba(41,43,49,0.05)] p-6"
       >
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+          <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
             <MapPin className="w-4 h-4" />
           </div>
-          <h2 className="text-lg font-medium text-foreground">Office Location</h2>
+          <h2 className="text-[16px] font-semibold tracking-[-0.01em] text-slate-900">Office Location</h2>
         </div>
 
         <div>
@@ -120,7 +120,7 @@ export default function OfficeLocationForm({
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
-            className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+            className="mt-1 w-full rounded-xl border border-black/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 focus:bg-white transition-all"
           />
         </div>
 
@@ -133,7 +133,7 @@ export default function OfficeLocationForm({
               value={latitude}
               onChange={(e) => setLatitude(Number(e.target.value))}
               required
-              className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+              className="mt-1 w-full rounded-xl border border-black/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 focus:bg-white transition-all"
             />
           </div>
           <div>
@@ -146,7 +146,7 @@ export default function OfficeLocationForm({
               value={longitude}
               onChange={(e) => setLongitude(Number(e.target.value))}
               required
-              className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+              className="mt-1 w-full rounded-xl border border-black/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 focus:bg-white transition-all"
             />
           </div>
         </div>
@@ -162,25 +162,25 @@ export default function OfficeLocationForm({
             value={radiusMeters}
             onChange={(e) => setRadiusMeters(Number(e.target.value))}
             required
-            className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+            className="mt-1 w-full rounded-xl border border-black/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 focus:bg-white transition-all"
           />
           <p className="text-xs text-muted mt-1.5">Default is 50 meters.</p>
         </div>
 
         {error && (
-          <div className="rounded-lg bg-red-50 text-red-600 p-3 text-sm border border-red-100">
+          <div className="rounded-xl bg-red-50 text-red-600 p-3 text-sm border border-red-100">
             {error}
           </div>
         )}
         {saved && (
-          <div className="rounded-lg bg-emerald-50 text-emerald-700 p-3 text-sm border border-emerald-100">
+          <div className="rounded-xl bg-emerald-50 text-emerald-700 p-3 text-sm border border-emerald-100">
             Office location saved.
           </div>
         )}
 
         <button
           disabled={loading}
-          className="rounded-lg border border-primary bg-transparent text-primary-dark py-2.5 text-sm font-medium hover:bg-primary/5 transition disabled:opacity-50"
+          className="rounded-xl border border-transparent bg-orange-600 shadow-sm text-white py-2.5 text-sm font-medium hover:bg-orange-700 transition disabled:opacity-50"
         >
           {loading ? "Saving…" : "Save location"}
         </button>

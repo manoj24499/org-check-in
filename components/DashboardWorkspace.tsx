@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, X, Loader2, Download, MapPin } from "lucide-react";
+import { Search, X, Loader2, Download, MapPin, Users } from "lucide-react";
+import { Avatar, BTN_SECONDARY, CARD, EmptyState, Pill, SectionTitle, Segmented, TABLE } from "./admin/ui";
 import AttendanceCalendar, { type CalendarSpecialDay } from "./AttendanceCalendar";
 import LocationMapModal from "./LocationMapModal";
 import MarkLeaveControl, { type OnLeaveToday } from "./MarkLeaveControl";
@@ -127,28 +128,12 @@ export default function DashboardWorkspace({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="inline-flex border border-border rounded-lg overflow-hidden">
-          {TABS.map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setTab(key)}
-              className={`px-3.5 py-1.5 text-[13px] transition-colors border-l border-border first:border-l-0 ${
-                tab === key
-                  ? "font-medium bg-primary/[0.08] text-primary-dark"
-                  : "text-muted hover:bg-black/[0.03]"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Segmented options={TABS.map((t) => ({ key: t.key, label: t.label }))} value={tab} onChange={setTab} />
         {tab === "status" && (
-          <a
-            href="/api/admin/attendance/export"
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-primary bg-transparent px-4 py-1.5 text-[13px] font-medium text-primary-dark hover:bg-primary/5 transition-colors"
-          >
-            <Download className="w-[15px] h-[15px]" />
+          // eslint-disable-next-line @next/next/no-html-link-for-pages -- a file download, not a page
+          <a href="/api/admin/attendance/export" className={BTN_SECONDARY}>
+            <Download className="h-[15px] w-[15px]" />
             Export CSV
           </a>
         )}
@@ -177,37 +162,28 @@ const TIME_OFF_TYPE_LABEL: Record<OnLeaveToday["type"], string> = {
 
 function leaveBadge(leaveType: LeaveType, lateMinutes: number | null, onLeaveToday: OnLeaveToday | null) {
   // A full-day leave takes priority over the auto-computed lateness
-  // classification below — the two are unrelated concepts that happen to
+  // classification below - the two are unrelated concepts that happen to
   // share a table cell (see the schema comment on TimeOffRequest), but if
-  // someone's on leave today that's the more significant thing to show.
+  // someone is on leave today that is the more significant thing to show.
   if (onLeaveToday) {
-    return (
-      <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium tracking-wide border bg-slate-50 text-slate-600 border-slate-200">
-        On leave · {TIME_OFF_TYPE_LABEL[onLeaveToday.type]}
-      </span>
-    );
+    return <Pill tone="indigo">On leave · {TIME_OFF_TYPE_LABEL[onLeaveToday.type]}</Pill>;
   }
-  if (leaveType === "NONE")
-    return <span className="text-secondary text-xs">—</span>;
+  if (leaveType === "NONE") return <span className="text-xs text-slate-400">—</span>;
   const label = leaveType === "PERMISSION" ? "Permission" : "Half-day leave";
-  const tone =
-    leaveType === "PERMISSION"
-      ? "bg-amber-50 text-amber-700 border-amber-200"
-      : "bg-red-50 text-red-600 border-red-200";
   return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium tracking-wide border ${tone}`}
-    >
+    <Pill tone={leaveType === "PERMISSION" ? "amber" : "red"}>
       {label}
-      {lateMinutes !== null && (
-        <span className="font-medium opacity-80">· {lateMinutes}m late</span>
-      )}
-    </span>
+      {lateMinutes !== null && <span className="opacity-80">· {lateMinutes}m late</span>}
+    </Pill>
   );
 }
 
+type Filter = "all" | "in" | "out" | "late" | "leave" | "absent";
+
 function CurrentStatusPanel({ employees }: { employees: EmployeeSummary[] }) {
   const [viewing, setViewing] = useState<EmployeeSummary | null>(null);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<Filter>("all");
 
   // Re-evaluate "Live vs Offline" freshness periodically even if no new ping
   // arrives (a stale ping should eventually flip to Offline on its own).
@@ -217,122 +193,185 @@ function CurrentStatusPanel({ employees }: { employees: EmployeeSummary[] }) {
     return () => clearInterval(id);
   }, []);
 
+  const counts = useMemo(
+    () => ({
+      all: employees.length,
+      in: employees.filter((e) => e.checkInAt && !e.checkOutAt).length,
+      out: employees.filter((e) => e.checkOutAt).length,
+      late: employees.filter((e) => (e.lateMinutes ?? 0) > 0).length,
+      leave: employees.filter((e) => e.onLeaveToday).length,
+      absent: employees.filter((e) => !e.checkInAt && !e.onLeaveToday).length,
+    }),
+    [employees],
+  );
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return employees.filter((e) => {
+      if (q && !e.name.toLowerCase().includes(q) && !e.employeeCode.toLowerCase().includes(q)) return false;
+      switch (filter) {
+        case "in":
+          return Boolean(e.checkInAt) && !e.checkOutAt;
+        case "out":
+          return Boolean(e.checkOutAt);
+        case "late":
+          return (e.lateMinutes ?? 0) > 0;
+        case "leave":
+          return Boolean(e.onLeaveToday);
+        case "absent":
+          return !e.checkInAt && !e.onLeaveToday;
+        default:
+          return true;
+      }
+    });
+  }, [employees, query, filter]);
+
+  const FILTERS: { key: Filter; label: string }[] = [
+    { key: "all", label: "All" },
+    { key: "in", label: "Working" },
+    { key: "out", label: "Checked out" },
+    { key: "late", label: "Late" },
+    { key: "leave", label: "On leave" },
+    { key: "absent", label: "Not in yet" },
+  ];
+
   return (
-    <div className="rounded-lg border border-border bg-surface-2 shadow-[0_1px_2px_rgba(41,43,49,0.05)] overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3">
-        <h2 className="text-[15px] font-medium text-foreground">Current status</h2>
-        <span className="inline-flex items-center gap-1.5 text-xs text-muted">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#3f9c5a]" />
-          Live
-        </span>
+    <div className={`${CARD} overflow-hidden`}>
+      <SectionTitle
+        title="Team today"
+        hint="Live attendance, refreshed every few seconds"
+        right={
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+            Live
+          </span>
+        }
+      />
+
+      <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 px-5 py-3">
+        <div className="relative w-full sm:w-64">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search name or ID…"
+            className="w-full rounded-xl border border-black/10 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-800 placeholder:text-slate-400 transition-colors focus:border-orange-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500/30"
+          />
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {FILTERS.map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => setFilter(f.key)}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12.5px] font-medium ring-1 ring-inset transition-colors ${
+                filter === f.key
+                  ? "bg-slate-900 text-white ring-slate-900"
+                  : "bg-white text-slate-600 ring-slate-200 hover:bg-slate-50"
+              }`}
+            >
+              {f.label}
+              <span className={`tabular-nums ${filter === f.key ? "text-white/70" : "text-slate-400"}`}>{counts[f.key]}</span>
+            </button>
+          ))}
+        </div>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="text-secondary text-left border-t border-b border-border-soft">
+
+      <div className={TABLE.wrap}>
+        <table className={TABLE.table}>
+          <thead className={TABLE.thead}>
             <tr>
-              <th className="px-4 py-2.5 font-medium uppercase tracking-wider text-[11px]">
-                Employee ID
-              </th>
-              <th className="px-3 py-2.5 font-medium uppercase tracking-wider text-[11px]">
-                Name
-              </th>
-              <th className="px-3 py-2.5 font-medium uppercase tracking-wider text-[11px]">
-                Status
-              </th>
-              <th className="px-3 py-2.5 font-medium uppercase tracking-wider text-[11px]">
-                Leave
-              </th>
-              <th className="px-3 py-2.5 font-medium uppercase tracking-wider text-[11px]">
-                Live Location
-              </th>
-              <th className="px-3 py-2.5 font-medium uppercase tracking-wider text-[11px]">
-                In
-              </th>
-              <th className="px-4 py-2.5 font-medium uppercase tracking-wider text-[11px]">
-                Out
-              </th>
+              <th className={TABLE.th}>Employee</th>
+              <th className={TABLE.th}>Status</th>
+              <th className={TABLE.th}>Check-in</th>
+              <th className={TABLE.th}>Check-out</th>
+              <th className={TABLE.th}>Attendance</th>
+              <th className={TABLE.th}>Location</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-border-soft">
-            {employees.map((emp) => {
+          <tbody className={TABLE.tbody}>
+            {visible.map((emp) => {
               const isIn = Boolean(emp.checkInAt) && !emp.checkOutAt;
               const isLive =
                 isIn &&
                 emp.location !== null &&
-                now - new Date(emp.location.timestamp).getTime() <=
-                  LIVE_THRESHOLD_MS;
+                now - new Date(emp.location.timestamp).getTime() <= LIVE_THRESHOLD_MS;
               return (
-                <tr
-                  key={emp.id}
-                  className="hover:bg-primary/5 transition-colors duration-200"
-                >
-                  <td className="px-4 py-3 text-muted-2">{emp.employeeCode}</td>
-                  <td className="px-3 py-3 text-foreground font-medium max-w-[160px] truncate">
-                    {emp.name}
+                <tr key={emp.id} className={TABLE.tr}>
+                  <td className={TABLE.td}>
+                    <div className="flex items-center gap-3">
+                      <Avatar name={emp.name} />
+                      <div className="min-w-0 leading-tight">
+                        <p className="truncate font-medium text-slate-900">{emp.name}</p>
+                        <p className="text-xs text-slate-500">{emp.employeeCode}</p>
+                      </div>
+                    </div>
                   </td>
-                  <td className="px-3 py-3">
-                    <span
-                      className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium tracking-wide border ${
-                        isIn
-                          ? "bg-primary/10 text-primary border-primary/20"
-                          : "bg-surface text-secondary border-border"
-                      }`}
-                    >
-                      <span
-                        className={`w-2 h-2 rounded-full ${
-                          isIn ? "bg-primary animate-pulse" : "bg-muted"
-                        }`}
-                      />
-                      {isIn ? "Checked In" : "Checked Out"}
-                    </span>
+                  <td className={TABLE.td}>
+                    {isIn ? (
+                      <Pill tone="green" dot pulse>
+                        Working
+                      </Pill>
+                    ) : emp.checkOutAt ? (
+                      <Pill tone="slate" dot>
+                        Checked out
+                      </Pill>
+                    ) : emp.onLeaveToday ? (
+                      <Pill tone="indigo" dot>
+                        On leave
+                      </Pill>
+                    ) : (
+                      <Pill tone="amber" dot>
+                        Not in yet
+                      </Pill>
+                    )}
                   </td>
-                  <td className="px-3 py-3">
-                    <div className="flex flex-col items-start gap-1">
+                  <td className={`${TABLE.td} tabular-nums text-slate-700`}>{formatTime(emp.checkInAt)}</td>
+                  <td className={`${TABLE.td} tabular-nums text-slate-700`}>{formatTime(emp.checkOutAt)}</td>
+                  <td className={TABLE.td}>
+                    <div className="flex flex-col items-start gap-1.5">
                       {leaveBadge(emp.leaveType, emp.lateMinutes, emp.onLeaveToday)}
                       <MarkLeaveControl employeeId={emp.id} onLeaveToday={emp.onLeaveToday} />
                     </div>
                   </td>
-                  <td className="px-3 py-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="inline-flex items-center gap-1 text-xs font-medium">
-                        {isLive ? "🟢 Live" : "🔴 Offline"}
-                      </span>
-                      <span className="text-secondary text-xs">
-                        {emp.location
-                          ? `Updated ${formatTime(emp.location.timestamp)}`
-                          : "No location yet"}
+                  <td className={TABLE.td}>
+                    <div className="flex items-center gap-2.5">
+                      {isLive ? (
+                        <Pill tone="green" dot pulse>
+                          Live
+                        </Pill>
+                      ) : (
+                        <Pill tone="slate">Offline</Pill>
+                      )}
+                      <span className="hidden text-xs text-slate-500 xl:inline">
+                        {emp.location ? formatTime(emp.location.timestamp) : "No location yet"}
                       </span>
                       <button
                         onClick={() => setViewing(emp)}
                         disabled={!emp.location}
-                        className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1.5 text-xs font-medium text-muted-2 hover:bg-black/[0.03] transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                        aria-label={`View location of ${emp.name}`}
+                        className="grid h-8 w-8 place-items-center rounded-lg border border-black/10 bg-white text-slate-600 transition-colors hover:border-orange-300 hover:text-orange-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-black/10 disabled:hover:text-slate-600"
                       >
-                        <MapPin className="w-3 h-3" />
-                        View
+                        <MapPin className="h-3.5 w-3.5" />
                       </button>
                     </div>
-                  </td>
-                  <td className="px-3 py-3 text-secondary">
-                    {formatTime(emp.checkInAt)}
-                  </td>
-                  <td className="px-4 py-3 text-secondary">
-                    {formatTime(emp.checkOutAt)}
                   </td>
                 </tr>
               );
             })}
-            {employees.length === 0 && (
-              <tr>
-                <td
-                  colSpan={7}
-                  className="px-6 py-12 text-center text-secondary"
-                >
-                  No active employees found.
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
+        {visible.length === 0 && (
+          <EmptyState
+            icon={Users}
+            title={employees.length === 0 ? "No active employees yet" : "No one matches these filters"}
+            text={
+              employees.length === 0
+                ? "Add your first employee to start seeing live attendance here."
+                : "Try a different search or clear the filter."
+            }
+          />
+        )}
       </div>
 
       {viewing && viewing.location && (
@@ -397,7 +436,7 @@ function CalendarPanel({ employees }: { employees: EmployeeSummary[] }) {
   }, [selected]);
 
   return (
-    <div className="rounded-lg border border-border bg-surface-2 shadow-[0_1px_2px_rgba(41,43,49,0.05)] p-5 flex flex-col gap-4">
+    <div className={`${CARD} flex flex-col gap-4 p-5`}>
       <div className="flex flex-col gap-3">
         <div className="relative max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
@@ -405,7 +444,7 @@ function CalendarPanel({ employees }: { employees: EmployeeSummary[] }) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search employee by name or ID…"
-            className="w-full rounded-lg border border-border bg-surface pl-9 pr-9 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+            className="w-full rounded-xl border border-black/10 bg-slate-50 py-2 pl-9 pr-9 text-sm placeholder:text-slate-400 transition-colors focus:border-orange-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500/30"
           />
           {query && (
             <button

@@ -19,9 +19,15 @@ export type ProvisionOutcome =
   | { outcome: "duplicate" }
   | { outcome: "needs_attention"; reason: string };
 
-async function sendWorkspaceReadyEmail(email: string, orgName: string, rawToken: string) {
+async function sendWorkspaceReadyEmail(
+  email: string,
+  orgName: string,
+  adminName: string,
+  rawToken: string,
+  plan: { plan: string; seats: number; billingCycle: string },
+) {
   const link = `${APP_BASE_URL}/activate?token=${rawToken}`;
-  await sendEmail({ to: email, ...activationEmail({ orgName, link, hours: ACTIVATION_TTL_MS / 3_600_000 }) });
+  await sendEmail({ to: email, ...activationEmail({ orgName, adminName, link, hours: ACTIVATION_TTL_MS / 3_600_000, ...plan }) });
 }
 function sendOpsAlert(message: string) {
   console.error(`[ops-alert] ${message}`);
@@ -131,7 +137,11 @@ export async function provisionPaidSignup(checkoutId: string, payment: Provision
     }
 
     try {
-      await sendWorkspaceReadyEmail(result.adminEmail, result.organization.name, result.rawToken);
+      await sendWorkspaceReadyEmail(result.adminEmail, result.organization.name, checkout.adminName, result.rawToken, {
+        plan: checkout.planId,
+        seats: checkout.seats,
+        billingCycle: checkout.billingCycle,
+      });
       await prisma.signupCheckout.update({ where: { id: checkout.id }, data: { activationEmailSentAt: new Date() } });
     } catch (err) {
       // Provisioning already succeeded and committed — a failed email is

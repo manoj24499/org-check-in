@@ -1,70 +1,54 @@
 import Link from "next/link";
 import { User, ShieldCheck, ArrowLeft, ArrowRight } from "lucide-react";
-import { Logo } from "@/components/Logo";
+import AuthSplit from "@/components/AuthSplit";
+
+const OPTIONS = [
+  { href: "/login/employee", icon: User, title: "Employee", text: "Your own attendance and history" },
+  { href: "/login/admin", icon: ShieldCheck, title: "Admin", text: "Manage employees and the workspace" },
+];
 
 export default function LoginSelectionPage() {
   return (
-    <main className="min-h-screen flex items-center justify-center bg-background p-6">
-      <div className="w-full max-w-[420px] rounded-lg border border-border bg-surface flex flex-col p-7 sm:p-8">
-        <Logo variant="static" size={20} className="text-foreground mb-5" />
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-foreground transition-colors self-start"
-        >
-          <ArrowLeft className="w-[15px] h-[15px]" />
-          Back to start
-        </Link>
+    <AuthSplit>
+      <Link
+        href="/"
+        className="mb-6 inline-flex items-center gap-1.5 self-start text-[13px] text-muted-2 transition-colors hover:text-foreground"
+      >
+        <ArrowLeft className="h-[15px] w-[15px]" />
+        Back to start
+      </Link>
 
-        <div className="mt-9 flex flex-col gap-1.5">
-          <span className="text-[11px] font-medium tracking-[0.16em] uppercase text-primary-dark">
-            Step 1 of 2
-          </span>
-          <h1 className="text-[28px] sm:text-[32px] font-medium tracking-[-0.025em] text-foreground">
-            Who&apos;s signing in?
-          </h1>
-          <p className="text-sm text-muted">Pick your account type to continue.</p>
-        </div>
+      <span className="text-[11px] font-medium tracking-[0.16em] uppercase text-primary-dark">Step 1 of 2</span>
+      <h1 className="mt-2 text-[30px] font-medium leading-tight tracking-[-0.03em] text-foreground">
+        Who&apos;s signing in?
+      </h1>
+      <p className="mt-2 text-sm text-muted-2">Pick your account type to continue.</p>
 
-        <div className="mt-6 flex flex-col gap-2.5">
+      <div className="mt-8 flex flex-col gap-3">
+        {OPTIONS.map(({ href, icon: Icon, title, text }) => (
           <Link
-            href="/login/employee"
-            className="group flex items-center gap-3.5 rounded-lg border border-border bg-surface-2 px-4 py-3.5 shadow-[0_1px_2px_rgba(41,43,49,0.05)] hover:border-primary/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            key={href}
+            href={href}
+            className="group flex items-center gap-4 rounded-lg border border-border bg-surface-2 px-4 py-4 transition-colors hover:border-primary/50 hover:bg-primary/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
-            <User className="w-[22px] h-[22px] text-primary shrink-0" />
-            <span className="flex flex-col">
-              <span className="text-[15px] sm:text-base font-medium text-foreground">
-                Employee
-              </span>
-              <span className="text-[13px] text-muted">
-                Your own attendance and history
-              </span>
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+              <Icon className="h-5 w-5" />
             </span>
-            <ArrowRight className="w-[17px] h-[17px] ml-auto text-muted shrink-0 transition-transform group-hover:translate-x-0.5" />
-          </Link>
-          <Link
-            href="/login/admin"
-            className="group flex items-center gap-3.5 rounded-lg border border-border bg-surface-2 px-4 py-3.5 shadow-[0_1px_2px_rgba(41,43,49,0.05)] hover:border-primary/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          >
-            <ShieldCheck className="w-[22px] h-[22px] text-primary shrink-0" />
             <span className="flex flex-col">
-              <span className="text-[15px] sm:text-base font-medium text-foreground">
-                Admin
-              </span>
-              <span className="text-[13px] text-muted">
-                Manage employees and the workspace
-              </span>
+              <span className="text-base font-medium text-foreground">{title}</span>
+              <span className="text-[13px] text-muted-2">{text}</span>
             </span>
-            <ArrowRight className="w-[17px] h-[17px] ml-auto text-muted shrink-0 transition-transform group-hover:translate-x-0.5" />
+            <ArrowRight className="ml-auto h-[17px] w-[17px] shrink-0 text-muted-2 transition-transform group-hover:translate-x-0.5" />
           </Link>
-        </div>
-
-        <p className="mt-6 text-center text-[13px] text-muted">
-          New organization?{" "}
-          <Link href="/register" className="font-medium text-primary-dark hover:underline">
-            Register here
-          </Link>
-        </p>
+        ))}
       </div>
-    </main>
+
+      <p className="mt-8 text-center text-[13px] text-muted-2">
+        New organization?{" "}
+        <Link href="/register" className="font-medium text-primary-dark hover:underline">
+          Register here
+        </Link>
+      </p>
+    </AuthSplit>
   );
 }

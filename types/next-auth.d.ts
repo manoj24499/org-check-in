@@ -14,6 +14,8 @@ declare module "next-auth" {
       employeeCode: string;
       organizationId: string;
     } & DefaultSession["user"];
+    /** ms epoch of the credential sign-in that created this session. */
+    signedInAt?: number;
   }
 }
 
@@ -23,5 +25,6 @@ declare module "next-auth/jwt" {
     role: "ADMIN" | "EMPLOYEE";
     employeeCode: string;
     organizationId: string;
+    signedInAt?: number;
   }
 }

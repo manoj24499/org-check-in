@@ -1,4 +1,5 @@
 import { isProductionRuntime } from "@/lib/isProduction";
+import { EMAIL_IMAGES } from "@/lib/emailAssets";
 
 /**
  * Transactional email via Resend's REST API (no SDK dependency).
@@ -12,7 +13,14 @@ import { isProductionRuntime } from "@/lib/isProduction";
  * activation links are bearer credentials — and throws instead so callers
  * can alert ops.
  */
-export type EmailMessage = { to: string; subject: string; html: string; text: string };
+export type EmailMessage = {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  /** Inline image keys (see lib/emailAssets.ts) referenced as `cid:<key>` in `html`. */
+  images?: string[];
+};
 
 export async function sendEmail(msg: EmailMessage): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
@@ -29,38 +37,27 @@ export async function sendEmail(msg: EmailMessage): Promise<void> {
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to: [msg.to], subject: msg.subject, html: msg.html, text: msg.text }),
+    body: JSON.stringify({
+      from,
+      to: [msg.to],
+      subject: msg.subject,
+      html: msg.html,
+      text: msg.text,
+      // Inline (cid) attachments: the HTML shows them in place rather than as downloads.
+      attachments: (msg.images ?? [])
+        .filter((key) => key in EMAIL_IMAGES)
+        .map((key) => ({
+          filename: EMAIL_IMAGES[key].filename,
+          content: EMAIL_IMAGES[key].base64,
+          content_type: EMAIL_IMAGES[key].contentType,
+          content_id: key,
+        })),
+    }),
   });
   if (!res.ok) {
     throw new Error(`Resend send failed: ${res.status} ${await res.text().catch(() => "")}`);
   }
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
-export function activationEmail(opts: { orgName?: string; link: string; hours: number }): Omit<EmailMessage, "to"> {
-  const org = opts.orgName ? escapeHtml(opts.orgName) : null;
-  const subject = org ? `Activate your ${opts.orgName} workspace` : "Activate your account";
-  const text = `${org ? `Your ${opts.orgName} workspace is ready.` : "Your account is ready."} Set your password to get started:\n\n${opts.link}\n\nThis link expires in ${opts.hours} hours. If you didn't sign up, you can ignore this email.`;
-  const html = `<div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:24px">
-<h2 style="margin:0 0 12px">${org ? `Your ${org} workspace is ready` : "Your account is ready"}</h2>
-<p>Set your password to get started.</p>
-<p><a href="${escapeHtml(opts.link)}" style="display:inline-block;background:#111;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none">Activate account</a></p>
-<p style="color:#666;font-size:13px">This link expires in ${opts.hours} hours. If you didn't sign up, you can ignore this email.</p>
-</div>`;
-  return { subject, html, text };
-}
-
-export function passwordResetEmail(opts: { link: string; minutes: number }): Omit<EmailMessage, "to"> {
-  const subject = "Reset your password";
-  const text = `We received a request to reset your password. Choose a new one here:\n\n${opts.link}\n\nThis link expires in ${opts.minutes} minutes and can be used once. If you didn't ask for this, you can ignore this email - your password won't change.`;
-  const html = `<div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:24px">
-<h2 style="margin:0 0 12px">Reset your password</h2>
-<p>We received a request to reset your password.</p>
-<p><a href="${escapeHtml(opts.link)}" style="display:inline-block;background:#111;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none">Choose a new password</a></p>
-<p style="color:#666;font-size:13px">This link expires in ${opts.minutes} minutes and can be used once. If you didn't ask for this, you can ignore this email - your password won't change.</p>
-</div>`;
-  return { subject, html, text };
-}
+// Templates live in their own dependency-free module so they can be previewed standalone.
+export { activationEmail, passwordResetEmail } from "./emailTemplates";

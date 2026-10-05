@@ -153,7 +153,7 @@ export default function BulkAddEmployeeForm() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 rounded-lg border-2 border-primary text-primary px-4 py-2 text-sm font-medium hover:bg-primary/5 transition"
+        className="inline-flex items-center gap-1.5 rounded-xl border border-black/10 bg-white shadow-sm text-slate-700 px-4 py-2 text-sm font-medium hover:bg-slate-50 transition"
       >
         <Upload className="w-4 h-4" />
         Bulk Add
@@ -161,7 +161,7 @@ export default function BulkAddEmployeeForm() {
 
       {open && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50 transition-opacity">
-          <div className="w-full max-w-2xl bg-surface-2 rounded-lg shadow-2xl p-6 border border-white/50">
+          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl p-6 border border-white/50">
             {created ? (
               <div className="flex flex-col gap-4">
                 <div className="flex items-start justify-between gap-3">
@@ -177,13 +177,13 @@ export default function BulkAddEmployeeForm() {
                   <button
                     type="button"
                     onClick={() => downloadCredentialsCsv(submittedRows, created)}
-                    className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-primary px-3 py-1.5 text-sm font-medium text-primary-dark hover:bg-primary/5 transition"
+                    className="shrink-0 inline-flex items-center gap-1.5 rounded-xl border border-transparent bg-orange-600 shadow-sm px-3 py-1.5 text-sm font-medium text-white hover:bg-orange-700 transition"
                   >
                     <Download className="w-4 h-4" />
                     Download CSV
                   </button>
                 </div>
-                <div className="rounded-lg border border-border bg-surface max-h-96 overflow-auto">
+                <div className="rounded-xl border border-border bg-surface max-h-96 overflow-auto">
                   <table className="w-full text-sm text-left">
                     <thead className="bg-surface sticky top-0">
                       <tr>
@@ -213,7 +213,7 @@ export default function BulkAddEmployeeForm() {
                 </div>
                 <button
                   onClick={closeAll}
-                  className="mt-2 rounded-lg border border-primary bg-transparent text-primary-dark py-2.5 text-sm font-medium hover:bg-primary/5 transition-colors"
+                  className="mt-2 rounded-xl border border-transparent bg-orange-600 shadow-sm text-white py-2.5 text-sm font-medium hover:bg-orange-700 transition-colors"
                 >
                   Done
                 </button>
@@ -249,11 +249,11 @@ export default function BulkAddEmployeeForm() {
                       "Jane Smith, jane@example.com, WFH, 12.9716, 77.5946, 75\n" +
                       "Alex Kim, alex@example.com, FIELD"
                     }
-                    className="w-full rounded-lg border border-border bg-surface-2 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all font-mono"
+                    className="w-full rounded-xl border border-black/10 bg-slate-50 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/30 transition-all font-mono"
                   />
                 </div>
                 {error && (
-                  <div className="rounded-lg bg-red-50 text-red-600 p-3 text-sm border border-red-100">
+                  <div className="rounded-xl bg-red-50 text-red-600 p-3 text-sm border border-red-100">
                     {error}
                   </div>
                 )}
@@ -261,13 +261,13 @@ export default function BulkAddEmployeeForm() {
                   <button
                     type="button"
                     onClick={closeAll}
-                    className="flex-1 rounded-lg bg-white border border-border py-2.5 text-sm font-medium text-muted hover:bg-surface transition"
+                    className="flex-1 rounded-xl bg-white border border-border py-2.5 text-sm font-medium text-muted hover:bg-surface transition"
                   >
                     Cancel
                   </button>
                   <button
                     disabled={loading}
-                    className="flex-1 rounded-lg border border-primary bg-transparent text-primary-dark py-2.5 text-sm font-medium hover:bg-primary/5 transition disabled:opacity-50"
+                    className="flex-1 rounded-xl border border-transparent bg-orange-600 shadow-sm text-white py-2.5 text-sm font-medium hover:bg-orange-700 transition disabled:opacity-50"
                   >
                     {loading ? "Processing..." : "Create Employees"}
                   </button>

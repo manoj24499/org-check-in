@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import OvertimeHistoryList from "@/components/OvertimeHistoryList";
 import OvertimeStatusPanel from "@/components/OvertimeStatusPanel";
+import { Page, PageHeader } from "@/components/admin/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -60,19 +61,17 @@ export default async function OvertimePage() {
   }));
 
   return (
-    <div className="flex flex-col gap-5 px-5 sm:px-7 py-6 sm:py-7">
-      <div>
-        <h1 className="text-[28px] sm:text-[30px] font-medium tracking-[-0.025em] text-foreground">Overtime</h1>
-        <p className="text-sm text-muted mt-1">
-          Who&apos;s working overtime right now on the left; completed requests with work summaries and photos,
-          across every employee, on the right.
-        </p>
-      </div>
+    <Page>
+      <PageHeader
+        eyebrow="Requests"
+        title="Overtime"
+        subtitle="Who is working overtime right now on the left; completed requests with work summaries and photos on the right."
+      />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:h-[calc(100vh-220px)] lg:min-h-[420px]">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:items-start">
         <OvertimeStatusPanel initialRequests={active} />
         <OvertimeHistoryList requests={completed} />
       </div>
-    </div>
+    </Page>
   );
 }

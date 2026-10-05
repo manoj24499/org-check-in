@@ -52,10 +52,10 @@ export function RecentActivityList({ records }: { records: RecentActivityRecord[
             <img
               src={`/api/attendance/${r.id}/photo`}
               alt="Check-in photo"
-              className="w-8 h-8 rounded-lg object-cover border border-border shrink-0"
+              className="w-8 h-8 rounded-xl object-cover border border-border shrink-0"
             />
           ) : (
-            <span className="w-8 h-8 rounded-lg bg-surface flex items-center justify-center shrink-0 text-muted">
+            <span className="w-8 h-8 rounded-xl bg-surface flex items-center justify-center shrink-0 text-muted">
               {r.type === "CHECK_IN" ? (
                 <LogIn className="w-4 h-4" />
               ) : (
@@ -78,8 +78,8 @@ export function RecentActivityList({ records }: { records: RecentActivityRecord[
           </div>
           <span
             className={`text-sm tabular-nums shrink-0 ${
-              r.type === "CHECK_IN" ? "text-primary-dark" : "text-muted-2"
-            }`}
+ r.type === "CHECK_IN" ? "text-primary-dark" : "text-muted-2"
+ }`}
           >
             {new Date(r.timestamp).toLocaleTimeString("en-US", {
               hour: "2-digit",

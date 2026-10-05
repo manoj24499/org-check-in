@@ -103,7 +103,7 @@ export default function AddEmployeeForm({ shifts }: { shifts: ShiftOption[] }) {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-primary bg-transparent text-primary-dark px-4 py-2 text-sm font-medium hover:bg-primary/5 transition"
+        className="inline-flex items-center gap-1.5 rounded-xl border border-transparent bg-orange-600 shadow-sm text-white px-4 py-2 text-sm font-medium hover:bg-orange-700 transition"
       >
         <Plus className="w-4 h-4" />
         Add Employee
@@ -111,7 +111,7 @@ export default function AddEmployeeForm({ shifts }: { shifts: ShiftOption[] }) {
 
       {open && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="w-full max-w-sm bg-surface-2 rounded-lg shadow-2xl p-6 border border-white/50">
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 border border-white/50">
             {created ? (
               <div className="flex flex-col gap-4">
                 <h2 className="text-xl font-medium text-foreground">
@@ -146,7 +146,7 @@ export default function AddEmployeeForm({ shifts }: { shifts: ShiftOption[] }) {
                     stays off for this employee until enrollment succeeds.
                   </p>
                 )}
-                <div className="rounded-lg bg-primary/5 border border-primary/20 p-4 text-center">
+                <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 text-center">
                   <p className="text-xs text-secondary font-medium">
                     {created.employeeCode}
                   </p>
@@ -155,7 +155,7 @@ export default function AddEmployeeForm({ shifts }: { shifts: ShiftOption[] }) {
                   </p>
                   <button
                     onClick={copyPin}
-                    className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-primary/30 text-primary px-3 py-1.5 text-xs font-semibold hover:bg-primary/10 transition"
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-primary/30 text-primary px-3 py-1.5 text-xs font-semibold hover:bg-primary/10 transition"
                   >
                     {copied ? (
                       <Check className="w-3.5 h-3.5" />
@@ -167,7 +167,7 @@ export default function AddEmployeeForm({ shifts }: { shifts: ShiftOption[] }) {
                 </div>
                 <button
                   onClick={closeAll}
-                  className="rounded-lg border border-primary bg-transparent text-primary-dark py-2.5 text-sm font-medium hover:bg-primary/5 transition"
+                  className="rounded-xl border border-transparent bg-orange-600 shadow-sm text-white py-2.5 text-sm font-medium hover:bg-orange-700 transition"
                 >
                   Done
                 </button>
@@ -184,7 +184,7 @@ export default function AddEmployeeForm({ shifts }: { shifts: ShiftOption[] }) {
                   <input
                     name="name"
                     required
-                    className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+                    className="mt-1 w-full rounded-xl border border-black/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 focus:bg-white transition-all"
                   />
                 </div>
                 <div>
@@ -195,7 +195,7 @@ export default function AddEmployeeForm({ shifts }: { shifts: ShiftOption[] }) {
                     name="email"
                     type="email"
                     required
-                    className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+                    className="mt-1 w-full rounded-xl border border-black/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 focus:bg-white transition-all"
                   />
                 </div>
                 <div>
@@ -206,7 +206,7 @@ export default function AddEmployeeForm({ shifts }: { shifts: ShiftOption[] }) {
                     name="photo"
                     type="file"
                     accept="image/jpeg,image/jpg,image/png,image/webp"
-                    className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-primary/10 file:text-primary-dark file:px-3 file:py-1.5 file:text-sm file:font-medium focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+                    className="mt-1 w-full rounded-xl border border-black/10 px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-primary/10 file:text-primary-dark file:px-3 file:py-1.5 file:text-sm file:font-medium focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 focus:bg-white transition-all"
                   />
                   <p className="text-xs text-secondary mt-1">
                     A clear front-facing photo enrolls this employee for face check-in. Leave blank to skip — you can
@@ -221,7 +221,7 @@ export default function AddEmployeeForm({ shifts }: { shifts: ShiftOption[] }) {
                     name="shiftId"
                     defaultValue=""
                     disabled={shifts.length === 0}
-                    className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all disabled:opacity-50"
+                    className="mt-1 w-full rounded-xl border border-black/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 focus:bg-white transition-all disabled:opacity-50"
                   >
                     <option value="">No shift for now</option>
                     {shifts.map((s) => (
@@ -238,7 +238,7 @@ export default function AddEmployeeForm({ shifts }: { shifts: ShiftOption[] }) {
                   </p>
                 </div>
                 {error && (
-                  <div className="rounded-lg bg-red-50 text-red-600 p-3 text-sm border border-red-100">
+                  <div className="rounded-xl bg-red-50 text-red-600 p-3 text-sm border border-red-100">
                     {error}
                   </div>
                 )}
@@ -246,13 +246,13 @@ export default function AddEmployeeForm({ shifts }: { shifts: ShiftOption[] }) {
                   <button
                     type="button"
                     onClick={closeAll}
-                    className="flex-1 rounded-lg bg-white border border-border py-2.5 text-sm font-medium text-muted hover:bg-surface transition"
+                    className="flex-1 rounded-xl bg-white border border-border py-2.5 text-sm font-medium text-muted hover:bg-surface transition"
                   >
                     Cancel
                   </button>
                   <button
                     disabled={loading}
-                    className="flex-1 rounded-lg border border-primary bg-transparent text-primary-dark py-2.5 text-sm font-medium hover:bg-primary/5 transition disabled:opacity-50"
+                    className="flex-1 rounded-xl border border-transparent bg-orange-600 shadow-sm text-white py-2.5 text-sm font-medium hover:bg-orange-700 transition disabled:opacity-50"
                   >
                     {loading ? "Creating…" : "Create"}
                   </button>

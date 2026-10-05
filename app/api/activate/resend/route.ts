@@ -49,12 +49,17 @@ async function handlePost(req: NextRequest) {
   // elsewhere, not something this endpoint should ever act on.
   const user = await prisma.user.findFirst({
     where: { email, role: "ADMIN", isOwner: true, active: true, passwordHash: null },
-    select: { id: true },
+    select: { id: true, name: true, organization: { select: { name: true } } },
   });
   if (!user) return;
 
   const raw = await prisma.$transaction((tx) => issueUserToken(tx, user.id, "ACCOUNT_ACTIVATION", ACTIVATION_TTL_MS));
 
   const link = `${APP_BASE_URL}/activate?token=${raw}`;
-  await sendEmail({ to: email, ...activationEmail({ link, hours: ACTIVATION_TTL_MS / 3_600_000 }) });
+  await sendEmail({ to: email, ...activationEmail({
+      orgName: user.organization?.name,
+      adminName: user.name,
+      link,
+      hours: ACTIVATION_TTL_MS / 3_600_000,
+    }) });
 }

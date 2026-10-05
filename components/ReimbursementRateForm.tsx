@@ -49,9 +49,9 @@ export default function ReimbursementRateForm({
   }
 
   return (
-    <div className="rounded-lg bg-surface-2 border border-white/60 shadow-[0_1px_2px_rgba(41,43,49,0.05)] p-4 flex flex-col h-full">
+    <div className="rounded-xl bg-surface-2 border border-white/60 shadow-[0_1px_2px_rgba(41,43,49,0.05)] p-4 flex flex-col h-full">
       <div className="flex items-start gap-2.5">
-        <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+        <div className="w-7 h-7 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
           <IndianRupee className="w-3.5 h-3.5" />
         </div>
         <div className="flex-1 min-w-0">
@@ -74,13 +74,13 @@ export default function ReimbursementRateForm({
                 setSaved(false);
               }}
               placeholder="e.g. 8"
-              className="w-20 rounded-lg border border-border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+              className="w-20 rounded-xl border border-black/10 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 focus:bg-white transition-all"
             />
             <span className="text-sm text-secondary">/ km</span>
             <button
               onClick={handleSave}
               disabled={loading}
-              className="ml-auto rounded-lg border border-primary px-3 py-1.5 text-xs font-semibold text-primary-dark hover:bg-primary/5 transition disabled:opacity-50"
+              className="ml-auto rounded-xl border border-transparent bg-orange-600 shadow-sm px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-700 transition disabled:opacity-50"
             >
               {loading ? "Saving…" : "Save"}
             </button>
@@ -89,12 +89,12 @@ export default function ReimbursementRateForm({
       </div>
 
       {error && (
-        <div className="mt-3 rounded-lg bg-red-50 text-red-600 p-2.5 text-xs border border-red-100">
+        <div className="mt-3 rounded-xl bg-red-50 text-red-600 p-2.5 text-xs border border-red-100">
           {error}
         </div>
       )}
       {saved && !error && (
-        <div className="mt-3 rounded-lg bg-emerald-50 text-emerald-700 p-2.5 text-xs border border-emerald-100">
+        <div className="mt-3 rounded-xl bg-emerald-50 text-emerald-700 p-2.5 text-xs border border-emerald-100">
           Setting saved.
         </div>
       )}

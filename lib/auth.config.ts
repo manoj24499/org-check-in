@@ -32,6 +32,10 @@ export const authConfig = {
         token.employeeCode = user.employeeCode;
         token.id = user.id;
         token.organizationId = user.organizationId;
+        // Only set on a real credential sign-in (`user` is present only then),
+        // never on later token refreshes — app/auth/continue uses it to tell a
+        // brand-new sign-in apart from an old, merely still-valid cookie.
+        token.signedInAt = Date.now();
       }
       return token;
     },
@@ -42,6 +46,7 @@ export const authConfig = {
         session.user.employeeCode = token.employeeCode as string;
         session.user.organizationId = token.organizationId as string;
       }
+      session.signedInAt = token.signedInAt as number | undefined;
       return session;
     },
   },

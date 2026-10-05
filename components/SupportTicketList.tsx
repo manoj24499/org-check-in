@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ImageIcon } from "lucide-react";
+import { CheckCircle2, ChevronDown, ImageIcon, LifeBuoy, MessageSquare } from "lucide-react";
+import { Avatar, BTN_PRIMARY, BTN_SECONDARY, CARD, Card, EmptyState, Pill, Segmented } from "./admin/ui";
 
 export interface SupportTicketEntry {
   id: string;
@@ -85,103 +86,113 @@ export default function SupportTicketList({ tickets: initial }: { tickets: Suppo
     }
   };
 
+  const resolvedCount = tickets.filter((t) => t.status === "RESOLVED").length;
+
   return (
-    <div className="rounded-lg border border-border bg-surface-2 shadow-[0_1px_2px_rgba(41,43,49,0.05)] overflow-hidden flex flex-col">
-      <div className="px-4 py-3 border-b border-border-soft flex items-center justify-between flex-wrap gap-2">
-        <div className="flex gap-1.5">
-          {(["OPEN", "RESOLVED", "ALL"] as Filter[]).map((f) => (
-            <button
-              key={f}
-              type="button"
-              onClick={() => setFilter(f)}
-              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                filter === f ? "bg-primary/10 text-primary border border-primary/20" : "text-muted hover:bg-surface"
-              }`}
-            >
-              {f === "OPEN" ? "Open" : f === "RESOLVED" ? "Resolved" : "All"}
-            </button>
-          ))}
-        </div>
-        {openCount > 0 && (
-          <span className="text-xs font-medium text-muted bg-surface rounded-full px-2.5 py-0.5 tabular-nums">
-            {openCount} open
-          </span>
-        )}
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Segmented
+          options={[
+            { key: "OPEN" as Filter, label: "Open", count: openCount },
+            { key: "RESOLVED" as Filter, label: "Resolved", count: resolvedCount },
+            { key: "ALL" as Filter, label: "All", count: tickets.length },
+          ]}
+          value={filter}
+          onChange={setFilter}
+        />
       </div>
 
-      {error ? <p className="px-4 py-2 text-xs text-red-600">{error}</p> : null}
+      {error ? <p className="text-xs text-red-600">{error}</p> : null}
 
       {filtered.length === 0 ? (
-        <p className="px-4 py-10 text-center text-secondary text-sm">
-          {filter === "OPEN" ? "No open issues right now." : "Nothing here."}
-        </p>
+        <Card>
+          <EmptyState
+            icon={filter === "OPEN" ? LifeBuoy : MessageSquare}
+            title={filter === "OPEN" ? "No open issues" : "Nothing here"}
+            text={
+              filter === "OPEN"
+                ? "When an employee reports a problem from the app, it will appear here."
+                : "There are no tickets in this view yet."
+            }
+          />
+        </Card>
       ) : (
-        <div className="flex flex-col">
+        <div className="flex flex-col gap-3">
           {filtered.map((t) => {
             const isOpen = expanded.has(t.id);
             return (
-              <div key={t.id} className="border-b border-border-soft last:border-b-0">
+              <div key={t.id} className={`${CARD} overflow-hidden`}>
                 <button
                   type="button"
                   onClick={() => toggleExpanded(t.id)}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-black/[0.02] transition-colors"
+                  className="flex w-full items-center gap-3.5 px-5 py-4 text-left transition-colors hover:bg-slate-50/70"
                 >
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${t.status === "OPEN" ? "bg-amber-500" : "bg-primary"}`}
-                  />
-                  <span className="text-sm font-medium text-foreground shrink-0 max-w-[160px] truncate">
-                    {t.user.name}
+                  <Avatar name={t.user.name} size={40} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                      <span className="truncate text-sm font-semibold text-slate-900">{t.user.name}</span>
+                      <span className="text-xs text-slate-500">{t.user.employeeCode}</span>
+                      <Pill tone={t.status === "OPEN" ? "amber" : "green"} dot>
+                        {t.status === "OPEN" ? "Open" : "Resolved"}
+                      </Pill>
+                      {t.hasPhoto && (
+                        <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+                          <ImageIcon className="h-3.5 w-3.5" /> Photo
+                        </span>
+                      )}
+                    </div>
+                    {!isOpen && <p className="mt-1 truncate text-sm text-slate-600">{t.message}</p>}
+                  </div>
+                  <span className="hidden shrink-0 text-xs tabular-nums text-slate-500 sm:block">
+                    {formatDateTime(t.createdAt)}
                   </span>
-                  <span className="text-xs text-muted shrink-0">{t.user.employeeCode}</span>
-                  <span className="text-sm text-secondary truncate flex-1 min-w-0">{t.message}</span>
-                  {t.hasPhoto && <ImageIcon className="w-3.5 h-3.5 text-muted shrink-0" />}
-                  <span className="text-xs text-muted shrink-0 tabular-nums">{formatDateTime(t.createdAt)}</span>
                   <ChevronDown
-                    className={`w-4 h-4 text-muted shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                    className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
                   />
                 </button>
 
                 {isOpen && (
-                  <div className="px-4 pb-3.5 pl-[26px]">
-                    <p className="text-sm text-secondary whitespace-pre-wrap">{t.message}</p>
+                  <div className="border-t border-slate-100 bg-slate-50/50 px-5 pb-5 pt-4 sm:pl-[78px]">
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{t.message}</p>
 
                     {t.hasPhoto ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={`/api/admin/support/${t.id}/photo`}
                         alt="Attached photo"
-                        className="mt-2 max-w-xs rounded-md border border-border-soft"
+                        className="mt-3 max-w-xs rounded-xl border border-slate-200 shadow-sm"
                       />
                     ) : null}
 
                     {t.status === "OPEN" ? (
-                      <div className="flex flex-wrap gap-2 mt-3 items-center">
+                      <div className="mt-4 flex flex-wrap items-center gap-2">
                         <input
                           value={noteDraft[t.id] ?? ""}
                           onChange={(e) => setNoteDraft((prev) => ({ ...prev, [t.id]: e.target.value }))}
                           placeholder="Optional note (visible to other admins only)…"
-                          className="flex-1 min-w-[200px] rounded-lg border border-border bg-surface px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+                          className="min-w-[200px] flex-1 rounded-xl border border-black/10 bg-white px-3 py-2 text-xs placeholder:text-slate-400 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
                         />
                         <button
                           type="button"
                           onClick={() => setStatus(t.id, "RESOLVED")}
                           disabled={actingOn === t.id}
-                          className="rounded-lg border border-primary bg-transparent text-primary-dark hover:bg-primary/5 px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50 shrink-0"
+                          className={`${BTN_PRIMARY} shrink-0 !px-4 !py-2 !text-xs`}
                         >
+                          <CheckCircle2 className="h-3.5 w-3.5" />
                           Mark resolved
                         </button>
                       </div>
                     ) : (
-                      <div className="mt-3 rounded-md bg-surface border border-border-soft p-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1.5">
+                      <div className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3.5">
+                        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-emerald-700">
                           Resolved {t.resolvedAt ? formatDateTime(t.resolvedAt) : ""}
                         </p>
-                        {t.adminNote ? <p className="text-sm text-foreground whitespace-pre-wrap">{t.adminNote}</p> : null}
+                        {t.adminNote ? <p className="whitespace-pre-wrap text-sm text-slate-700">{t.adminNote}</p> : null}
                         <button
                           type="button"
                           onClick={() => setStatus(t.id, "OPEN")}
                           disabled={actingOn === t.id}
-                          className="mt-2 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-muted-2 hover:bg-black/[0.03] transition-colors disabled:opacity-50"
+                          className={`${BTN_SECONDARY} mt-2 !px-3 !py-1.5 !text-xs`}
                         >
                           Reopen
                         </button>
