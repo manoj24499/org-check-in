@@ -75,7 +75,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
 
-  const photoBuffer = await decodePhoto(parsed.data.photo);
+  // Older app builds (the dashboard "Log a visit" card) sent the camera's bare
+  // base64 instead of a data URL; accept both so those installs keep working.
+  const photoInput = parsed.data.photo.startsWith("data:")
+    ? parsed.data.photo
+    : `data:image/jpeg;base64,${parsed.data.photo}`;
+  const photoBuffer = await decodePhoto(photoInput);
   if (!photoBuffer) {
     return NextResponse.json({ error: "Invalid photo data." }, { status: 400 });
   }
