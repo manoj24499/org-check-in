@@ -7,6 +7,7 @@ import { signOut } from "next-auth/react";
 import {
   CalendarClock,
   CalendarOff,
+  Compass,
   LayoutDashboard,
   LifeBuoy,
   LogOut,
@@ -23,6 +24,7 @@ import {
 } from "lucide-react";
 import { Logo } from "./Logo";
 import ThemeToggle from "./ThemeToggle";
+import AdminTour, { TOUR_START_EVENT } from "./AdminTour";
 
 type Item = { href: string; label: string; icon: LucideIcon; badge?: "leave" | "overtime" | "support" };
 type Group = { title: string; items: Item[] };
@@ -153,6 +155,7 @@ export default function AdminShell({
                   key={href}
                   href={href}
                   title={compact ? label : undefined}
+                  data-tour={`nav-${href}`}
                   aria-current={active ? "page" : undefined}
                   onClick={() => setDrawerOpen(false)}
                   className={`group relative flex items-center gap-3 rounded-lg px-3 py-2 text-[14px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
@@ -184,6 +187,26 @@ export default function AdminShell({
           </div>
         ))}
       </nav>
+    );
+  }
+
+  function renderTourButton(compact: boolean) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setDrawerOpen(false);
+          window.dispatchEvent(new Event(TOUR_START_EVENT));
+        }}
+        title={compact ? "Take a tour" : undefined}
+        aria-label="Take a tour"
+        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-[13px] text-muted-2 transition-colors hover:bg-black/[0.04] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
+          compact ? "justify-center" : ""
+        }`}
+      >
+        <Compass className="h-[18px] w-[18px]" />
+        {!compact && <span>Take a tour</span>}
+      </button>
     );
   }
 
@@ -241,9 +264,10 @@ export default function AdminShell({
           <div className={collapsed ? "w-full" : "flex-1"}>{renderBrand(collapsed)}</div>
         </div>
 
-        <div className={`flex-1 overflow-y-auto py-5 ${collapsed ? "px-3" : "px-4"}`}>{renderNav(collapsed)}</div>
+        <div className={`no-scrollbar flex-1 overflow-y-auto py-5 ${collapsed ? "px-3" : "px-4"}`}>{renderNav(collapsed)}</div>
 
         <div className={`shrink-0 border-t border-border-soft ${collapsed ? "px-3 py-3" : "px-4 py-3"}`}>
+          <div className="mb-1">{renderTourButton(collapsed)}</div>
           <div className="mb-1">
             <ThemeToggle compact={collapsed} />
           </div>
@@ -286,6 +310,8 @@ export default function AdminShell({
         <main className="admin-canvas flex-1 overflow-y-auto">{children}</main>
       </div>
 
+      <AdminTour userName={userName} />
+
       {/* Mobile drawer */}
       <div className={`fixed inset-0 z-50 lg:hidden ${drawerOpen ? "" : "pointer-events-none"}`} aria-hidden={!drawerOpen}>
         <div
@@ -310,8 +336,9 @@ export default function AdminShell({
               <X className="h-5 w-5" />
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto px-4 py-5">{renderNav(false)}</div>
+          <div className="no-scrollbar flex-1 overflow-y-auto px-4 py-5">{renderNav(false)}</div>
           <div className="shrink-0 border-t border-border-soft px-4 py-3">
+            <div className="mb-1">{renderTourButton(false)}</div>
             <div className="mb-2">
               <ThemeToggle />
             </div>

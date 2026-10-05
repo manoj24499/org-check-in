@@ -8,6 +8,8 @@ const CHANGE_EVENT = "admin-theme-change";
 
 type Theme = "light" | "dark";
 
+let fadeTimer: number | undefined;
+
 // The theme lives on <html data-admin-theme>, set before first paint by the
 // inline script in app/admin/layout.tsx (so a returning dark-mode user never
 // sees a flash of light). This store just mirrors that attribute.
@@ -25,7 +27,13 @@ export default function ThemeToggle({ compact = false }: { compact?: boolean }) 
 
   function toggle() {
     const next: Theme = isDark ? "light" : "dark";
-    document.documentElement.setAttribute("data-admin-theme", next);
+    // Fade colours over ~0.7s instead of snapping; the class is removed once
+    // the fade has finished so ordinary hover transitions aren't slowed.
+    const root = document.documentElement;
+    root.classList.add("theme-fade");
+    window.clearTimeout(fadeTimer);
+    fadeTimer = window.setTimeout(() => root.classList.remove("theme-fade"), 800);
+    root.setAttribute("data-admin-theme", next);
     try {
       localStorage.setItem(STORAGE_KEY, next);
     } catch {
