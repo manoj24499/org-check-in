@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireMobileUser } from "@/lib/mobileAuth";
-import { haversineDistanceMeters } from "@/lib/geofence";
+import { computeTotalDistanceMeters } from "@/lib/locationClustering";
 import { findActiveCheckIn } from "@/lib/activeSession";
 
 // Powers the mobile Map screen's "Field Day" view — distance covered (summed
@@ -31,24 +31,16 @@ export async function GET(req: NextRequest) {
     prisma.locationPing.findMany({
       where: { userId: auth.sub, timestamp: { gte: todaysCheckIn.timestamp } },
       orderBy: { timestamp: "asc" },
-      select: { latitude: true, longitude: true, timestamp: true },
+      select: { latitude: true, longitude: true, timestamp: true, accuracy: true },
     }),
     prisma.fieldVisit.findMany({
       where: { attendanceId: todaysCheckIn.id },
       orderBy: { reachedAt: "asc" },
-      select: { id: true, name: true, description: true, reachedAt: true, latitude: true, longitude: true, hasPhoto: true },
+      select: { id: true, name: true, description: true, contactName: true, contactPhone: true, contactEmail: true, remarks: true, reachedAt: true, latitude: true, longitude: true, hasPhoto: true },
     }),
   ]);
 
-  let distanceMeters = 0;
-  for (let i = 1; i < pings.length; i++) {
-    distanceMeters += haversineDistanceMeters(
-      pings[i - 1].latitude,
-      pings[i - 1].longitude,
-      pings[i].latitude,
-      pings[i].longitude,
-    );
-  }
+  const distanceMeters = computeTotalDistanceMeters(pings);
 
   return NextResponse.json({
     active: true,
@@ -62,6 +54,10 @@ export async function GET(req: NextRequest) {
       id: v.id,
       name: v.name,
       description: v.description,
+      contactName: v.contactName,
+      contactPhone: v.contactPhone,
+      contactEmail: v.contactEmail,
+      remarks: v.remarks,
       reachedAt: v.reachedAt.toISOString(),
       latitude: v.latitude,
       longitude: v.longitude,

@@ -14,6 +14,10 @@ export interface LoggedVisit {
   id: string;
   name: string;
   description: string | null;
+  contactName: string | null;
+  contactPhone: string | null;
+  contactEmail: string | null;
+  remarks: string | null;
   reachedAt: string;
   hasPhoto: boolean;
 }
@@ -195,6 +199,16 @@ export default function VisitedPlacesMap({
                         style={{ fontSize: 12, color: "#334155", whiteSpace: "pre-line" }}
                         dangerouslySetInnerHTML={{ __html: esc(v.description) }}
                       />
+                    )}
+                    {(v.contactName || v.contactPhone || v.contactEmail) && (
+                      <div style={{ fontSize: 12, color: "#334155", marginTop: 4 }}>
+                        <span style={{ fontWeight: 600 }}>Contact:</span> {[v.contactName, v.contactPhone, v.contactEmail].filter(Boolean).join(" · ")}
+                      </div>
+                    )}
+                    {v.remarks && (
+                      <div style={{ fontSize: 12, color: "#334155", marginTop: 2, whiteSpace: "pre-line" }}>
+                        <span style={{ fontWeight: 600 }}>Remarks:</span> {v.remarks}
+                      </div>
                     )}
                     {v.hasPhoto && (
                       // eslint-disable-next-line @next/next/no-img-element

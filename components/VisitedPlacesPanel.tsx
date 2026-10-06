@@ -54,6 +54,7 @@ interface VisitedPlacesResponse {
   checkInAt: string | null;
   checkOutAt: string | null;
   fieldVisits: { id: string }[];
+  odometer: { startKm: number | null; endKm: number | null; distanceKm: number | null } | null;
   mostRecentDataDate: string | null;
   defaultRatePerKm: number | null;
   reimbursement: ReimbursementRecord | null;
@@ -360,7 +361,19 @@ export default function VisitedPlacesPanel({
                   : `${places.filter((p) => p.logged.length > 0).length} logged manually`
               }
             />
-            <Metric icon={Route} tone="orange" label="Distance travelled" value={formatDistance(data.totalDistanceMeters)} />
+            <Metric
+              icon={Route}
+              tone="orange"
+              label="Distance travelled"
+              value={formatDistance(data.totalDistanceMeters)}
+              hint={
+                data.odometer
+                  ? `Odometer ${data.odometer.startKm ?? "—"} → ${data.odometer.endKm ?? "—"}${
+                      data.odometer.distanceKm != null ? ` = ${data.odometer.distanceKm} km` : ""
+                    }`
+                  : "From GPS"
+              }
+            />
             <Metric
               icon={Flag}
               tone="green"
@@ -517,6 +530,17 @@ export default function VisitedPlacesPanel({
                                   <span className="min-w-0 text-xs text-slate-600">
                                     {v.name !== p.name && <span className="block font-medium text-slate-700">{v.name}</span>}
                                     {v.description && <span className="block whitespace-pre-line break-words">{v.description}</span>}
+                                    {(v.contactName || v.contactPhone || v.contactEmail) && (
+                                      <span className="mt-0.5 block break-words text-slate-500">
+                                        <span className="font-medium text-slate-600">Contact:</span>{" "}
+                                        {[v.contactName, v.contactPhone, v.contactEmail].filter(Boolean).join(" · ")}
+                                      </span>
+                                    )}
+                                    {v.remarks && (
+                                      <span className="block whitespace-pre-line break-words text-slate-500">
+                                        <span className="font-medium text-slate-600">Remarks:</span> {v.remarks}
+                                      </span>
+                                    )}
                                   </span>
                                 </span>
                               ))}

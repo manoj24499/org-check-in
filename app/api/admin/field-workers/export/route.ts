@@ -88,7 +88,10 @@ export async function GET(req: NextRequest) {
     { header: "Name", key: "name", width: 22 },
     { header: "Check-in", key: "in", width: 11 },
     { header: "Check-out", key: "out", width: 11 },
-    { header: "Distance travelled (km)", key: "km", width: 22 },
+    { header: "Start km (odometer)", key: "startKm", width: 19 },
+    { header: "End km (odometer)", key: "endKm", width: 18 },
+    { header: "Odometer distance (km)", key: "odoKm", width: 21 },
+    { header: "GPS distance (km)", key: "km", width: 18 },
     { header: "Stops logged", key: "stops", width: 13 },
     { header: "Reimbursement (₹)", key: "reimb", width: 18 },
     { header: "Note", key: "note", width: 28 },
@@ -98,7 +101,11 @@ export async function GET(req: NextRequest) {
     { header: "Employee ID", key: "code", width: 13 },
     { header: "Name", key: "name", width: 22 },
     { header: "Place", key: "place", width: 30 },
-    { header: "Description", key: "desc", width: 44 },
+    { header: "Description", key: "desc", width: 40 },
+    { header: "Contact person", key: "cname", width: 22 },
+    { header: "Phone", key: "cphone", width: 16 },
+    { header: "Email", key: "cmail", width: 26 },
+    { header: "Remarks", key: "remarks", width: 36 },
     { header: "Reached at", key: "at", width: 12 },
     { header: "Latitude", key: "lat", width: 12 },
     { header: "Longitude", key: "lng", width: 12 },
@@ -124,17 +131,17 @@ export async function GET(req: NextRequest) {
       prisma.locationPing.findMany({
         where: { userId: emp.id, timestamp: { gte: windowStart, lte: windowEnd } },
         orderBy: { timestamp: "asc" },
-        select: { latitude: true, longitude: true, timestamp: true },
+        select: { latitude: true, longitude: true, timestamp: true, accuracy: true },
       }),
       prisma.attendance.findMany({
         where: { userId: emp.id, timestamp: { gte: windowStart, lte: windowEnd } },
         orderBy: { timestamp: "asc" },
-        select: { type: true, timestamp: true },
+        select: { type: true, timestamp: true, odometerKm: true },
       }),
       prisma.fieldVisit.findMany({
         where: { attendance: { userId: emp.id }, reachedAt: { gte: windowStart, lte: windowEnd } },
         orderBy: { reachedAt: "asc" },
-        select: { name: true, description: true, reachedAt: true, latitude: true, longitude: true },
+        select: { name: true, description: true, contactName: true, contactPhone: true, contactEmail: true, remarks: true, reachedAt: true, latitude: true, longitude: true },
       }),
       prisma.reimbursement.findMany({
         where: { userId: emp.id, date: { gte: from, lte: to } },
@@ -174,6 +181,12 @@ export async function GET(req: NextRequest) {
         name: emp.name,
         in: fmtTime(checkIn?.timestamp),
         out: fmtTime(checkOut?.timestamp),
+        startKm: checkIn?.odometerKm ?? "",
+        endKm: checkOut?.odometerKm ?? "",
+        odoKm:
+          checkIn?.odometerKm != null && checkOut?.odometerKm != null
+            ? Math.round((checkOut.odometerKm - checkIn.odometerKm) * 10) / 10
+            : "",
         km,
         stops: dayVisits.length,
         reimb: reimb?.amount ?? "",
@@ -187,12 +200,17 @@ export async function GET(req: NextRequest) {
           name: emp.name,
           place: v.name,
           desc: v.description ?? "",
+          cname: v.contactName ?? "",
+          cphone: v.contactPhone ?? "",
+          cmail: v.contactEmail ?? "",
+          remarks: v.remarks ?? "",
           at: fmtTime(v.reachedAt),
           lat: v.latitude,
           lng: v.longitude,
           map: { text: "Open map", hyperlink: mapLink(v.latitude, v.longitude) },
         });
         row.getCell("desc").alignment = { wrapText: true, vertical: "top" };
+        row.getCell("remarks").alignment = { wrapText: true, vertical: "top" };
         row.getCell("map").font = { color: { argb: "FF2563EB" }, underline: true };
       }
 

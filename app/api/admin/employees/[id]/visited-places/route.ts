@@ -51,6 +51,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         id: true,
         type: true,
         timestamp: true,
+        odometerKm: true,
         pauses: { select: { pausedAt: true, resumedAt: true } },
         workSegments: { select: { mode: true, startedAt: true, endedAt: true } },
       },
@@ -87,12 +88,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     ? await prisma.fieldVisit.findMany({
         where: { attendanceId: { in: todaysCheckIns.map((c) => c.id) } },
         orderBy: { reachedAt: "asc" },
-        select: { id: true, name: true, description: true, reachedAt: true, latitude: true, longitude: true, hasPhoto: true },
+        select: { id: true, name: true, description: true, contactName: true, contactPhone: true, contactEmail: true, remarks: true, reachedAt: true, latitude: true, longitude: true, hasPhoto: true },
       })
     : [];
 
   const totalDistanceMeters = computeTotalDistanceMeters(pings);
-  const clusters = clusterPings(pings);
 
   // Raw GPS stops are merged into distinct places (see lib/visitedPlaces.ts) so
   // a worker circling one site is one place, not a pile of pins. Only these
@@ -117,6 +117,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           id: v.id,
           name: v.name,
           description: v.description,
+          contactName: v.contactName,
+          contactPhone: v.contactPhone,
+          contactEmail: v.contactEmail,
+          remarks: v.remarks,
           reachedAt: v.reachedAt,
           hasPhoto: v.hasPhoto,
         })),
@@ -137,6 +141,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     places,
     start: firstPing ? { latitude: firstPing.latitude, longitude: firstPing.longitude, timestamp: firstPing.timestamp } : null,
     end: lastPing && pings.length > 1 ? { latitude: lastPing.latitude, longitude: lastPing.longitude, timestamp: lastPing.timestamp } : null,
+    odometer:
+      checkIn?.odometerKm != null || checkOut?.odometerKm != null
+        ? {
+            startKm: checkIn?.odometerKm ?? null,
+            endKm: checkOut?.odometerKm ?? null,
+            distanceKm:
+              checkIn?.odometerKm != null && checkOut?.odometerKm != null
+                ? Math.round((checkOut.odometerKm - checkIn.odometerKm) * 10) / 10
+                : null,
+          }
+        : null,
     checkInAt: checkIn?.timestamp ?? null,
     checkOutAt: checkOut?.timestamp ?? null,
     fieldVisits: fieldVisits.map((v) => ({

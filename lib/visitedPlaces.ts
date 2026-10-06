@@ -8,6 +8,10 @@ export interface LoggedStop {
   id: string;
   name: string;
   description: string | null;
+  contactName: string | null;
+  contactPhone: string | null;
+  contactEmail: string | null;
+  remarks: string | null;
   reachedAt: Date;
   latitude: number;
   longitude: number;

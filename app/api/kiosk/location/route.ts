@@ -37,7 +37,9 @@ async function evaluateRangeStreak(
     target.radiusMeters;
 
   const priorPings = await prisma.locationPing.findMany({
-    where: { userId, timestamp: { gte: sinceTimestamp, lt: ping.timestamp } },
+    // Trail samples are dense extras for distance accuracy only — counting them
+    // would make three readings seconds apart look like a confirmed streak.
+    where: { userId, isTrail: false, timestamp: { gte: sinceTimestamp, lt: ping.timestamp } },
     orderBy: { timestamp: "desc" },
     take: STREAK_LENGTH - 1,
   });
@@ -421,6 +423,19 @@ const bodySchema = z.object({
   longitude: z.number().min(-180).max(180),
   accuracy: z.number().min(0),
   timestamp: z.string(),
+  // Extra GPS samples collected on the device between regular pings (see the
+  // mobile app's locationTracking). Stored only to make distance accurate.
+  trail: z
+    .array(
+      z.object({
+        latitude: z.number().min(-90).max(90),
+        longitude: z.number().min(-180).max(180),
+        accuracy: z.number().min(0),
+        timestamp: z.string(),
+      }),
+    )
+    .max(120)
+    .optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -528,6 +543,30 @@ export async function POST(req: NextRequest) {
       timestamp,
     },
   });
+
+  // Batched dense samples: keep only plausible ones (after this session began,
+  // not from the future) and drop any that coincide with the main ping.
+  if (parsed.data.trail?.length) {
+    const nowMs = Date.now();
+    const rows = parsed.data.trail
+      .map((p) => ({ ...p, ts: new Date(p.timestamp) }))
+      .filter(
+        (p) =>
+          !Number.isNaN(p.ts.getTime()) &&
+          p.ts.getTime() >= checkIn.timestamp.getTime() &&
+          p.ts.getTime() <= nowMs + 60_000 &&
+          p.ts.getTime() !== timestamp.getTime(),
+      )
+      .map((p) => ({
+        userId: checkIn.userId,
+        latitude: p.latitude,
+        longitude: p.longitude,
+        accuracy: p.accuracy,
+        timestamp: p.ts,
+        isTrail: true,
+      }));
+    if (rows.length > 0) await prisma.locationPing.createMany({ data: rows });
+  }
 
   if (permissionResult.autoCheckedOut) {
     return NextResponse.json({ tracking: false });

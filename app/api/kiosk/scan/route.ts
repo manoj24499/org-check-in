@@ -44,6 +44,9 @@ const scanSchema = z.object({
   // OvertimeRequest.workSummary).
   overtimeSummary: z.string().trim().max(1000).optional(),
   overtimeSummaryPhoto: z.string().optional(),
+  // Vehicle odometer reading in km — the start reading on CHECK_IN, the end
+  // reading on CHECK_OUT. Sent by the mobile app for Field-mode sessions.
+  odometerKm: z.number().min(0).max(10_000_000).optional(),
 });
 
 /**
@@ -430,6 +433,22 @@ async function handlePost(req: NextRequest) {
     return NextResponse.json({ error: "You've already checked out today." }, { status: 409 });
   }
 
+  // An end odometer reading can't be lower than the start reading taken at
+  // check-in — catches a typo before it silently corrupts the day's distance.
+  if (parsed.data.action === "CHECK_OUT" && parsed.data.odometerKm !== undefined) {
+    const startRow = await prisma.attendance.findFirst({
+      where: { userId: user.id, type: "CHECK_IN", odometerKm: { not: null } },
+      orderBy: { timestamp: "desc" },
+      select: { odometerKm: true, timestamp: true },
+    });
+    if (startRow?.odometerKm != null && parsed.data.odometerKm < startRow.odometerKm) {
+      return NextResponse.json(
+        { error: `End km can't be less than the start km (${startRow.odometerKm}).` },
+        { status: 400 },
+      );
+    }
+  }
+
   const now = new Date();
   const lateness =
     parsed.data.action === "CHECK_IN"
@@ -477,6 +496,7 @@ async function handlePost(req: NextRequest) {
                 effectiveWorkMode === "OFFICE"
               ? { checkInMode: "OFFICE" }
               : {}),
+          ...(parsed.data.odometerKm !== undefined ? { odometerKm: parsed.data.odometerKm } : {}),
           ...(photoBuffer ? { photo: photoBuffer, hasPhoto: true } : {}),
           faceVerifyStatus,
           faceSimilarity,

@@ -14,6 +14,11 @@ const MAX_REQUEST_BYTES = 6 * 1024 * 1024;
 const createSchema = z.object({
   name: z.string().trim().min(1).max(120),
   description: z.string().trim().max(500).optional(),
+  // Who was met at the site, plus free-text remarks — all optional.
+  contactName: z.string().trim().max(120).optional(),
+  contactPhone: z.string().trim().max(30).optional(),
+  contactEmail: z.string().trim().max(160).email().optional().or(z.literal("")),
+  remarks: z.string().trim().max(1000).optional(),
   photo: z.string(),
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
@@ -41,7 +46,7 @@ export async function GET(req: NextRequest) {
   const visits = await prisma.fieldVisit.findMany({
     where: { attendanceId: checkIn.id },
     orderBy: { reachedAt: "asc" },
-    select: { id: true, name: true, description: true, reachedAt: true, latitude: true, longitude: true, hasPhoto: true },
+    select: { id: true, name: true, description: true, contactName: true, contactPhone: true, contactEmail: true, remarks: true, reachedAt: true, latitude: true, longitude: true, hasPhoto: true },
   });
 
   return NextResponse.json({
@@ -49,6 +54,10 @@ export async function GET(req: NextRequest) {
       id: v.id,
       name: v.name,
       description: v.description,
+      contactName: v.contactName,
+      contactPhone: v.contactPhone,
+      contactEmail: v.contactEmail,
+      remarks: v.remarks,
       reachedAt: v.reachedAt.toISOString(),
       latitude: v.latitude,
       longitude: v.longitude,
@@ -101,6 +110,10 @@ export async function POST(req: NextRequest) {
       attendanceId: checkIn.id,
       name: parsed.data.name,
       description: parsed.data.description || null,
+      contactName: parsed.data.contactName || null,
+      contactPhone: parsed.data.contactPhone || null,
+      contactEmail: parsed.data.contactEmail || null,
+      remarks: parsed.data.remarks || null,
       photo: photoBuffer,
       hasPhoto: true,
       latitude: parsed.data.latitude,
@@ -112,6 +125,10 @@ export async function POST(req: NextRequest) {
     id: visit.id,
     name: visit.name,
     description: visit.description,
+    contactName: visit.contactName,
+    contactPhone: visit.contactPhone,
+    contactEmail: visit.contactEmail,
+    remarks: visit.remarks,
     reachedAt: visit.reachedAt.toISOString(),
     latitude: visit.latitude,
     longitude: visit.longitude,

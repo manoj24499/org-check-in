@@ -619,6 +619,10 @@ model Attendance {
   // whose mode is already fixed on their profile.
   checkInMode CheckInMode?
 
+  // Vehicle odometer reading (km) the field worker entered: the start reading on
+  // a CHECK_IN row, the end reading on a CHECK_OUT row. Null when not entered.
+  odometerKm Float?
+
   // Auto-pause (see /api/kiosk/location): pauseWarningAt marks the moment 3
   // consecutive out-of-range pings were confirmed, starting a 10-minute grace
   // period before an AttendancePause row is actually created. Cleared once
@@ -794,6 +798,11 @@ model FieldVisit {
   // Optional free-text note the field worker adds under the place name
   // (e.g. "Met the owner, quote requested"). Null when left blank.
   description  String?
+  // Who they met at the site (all optional) and any free-text remarks.
+  contactName  String?
+  contactPhone String?
+  contactEmail String?
+  remarks      String?
   reachedAt    DateTime   @default(now())
   // Same retention convention as Attendance.photo/hasPhoto: always set at
   // creation (a photo is mandatory to log a visit — see the mobile route),
@@ -865,6 +874,10 @@ model LocationPing {
   longitude Float
   accuracy  Float
   timestamp DateTime @default(now())
+  // Extra high-frequency GPS samples the app batches in between its regular
+  // pings. They only exist to make travelled distance and routes accurate, so
+  // the auto-pause range-streak logic ignores them (see /api/kiosk/location).
+  isTrail   Boolean  @default(false)
 
   @@index([userId, timestamp])
 }
