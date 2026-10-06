@@ -292,3 +292,9 @@ html.theme-fade .admin-root *::after {
     transition: none !important;
   }
 }
+
+/* Leaflet's panes/controls use z-index up to 1000; isolating the map keeps them
+   inside the map's own stacking context so dialogs and the tour always sit above. */
+.leaflet-container {
+  isolation: isolate;
+}
