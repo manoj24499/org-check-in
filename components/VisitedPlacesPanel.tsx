@@ -5,16 +5,20 @@ import dynamic from "next/dynamic";
 import {
   CalendarDays,
   Camera,
+  ClipboardList,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock,
   Flag,
   IndianRupee,
+  Mail,
   MapPin,
+  Phone,
   Route,
   Square,
   Timer,
+  User,
 } from "lucide-react";
 import VisitDatePicker from "./VisitDatePicker";
 import { Avatar, BTN_PRIMARY, CARD, IconChip, type Tone } from "./admin/ui";
@@ -58,6 +62,15 @@ interface VisitedPlacesResponse {
   mostRecentDataDate: string | null;
   defaultRatePerKm: number | null;
   reimbursement: ReimbursementRecord | null;
+}
+
+type DistanceBasis = "odometer" | "gps";
+
+/** Kilometres the reimbursement is based on: the odometer reading when both
+ * start and end were entered and the admin picked it, otherwise the GPS total. */
+function claimedKm(d: { totalDistanceMeters: number; odometer: { distanceKm: number | null } | null }, basis: DistanceBasis) {
+  const odo = d.odometer?.distanceKm ?? null;
+  return basis === "odometer" && odo != null ? odo : d.totalDistanceMeters / 1000;
 }
 
 function formatDistance(meters: number) {
@@ -134,6 +147,9 @@ export default function VisitedPlacesPanel({
   const [error, setError] = useState<string | null>(null);
   const [focusOrder, setFocusOrder] = useState<number | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
+  // Which distance the reimbursement is calculated from — the odometer (start/end km the
+  // employee entered) is the default whenever both readings exist.
+  const [basis, setBasis] = useState<DistanceBasis>("odometer");
   const calendarRef = useRef<HTMLDivElement>(null);
 
   const [rateInput, setRateInput] = useState("");
@@ -186,13 +202,14 @@ export default function VisitedPlacesPanel({
   // distance-based suggestion using the admin's default rate.
   useEffect(() => {
     if (!data) return;
-    const distanceKm = data.totalDistanceMeters / 1000;
+    const distanceKm = claimedKm(data, "odometer");
     const rate = data.reimbursement?.ratePerKm ?? data.defaultRatePerKm ?? null;
     setRateInput(rate !== null ? String(rate) : "");
     const amount =
       data.reimbursement?.amount ?? (rate !== null ? Math.round(distanceKm * rate * 100) / 100 : null);
     setAmountInput(amount !== null ? String(amount) : "");
     setNoteInput(data.reimbursement?.note ?? "");
+    setBasis("odometer");
     setReimbursementError(null);
     setReimbursementSaved(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -237,7 +254,7 @@ export default function VisitedPlacesPanel({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         date: data.date,
-        distanceKm: data.totalDistanceMeters / 1000,
+        distanceKm: claimedKm(data, basis),
         ratePerKm: rate,
         amount,
         note: noteInput.trim() || undefined,
@@ -257,6 +274,8 @@ export default function VisitedPlacesPanel({
 
   const todayKey = new Date().toLocaleDateString("en-CA");
   const places = data?.places ?? [];
+  // Every hand-logged stop of the day, flattened with its place number, for the details card.
+  const visitDetails = places.flatMap((p) => p.logged.map((v) => ({ ...v, order: p.order })));
   const startedAt = data?.checkInAt ?? data?.start?.timestamp ?? null;
   const input =
     "mt-1 rounded-xl border border-black/10 bg-slate-50 px-3 py-2 text-sm transition-colors focus:border-orange-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500/30";
@@ -368,9 +387,9 @@ export default function VisitedPlacesPanel({
               value={formatDistance(data.totalDistanceMeters)}
               hint={
                 data.odometer
-                  ? `Odometer ${data.odometer.startKm ?? "—"} → ${data.odometer.endKm ?? "—"}${
-                      data.odometer.distanceKm != null ? ` = ${data.odometer.distanceKm} km` : ""
-                    }`
+                  ? data.odometer.distanceKm != null
+                    ? `Odometer: ${data.odometer.distanceKm} km`
+                    : "Odometer: awaiting end km"
                   : "From GPS"
               }
             />
@@ -390,9 +409,8 @@ export default function VisitedPlacesPanel({
             />
           </div>
 
-          {/* Map + journey */}
+          {/* Row 1: map | journey (same height). Row 2: reimbursement | visit details. */}
           <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-            <div className="flex min-w-0 flex-col gap-5">
               <div className={`${CARD} overflow-hidden p-1.5`}>
                 <div className="h-[380px] overflow-hidden rounded-xl sm:h-[480px]">
                   <VisitedPlacesMap
@@ -406,73 +424,13 @@ export default function VisitedPlacesPanel({
                 </div>
               </div>
 
-              {/* Reimbursement */}
-              <div className={`${CARD} p-5`}>
-                <div className="mb-4 flex items-center gap-2.5">
-                  <IconChip icon={IndianRupee} tone="green" size="sm" />
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">Reimbursement for this day</p>
-                    <p className="text-xs text-slate-500">Based on {(data.totalDistanceMeters / 1000).toFixed(1)} km travelled</p>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-end gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600">Rate (₹/km)</label>
-                    <input type="number" min={0} step="0.5" value={rateInput} onChange={(e) => setRateInput(e.target.value)} className={`${input} w-28`} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600">Amount to pay (₹)</label>
-                    <input type="number" min={0} step="1" value={amountInput} onChange={(e) => setAmountInput(e.target.value)} className={`${input} w-32`} />
-                  </div>
-                  {rateInput.trim() !== "" && !Number.isNaN(Number(rateInput)) && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setAmountInput(String(Math.round((data.totalDistanceMeters / 1000) * Number(rateInput) * 100) / 100))
-                      }
-                      className="mb-2 text-xs font-semibold text-orange-600 transition hover:text-orange-700"
-                    >
-                      Use {(data.totalDistanceMeters / 1000).toFixed(1)} km × ₹{rateInput} = ₹
-                      {(Math.round((data.totalDistanceMeters / 1000) * Number(rateInput) * 100) / 100).toFixed(2)}
-                    </button>
-                  )}
-                </div>
-
-                <div className="mt-3">
-                  <label className="block text-xs font-medium text-slate-600">Note (optional)</label>
-                  <input
-                    type="text"
-                    value={noteInput}
-                    onChange={(e) => setNoteInput(e.target.value)}
-                    placeholder="e.g. includes toll charges"
-                    className={`${input} w-full`}
-                  />
-                </div>
-
-                {reimbursementError && (
-                  <div className="mt-3 rounded-xl border border-red-100 bg-red-50 p-2.5 text-sm text-red-600">{reimbursementError}</div>
-                )}
-
-                <div className="mt-4 flex items-center gap-3">
-                  <button onClick={handleSaveReimbursement} disabled={savingReimbursement} className={`${BTN_PRIMARY} disabled:opacity-50`}>
-                    {savingReimbursement ? "Saving…" : data.reimbursement ? "Update" : "Save"}
-                  </button>
-                  {reimbursementSaved && !reimbursementError && (
-                    <span className="text-sm font-medium text-emerald-600">Saved.</span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex min-w-0 flex-col gap-5">
               {/* Journey timeline — clicking a stop flies the map to it */}
-              <div className={`${CARD} p-5`}>
+              <div className={`${CARD} flex flex-col p-5 xl:h-[492px]`}>
                 <p className="mb-4 text-sm font-semibold text-slate-900">Journey</p>
                 {places.length === 0 && !data.start ? (
                   <p className="py-4 text-center text-sm text-slate-500">Nothing recorded for this day.</p>
                 ) : (
-                  <ol className="relative flex max-h-[640px] flex-col gap-0.5 overflow-y-auto pr-1">
+                  <ol className="relative flex max-h-[420px] flex-col gap-0.5 overflow-y-auto pr-1 xl:max-h-none xl:min-h-0 xl:flex-1">
                     {data.start && (
                       <li className="flex gap-3 pb-4">
                         <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-green-600 text-white shadow-sm">
@@ -530,17 +488,6 @@ export default function VisitedPlacesPanel({
                                   <span className="min-w-0 text-xs text-slate-600">
                                     {v.name !== p.name && <span className="block font-medium text-slate-700">{v.name}</span>}
                                     {v.description && <span className="block whitespace-pre-line break-words">{v.description}</span>}
-                                    {(v.contactName || v.contactPhone || v.contactEmail) && (
-                                      <span className="mt-0.5 block break-words text-slate-500">
-                                        <span className="font-medium text-slate-600">Contact:</span>{" "}
-                                        {[v.contactName, v.contactPhone, v.contactEmail].filter(Boolean).join(" · ")}
-                                      </span>
-                                    )}
-                                    {v.remarks && (
-                                      <span className="block whitespace-pre-line break-words text-slate-500">
-                                        <span className="font-medium text-slate-600">Remarks:</span> {v.remarks}
-                                      </span>
-                                    )}
                                   </span>
                                 </span>
                               ))}
@@ -563,7 +510,198 @@ export default function VisitedPlacesPanel({
                   </ol>
                 )}
               </div>
-            </div>
+              {/* Reimbursement */}
+              <div className={`${CARD} self-start p-5`}>
+                <div className="mb-4 flex items-center gap-2.5">
+                  <IconChip icon={IndianRupee} tone="green" size="sm" />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Reimbursement for this day</p>
+                    <p className="text-xs text-slate-500">
+                      Based on {claimedKm(data, basis).toFixed(1)} km
+                      {basis === "odometer" && data.odometer?.distanceKm != null ? " (odometer)" : " (GPS)"}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Odometer readings the employee entered at check-in / check-out */}
+                <div className="mb-4 grid grid-cols-3 gap-2">
+                  {[
+                    { label: "Start km", value: data.odometer?.startKm ?? null, unit: "" },
+                    { label: "End km", value: data.odometer?.endKm ?? null, unit: "" },
+                    { label: "Odometer distance", value: data.odometer?.distanceKm ?? null, unit: "km" },
+                  ].map((m) => (
+                    <div key={m.label} className="rounded-xl bg-slate-50 px-3 py-2.5">
+                      <p className="text-[11px] font-medium text-slate-500">{m.label}</p>
+                      <p className="mt-0.5 text-[17px] font-semibold tabular-nums text-slate-900">
+                        {m.value != null ? m.value : "—"}
+                        {m.value != null && m.unit ? <span className="ml-1 text-xs font-medium text-slate-500">{m.unit}</span> : null}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                {data.odometer?.distanceKm != null && (
+                  <div className="mb-4 flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-medium text-slate-600">Calculate from</span>
+                    <div className="inline-flex rounded-lg bg-slate-100 p-0.5">
+                      {([
+                        { key: "odometer", label: `Odometer · ${data.odometer.distanceKm} km` },
+                        { key: "gps", label: `GPS · ${(data.totalDistanceMeters / 1000).toFixed(1)} km` },
+                      ] as const).map((o) => (
+                        <button
+                          key={o.key}
+                          type="button"
+                          onClick={() => {
+                            setBasis(o.key);
+                            const rate = Number(rateInput);
+                            if (rateInput.trim() !== "" && !Number.isNaN(rate)) {
+                              setAmountInput(String(Math.round(claimedKm(data, o.key) * rate * 100) / 100));
+                            }
+                          }}
+                          className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                            basis === o.key ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                          }`}
+                        >
+                          {o.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-end gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600">Rate (₹/km)</label>
+                    <input type="number" min={0} step="0.5" value={rateInput} onChange={(e) => setRateInput(e.target.value)} className={`${input} w-28`} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600">Amount to pay (₹)</label>
+                    <input type="number" min={0} step="1" value={amountInput} onChange={(e) => setAmountInput(e.target.value)} className={`${input} w-32`} />
+                  </div>
+                  {rateInput.trim() !== "" && !Number.isNaN(Number(rateInput)) && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAmountInput(String(Math.round(claimedKm(data, basis) * Number(rateInput) * 100) / 100))
+                      }
+                      className="mb-2 text-xs font-semibold text-orange-600 transition hover:text-orange-700"
+                    >
+                      Use {claimedKm(data, basis).toFixed(1)} km × ₹{rateInput} = ₹
+                      {(Math.round(claimedKm(data, basis) * Number(rateInput) * 100) / 100).toFixed(2)}
+                    </button>
+                  )}
+                </div>
+
+                <div className="mt-3">
+                  <label className="block text-xs font-medium text-slate-600">Note (optional)</label>
+                  <input
+                    type="text"
+                    value={noteInput}
+                    onChange={(e) => setNoteInput(e.target.value)}
+                    placeholder="e.g. includes toll charges"
+                    className={`${input} w-full`}
+                  />
+                </div>
+
+                {reimbursementError && (
+                  <div className="mt-3 rounded-xl border border-red-100 bg-red-50 p-2.5 text-sm text-red-600">{reimbursementError}</div>
+                )}
+
+                <div className="mt-4 flex items-center gap-3">
+                  <button onClick={handleSaveReimbursement} disabled={savingReimbursement} className={`${BTN_PRIMARY} disabled:opacity-50`}>
+                    {savingReimbursement ? "Saving…" : data.reimbursement ? "Update" : "Save"}
+                  </button>
+                  {reimbursementSaved && !reimbursementError && (
+                    <span className="text-sm font-medium text-emerald-600">Saved.</span>
+                  )}
+                </div>
+              </div>
+              {/* Visit details — odometer plus each logged stop's contact person, phone, email and remarks */}
+              <div className={`${CARD} p-5`}>
+                <div className="mb-4 flex items-center gap-2.5">
+                  <IconChip icon={ClipboardList} tone="indigo" size="sm" />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Visit details</p>
+                    <p className="text-xs text-slate-500">Contact person, phone, email and remarks logged on this day</p>
+                  </div>
+                </div>
+
+                {visitDetails.length === 0 ? (
+                  <p className="py-3 text-center text-sm text-slate-500">No logged locations on this day.</p>
+                ) : (
+                  <ul className="flex max-h-[420px] flex-col gap-3 overflow-y-auto pr-1">
+                    {visitDetails.map((v) => {
+                      const hasContact = v.contactName || v.contactPhone || v.contactEmail;
+                      return (
+                        <li key={v.id} className="rounded-xl border border-black/[0.07] p-3">
+                          <div className="flex items-start gap-3">
+                            {v.hasPhoto ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={`/api/admin/field-visits/${v.id}/photo`}
+                                alt={v.name}
+                                className="h-12 w-12 shrink-0 rounded-lg border border-black/10 object-cover"
+                              />
+                            ) : (
+                              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-lg border border-black/10 bg-slate-50 text-slate-400">
+                                <Camera className="h-4 w-4" />
+                              </span>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-semibold text-slate-900">{v.name}</p>
+                              <p className="text-xs text-slate-500">
+                                Stop {v.order} · reached {formatTime(v.reachedAt)}
+                              </p>
+                            </div>
+                          </div>
+
+                          {v.description && (
+                            <p className="mt-2 whitespace-pre-line break-words text-xs text-slate-600">{v.description}</p>
+                          )}
+
+                          {hasContact ? (
+                            <div className="mt-2 flex flex-col gap-1 text-xs text-slate-700">
+                              {v.contactName && (
+                                <span className="inline-flex items-center gap-1.5">
+                                  <User className="h-3.5 w-3.5 text-slate-400" />
+                                  {v.contactName}
+                                </span>
+                              )}
+                              {v.contactPhone && (
+                                <a
+                                  href={`tel:${v.contactPhone.replace(/\s/g, "")}`}
+                                  className="inline-flex items-center gap-1.5 text-orange-700 hover:underline"
+                                >
+                                  <Phone className="h-3.5 w-3.5 text-slate-400" />
+                                  {v.contactPhone}
+                                </a>
+                              )}
+                              {v.contactEmail && (
+                                <a
+                                  href={`mailto:${v.contactEmail}`}
+                                  className="inline-flex items-center gap-1.5 break-all text-orange-700 hover:underline"
+                                >
+                                  <Mail className="h-3.5 w-3.5 text-slate-400" />
+                                  {v.contactEmail}
+                                </a>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="mt-2 text-xs text-slate-400">No contact details added.</p>
+                          )}
+
+                          {v.remarks && (
+                            <p className="mt-2 whitespace-pre-line break-words rounded-lg bg-slate-50 px-2.5 py-2 text-xs text-slate-600">
+                              <span className="font-medium text-slate-700">Remarks: </span>
+                              {v.remarks}
+                            </p>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
           </div>
         </>
       ) : null}
