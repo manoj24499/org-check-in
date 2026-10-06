@@ -298,3 +298,11 @@ html.theme-fade .admin-root *::after {
 .leaflet-container {
   isolation: isolate;
 }
+
+/* Pulsing ring on the field-worker map's starting point (components/VisitedPlacesMap.tsx) */
+@keyframes vp-pulse {
+  0% { transform: scale(0.55); opacity: 0.9; }
+  100% { transform: scale(1.25); opacity: 0; }
+}
+.vp-pulse { animation: vp-pulse 1.8s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) { .vp-pulse { animation: none; } }

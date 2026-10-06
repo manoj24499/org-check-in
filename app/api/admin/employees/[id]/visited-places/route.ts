@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
 import { computeTotalDistanceMeters, clusterPings } from "@/lib/locationClustering";
 import { reverseGeocode } from "@/lib/geocoding";
+import { buildPlaces, shortPlaceName } from "@/lib/visitedPlaces";
 import { getSettings } from "@/lib/settings";
 import { computeFieldOfficeSplit } from "@/lib/attendanceHours";
 import { startOfISTDay, endOfISTDay, istDateKey, parseDateOnlyKey, todayDateOnlyIST } from "@/lib/istTime";
@@ -93,19 +94,38 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const totalDistanceMeters = computeTotalDistanceMeters(pings);
   const clusters = clusterPings(pings);
 
-  // Nominatim's ~1 req/sec usage policy is enforced inside reverseGeocode
-  // itself via a shared throttle, so firing these concurrently here is
-  // still safe — only the (rare) cache-miss lookups actually hit the
-  // network, and they get serialized regardless of how they're kicked off.
-  const visits = await Promise.all(
-    clusters.map(async (cluster) => ({
-      latitude: cluster.centroidLatitude,
-      longitude: cluster.centroidLongitude,
-      arrivedAt: cluster.arrivedAt,
-      departedAt: cluster.departedAt,
-      placeName: await reverseGeocode(cluster.centroidLatitude, cluster.centroidLongitude),
-    })),
+  // Raw GPS stops are merged into distinct places (see lib/visitedPlaces.ts) so
+  // a worker circling one site is one place, not a pile of pins. Only these
+  // merged places are reverse-geocoded; Nominatim's ~1 req/sec policy is
+  // enforced inside reverseGeocode itself, and a place the employee logged by
+  // hand uses their own name, so it needs no lookup at all.
+  const groups = buildPlaces(clusterPings(pings), fieldVisits);
+  const places = await Promise.all(
+    groups.map(async (g, i) => {
+      const loggedName = g.logged[0]?.name ?? null;
+      const geocoded = loggedName ? null : shortPlaceName(await reverseGeocode(g.latitude, g.longitude));
+      return {
+        order: i + 1,
+        latitude: g.latitude,
+        longitude: g.longitude,
+        name: loggedName ?? geocoded ?? "Unnamed place",
+        arrivedAt: g.arrivedAt,
+        departedAt: g.departedAt,
+        durationMs: g.durationMs,
+        stays: g.stays,
+        logged: g.logged.map((v) => ({
+          id: v.id,
+          name: v.name,
+          description: v.description,
+          reachedAt: v.reachedAt,
+          hasPhoto: v.hasPhoto,
+        })),
+      };
+    }),
   );
+
+  const firstPing = pings[0];
+  const lastPing = pings[pings.length - 1];
 
   return NextResponse.json({
     date: istDateKey(day),
@@ -114,7 +134,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       ? { fieldHours: hoursSplit.fieldMs / 3_600_000, officeHours: hoursSplit.officeMs / 3_600_000 }
       : null,
     pings: pings.map((p) => ({ latitude: p.latitude, longitude: p.longitude, timestamp: p.timestamp })),
-    visits,
+    places,
+    start: firstPing ? { latitude: firstPing.latitude, longitude: firstPing.longitude, timestamp: firstPing.timestamp } : null,
+    end: lastPing && pings.length > 1 ? { latitude: lastPing.latitude, longitude: lastPing.longitude, timestamp: lastPing.timestamp } : null,
+    checkInAt: checkIn?.timestamp ?? null,
+    checkOutAt: checkOut?.timestamp ?? null,
     fieldVisits: fieldVisits.map((v) => ({
       id: v.id,
       name: v.name,

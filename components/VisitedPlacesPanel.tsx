@@ -1,38 +1,33 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import {
+  CalendarDays,
+  Camera,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Flag,
+  IndianRupee,
+  MapPin,
+  Route,
+  Square,
+  Timer,
+} from "lucide-react";
 import VisitDatePicker from "./VisitDatePicker";
+import { Avatar, BTN_PRIMARY, CARD, IconChip, type Tone } from "./admin/ui";
+import type { TrailPoint, VisitedPlace } from "./VisitedPlacesMap";
 
 const VisitedPlacesMap = dynamic(() => import("./VisitedPlacesMap"), {
   ssr: false,
   loading: () => (
-    <div className="h-full w-full flex items-center justify-center bg-surface text-sm text-secondary rounded-lg">
+    <div className="flex h-full w-full items-center justify-center rounded-xl bg-slate-50 text-sm text-slate-500">
       Loading map…
     </div>
   ),
 });
-
-interface Visit {
-  latitude: number;
-  longitude: number;
-  placeName: string | null;
-  arrivedAt: string;
-  departedAt: string;
-}
-
-interface FieldVisit {
-  id: string;
-  name: string;
-  description: string | null;
-  reachedAt: string;
-  latitude: number;
-  longitude: number;
-  // False once the photo has passed retention and been cleared server-side
-  // (see PHOTO_RETENTION_DAYS in app/api/kiosk/scan/route.ts) — the visit
-  // itself is kept, just without its photo.
-  hasPhoto: boolean;
-}
 
 interface ReimbursementRecord {
   distanceKm: number;
@@ -53,8 +48,12 @@ interface VisitedPlacesResponse {
   // /api/admin/employees/[id]/visited-places.
   hoursSplit: HoursSplit | null;
   pings: { latitude: number; longitude: number; timestamp: string }[];
-  visits: Visit[];
-  fieldVisits: FieldVisit[];
+  places: VisitedPlace[];
+  start: TrailPoint | null;
+  end: TrailPoint | null;
+  checkInAt: string | null;
+  checkOutAt: string | null;
+  fieldVisits: { id: string }[];
   mostRecentDataDate: string | null;
   defaultRatePerKm: number | null;
   reimbursement: ReimbursementRecord | null;
@@ -72,41 +71,81 @@ function formatHours(hours: number) {
 }
 
 function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return new Date(iso).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatStay(ms: number) {
+  const mins = Math.round(ms / 60_000);
+  if (mins < 1) return "";
+  if (mins < 60) return `${mins} min`;
+  return `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, "0")}m`;
+}
+
+// Date keys are plain calendar dates, so step them in UTC to avoid DST/zone drift.
+function shiftDate(key: string, days: number) {
+  const d = new Date(`${key}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function Metric({
+  icon,
+  tone,
+  label,
+  value,
+  hint,
+}: {
+  icon: typeof MapPin;
+  tone: Tone;
+  label: string;
+  value: string;
+  hint?: string;
+}) {
+  return (
+    <div className={`${CARD} flex items-center gap-3.5 p-4`}>
+      <IconChip icon={icon} tone={tone} />
+      <div className="min-w-0">
+        <p className="text-[11.5px] font-medium text-slate-500">{label}</p>
+        <p className="truncate text-[22px] font-semibold leading-tight tracking-[-0.03em] tabular-nums text-slate-900">{value}</p>
+        {hint && <p className="truncate text-[11.5px] text-slate-500">{hint}</p>}
+      </div>
+    </div>
+  );
 }
 
 /**
- * Renders bare (no outer card) so it can be embedded as the detail side of
- * a master-detail layout — see components/FieldWorkersPanel.tsx, its only
- * caller. `employeeName` is shown above the map/calendar for context, since
- * this component itself carries no heading of its own.
+ * Detail side of the Field workers page (see components/FieldWorkersPanel.tsx,
+ * its only caller): one employee's day — headline numbers, the route map with
+ * the starting point and each distinct place numbered, a journey timeline that
+ * drives the map, a date picker, and the day's reimbursement.
  */
 export default function VisitedPlacesPanel({
   userId,
   employeeName,
+  employeeCode,
 }: {
   userId: string;
   employeeName?: string;
+  employeeCode?: string;
 }) {
   const [data, setData] = useState<VisitedPlacesResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [focusOrder, setFocusOrder] = useState<number | null>(null);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const calendarRef = useRef<HTMLDivElement>(null);
 
   const [rateInput, setRateInput] = useState("");
   const [amountInput, setAmountInput] = useState("");
   const [noteInput, setNoteInput] = useState("");
   const [savingReimbursement, setSavingReimbursement] = useState(false);
-  const [reimbursementError, setReimbursementError] = useState<string | null>(
-    null,
-  );
+  const [reimbursementError, setReimbursementError] = useState<string | null>(null);
   const [reimbursementSaved, setReimbursementSaved] = useState(false);
 
   async function loadDate(targetDate?: string) {
     setLoading(true);
     setError(null);
+    setFocusOrder(null);
     try {
       const url = targetDate
         ? `/api/admin/employees/${userId}/visited-places?date=${targetDate}`
@@ -120,8 +159,8 @@ export default function VisitedPlacesPanel({
       // instead of defaulting to an empty "today".
       if (
         !targetDate &&
-        body.visits.length === 0 &&
-        body.fieldVisits.length === 0 &&
+        body.places.length === 0 &&
+        body.pings.length === 0 &&
         body.mostRecentDataDate &&
         body.mostRecentDataDate !== body.date
       ) {
@@ -150,14 +189,30 @@ export default function VisitedPlacesPanel({
     const rate = data.reimbursement?.ratePerKm ?? data.defaultRatePerKm ?? null;
     setRateInput(rate !== null ? String(rate) : "");
     const amount =
-      data.reimbursement?.amount ??
-      (rate !== null ? Math.round(distanceKm * rate * 100) / 100 : null);
+      data.reimbursement?.amount ?? (rate !== null ? Math.round(distanceKm * rate * 100) / 100 : null);
     setAmountInput(amount !== null ? String(amount) : "");
     setNoteInput(data.reimbursement?.note ?? "");
     setReimbursementError(null);
     setReimbursementSaved(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.date]);
+
+  // The calendar is a popover off the date chip: close on Escape or a click outside.
+  useEffect(() => {
+    if (!calendarOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!calendarRef.current?.contains(e.target as Node)) setCalendarOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setCalendarOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [calendarOpen]);
 
   async function handleSaveReimbursement() {
     if (!data) return;
@@ -187,9 +242,7 @@ export default function VisitedPlacesPanel({
         note: noteInput.trim() || undefined,
       }),
     });
-    const body = await res
-      .json()
-      .catch(() => ({ error: "Unexpected server response." }));
+    const body = await res.json().catch(() => ({ error: "Unexpected server response." }));
     setSavingReimbursement(false);
 
     if (!res.ok) {
@@ -198,253 +251,297 @@ export default function VisitedPlacesPanel({
     }
 
     setReimbursementSaved(true);
-    setData((prev) =>
-      prev ? { ...prev, reimbursement: body.reimbursement } : prev,
-    );
+    setData((prev) => (prev ? { ...prev, reimbursement: body.reimbursement } : prev));
   }
 
+  const todayKey = new Date().toLocaleDateString("en-CA");
+  const places = data?.places ?? [];
+  const startedAt = data?.checkInAt ?? data?.start?.timestamp ?? null;
+  const input =
+    "mt-1 rounded-xl border border-black/10 bg-slate-50 px-3 py-2 text-sm transition-colors focus:border-orange-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500/30";
+
   return (
-    <div className="flex flex-col h-full">
-      <div className="mb-3 shrink-0">
-        {employeeName && (
-          <h3 className="text-base font-medium text-foreground">
-            {employeeName}
-          </h3>
-        )}
+    <div className="flex flex-col gap-5">
+      {/* Employee + day navigation */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          {employeeName && <Avatar name={employeeName} size={42} />}
+          <div className="min-w-0">
+            <h3 className="truncate text-[17px] font-semibold tracking-[-0.01em] text-slate-900">{employeeName}</h3>
+            {employeeCode && <p className="text-xs text-slate-500">{employeeCode} · Field worker</p>}
+          </div>
+        </div>
         {data && (
-          <p className="text-xs text-secondary mt-0.5">
-            Viewing{" "}
-            {new Date(`${data.date}T00:00:00`).toLocaleDateString("en-US", {
-              weekday: "long",
-              month: "short",
-              day: "numeric",
-            })}
-          </p>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => loadDate(shiftDate(data.date, -1))}
+              aria-label="Previous day"
+              className="grid h-9 w-9 place-items-center rounded-lg border border-black/10 bg-white text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <div ref={calendarRef} className="relative">
+              <button
+                onClick={() => setCalendarOpen((o) => !o)}
+                aria-expanded={calendarOpen}
+                aria-haspopup="dialog"
+                className={`flex min-w-[170px] items-center justify-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm transition-colors hover:bg-slate-50 ${
+                  calendarOpen ? "border-orange-300 ring-2 ring-orange-500/20" : "border-black/10"
+                }`}
+              >
+                <CalendarDays className="h-4 w-4 text-orange-600" />
+                {new Date(`${data.date}T00:00:00`).toLocaleDateString("en-US", {
+                  weekday: "short",
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+                <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform ${calendarOpen ? "rotate-180" : ""}`} />
+              </button>
+              {calendarOpen && (
+                <div
+                  role="dialog"
+                  aria-label="Pick a date"
+                  className={`${CARD} absolute right-0 top-full z-40 mt-2 w-[310px] p-4 shadow-xl`}
+                >
+                  <VisitDatePicker
+                    userId={userId}
+                    selectedDate={data.date}
+                    onSelect={(date) => {
+                      setCalendarOpen(false);
+                      loadDate(date);
+                    }}
+                  />
+                  <div className="mt-3 flex items-center gap-1.5 text-[11px] text-slate-500">
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+                    Logged a field visit
+                  </div>
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => loadDate(shiftDate(data.date, 1))}
+              disabled={data.date >= todayKey}
+              aria-label="Next day"
+              className="grid h-9 w-9 place-items-center rounded-lg border border-black/10 bg-white text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:opacity-40"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+            {data.date !== todayKey && (
+              <button
+                onClick={() => loadDate(todayKey)}
+                className="ml-1 rounded-lg px-2.5 py-2 text-xs font-semibold text-orange-600 hover:bg-orange-50"
+              >
+                Today
+              </button>
+            )}
+          </div>
         )}
       </div>
 
       {error && (
-        <div className="rounded-lg bg-red-50 text-red-600 p-3 text-sm border border-red-100 mb-3 shrink-0">
-          {error}
-        </div>
+        <div className="rounded-xl border border-red-100 bg-red-50 p-3 text-sm text-red-600">{error}</div>
       )}
 
       {loading ? (
-        <div className="h-[320px] flex items-center justify-center text-sm text-secondary">
-          Loading…
-        </div>
+        <div className="flex h-[420px] items-center justify-center text-sm text-slate-500">Loading…</div>
       ) : data ? (
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          {/* Auto-detected stops (data.visits) still feed the map's pin
-              markers below — only the standalone list of them was removed
-              from this UI; the clustering/reverse-geocoding stays server-side. */}
-          <div className="mb-3 flex flex-wrap gap-6 shrink-0">
-            <div>
-              <p className="text-xs font-medium text-secondary uppercase tracking-wider">
-                Distance traveled
-              </p>
-              <p className="text-xl font-medium tracking-tight mt-1 text-foreground">
-                {formatDistance(data.totalDistanceMeters)}
-              </p>
-            </div>
-            {data.hoursSplit && (
-              <>
-                <div>
-                  <p className="text-xs font-medium text-secondary uppercase tracking-wider">
-                    Field hours
-                  </p>
-                  <p className="text-xl font-medium tracking-tight mt-1 text-foreground">
-                    {formatHours(data.hoursSplit.fieldHours)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-secondary uppercase tracking-wider">
-                    Office hours
-                  </p>
-                  <p className="text-xl font-medium tracking-tight mt-1 text-foreground">
-                    {formatHours(data.hoursSplit.officeHours)}
-                  </p>
-                </div>
-              </>
-            )}
+        <>
+          {/* Headline numbers */}
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <Metric
+              icon={MapPin}
+              tone="indigo"
+              label="Places covered"
+              value={String(places.length)}
+              hint={
+                places.length === 0
+                  ? "No stops detected"
+                  : `${places.filter((p) => p.logged.length > 0).length} logged manually`
+              }
+            />
+            <Metric icon={Route} tone="orange" label="Distance travelled" value={formatDistance(data.totalDistanceMeters)} />
+            <Metric
+              icon={Flag}
+              tone="green"
+              label="Started at"
+              value={startedAt ? formatTime(startedAt) : "—"}
+              hint={data.checkOutAt ? `Finished ${formatTime(data.checkOutAt)}` : startedAt ? "Still in the field" : undefined}
+            />
+            <Metric
+              icon={Timer}
+              tone="slate"
+              label="Field hours"
+              value={data.hoursSplit ? formatHours(data.hoursSplit.fieldHours) : "—"}
+              hint={data.hoursSplit ? `Office ${formatHours(data.hoursSplit.officeHours)}` : "Shown once checked out"}
+            />
           </div>
 
-          {/* Map takes the left half, the date-picker calendar the right
-              half — replaces the old full-width map + prev/next-day arrows. */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4 lg:h-[42vh] lg:min-h-[320px]">
-            {/* lg:min-h-0 overrides the grid item's default min-height:auto —
-                without it, a tall child (the calendar) refuses to shrink to
-                the row's explicit height and spills out below it. */}
-            <div className="rounded-lg overflow-hidden border border-border h-[280px] lg:h-full lg:min-h-0">
-              <VisitedPlacesMap
-                pings={data.pings}
-                visits={data.visits}
-                fieldVisits={data.fieldVisits}
-              />
-            </div>
-            <div className="rounded-lg border border-border p-3 lg:h-full lg:min-h-0 overflow-y-auto">
-              <VisitDatePicker
-                userId={userId}
-                selectedDate={data.date}
-                onSelect={(date) => loadDate(date)}
-              />
-              <div className="flex items-center gap-1.5 mt-2 text-[11px] text-secondary">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                Logged a field visit
-              </div>
-            </div>
-          </div>
-
-          {/* "Logged by" and "Reimbursement" sit side by side — reimbursement
-              takes the full row on days with no manually-logged stops. */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4 items-start">
-            {data.fieldVisits.length > 0 && (
-              <div className="rounded-lg border border-border p-4">
-                <p className="text-xs font-medium text-secondary uppercase tracking-wider mb-2">
-                  Logged by {employeeName ?? "employee"}
-                </p>
-                <div className="flex flex-col gap-2">
-                  {data.fieldVisits.map((v) => (
-                    <div key={v.id} className="flex items-center gap-3 py-2">
-                      {v.hasPhoto ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={`/api/admin/field-visits/${v.id}/photo`}
-                          alt={v.name}
-                          className="w-11 h-11 rounded-lg object-cover border border-border shrink-0"
-                        />
-                      ) : (
-                        <span
-                          title="Photo no longer available"
-                          className="w-11 h-11 rounded-lg bg-surface border border-border shrink-0 flex items-center justify-center text-[10px] text-muted text-center leading-tight"
-                        >
-                          No photo
-                        </span>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-foreground truncate">
-                          {v.name}
-                        </p>
-                        {v.description && (
-                          <p className="text-xs text-foreground/80 mt-0.5 whitespace-pre-line break-words">
-                            {v.description}
-                          </p>
-                        )}
-                        <p className="text-xs text-secondary mt-0.5">
-                          Reached {formatTime(v.reachedAt)}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div
-              className={`rounded-lg border border-border bg-surface p-4 ${
-                data.fieldVisits.length === 0 ? "lg:col-span-2" : ""
-              }`}
-            >
-              <p className="text-xs font-medium text-secondary uppercase tracking-wider mb-3">
-                Reimbursement for this day
-              </p>
-
-              <div className="flex flex-wrap items-end gap-3">
-                <div>
-                  <label className="text-xs font-medium text-muted">
-                    Rate (₹/km)
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.5"
-                    value={rateInput}
-                    onChange={(e) => setRateInput(e.target.value)}
-                    className="mt-1 w-24 rounded-lg border border-border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+          {/* Map + journey */}
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+            <div className="flex min-w-0 flex-col gap-5">
+              <div className={`${CARD} overflow-hidden p-1.5`}>
+                <div className="h-[380px] overflow-hidden rounded-xl sm:h-[480px]">
+                  <VisitedPlacesMap
+                    pings={data.pings}
+                    places={places}
+                    start={data.start}
+                    end={data.end}
+                    focusOrder={focusOrder}
+                    onSelectPlace={setFocusOrder}
                   />
                 </div>
-                <div>
-                  <label className="text-xs font-medium text-muted">
-                    Amount to pay (₹)
-                  </label>
+              </div>
+
+              {/* Reimbursement */}
+              <div className={`${CARD} p-5`}>
+                <div className="mb-4 flex items-center gap-2.5">
+                  <IconChip icon={IndianRupee} tone="green" size="sm" />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Reimbursement for this day</p>
+                    <p className="text-xs text-slate-500">Based on {(data.totalDistanceMeters / 1000).toFixed(1)} km travelled</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-end gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600">Rate (₹/km)</label>
+                    <input type="number" min={0} step="0.5" value={rateInput} onChange={(e) => setRateInput(e.target.value)} className={`${input} w-28`} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600">Amount to pay (₹)</label>
+                    <input type="number" min={0} step="1" value={amountInput} onChange={(e) => setAmountInput(e.target.value)} className={`${input} w-32`} />
+                  </div>
+                  {rateInput.trim() !== "" && !Number.isNaN(Number(rateInput)) && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAmountInput(String(Math.round((data.totalDistanceMeters / 1000) * Number(rateInput) * 100) / 100))
+                      }
+                      className="mb-2 text-xs font-semibold text-orange-600 transition hover:text-orange-700"
+                    >
+                      Use {(data.totalDistanceMeters / 1000).toFixed(1)} km × ₹{rateInput} = ₹
+                      {(Math.round((data.totalDistanceMeters / 1000) * Number(rateInput) * 100) / 100).toFixed(2)}
+                    </button>
+                  )}
+                </div>
+
+                <div className="mt-3">
+                  <label className="block text-xs font-medium text-slate-600">Note (optional)</label>
                   <input
-                    type="number"
-                    min={0}
-                    step="1"
-                    value={amountInput}
-                    onChange={(e) => setAmountInput(e.target.value)}
-                    className="mt-1 w-28 rounded-lg border border-border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
+                    type="text"
+                    value={noteInput}
+                    onChange={(e) => setNoteInput(e.target.value)}
+                    placeholder="e.g. includes toll charges"
+                    className={`${input} w-full`}
                   />
                 </div>
-                {rateInput.trim() !== "" && !Number.isNaN(Number(rateInput)) && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setAmountInput(
-                        String(
-                          Math.round(
-                            (data.totalDistanceMeters / 1000) *
-                              Number(rateInput) *
-                              100,
-                          ) / 100,
-                        ),
-                      )
-                    }
-                    className="text-xs font-semibold text-primary hover:text-primary-dark transition mb-2"
-                  >
-                    Use {(data.totalDistanceMeters / 1000).toFixed(1)} km × ₹
-                    {rateInput} = ₹
-                    {(
-                      Math.round(
-                        (data.totalDistanceMeters / 1000) *
-                          Number(rateInput) *
-                          100,
-                      ) / 100
-                    ).toFixed(2)}
+
+                {reimbursementError && (
+                  <div className="mt-3 rounded-xl border border-red-100 bg-red-50 p-2.5 text-sm text-red-600">{reimbursementError}</div>
+                )}
+
+                <div className="mt-4 flex items-center gap-3">
+                  <button onClick={handleSaveReimbursement} disabled={savingReimbursement} className={`${BTN_PRIMARY} disabled:opacity-50`}>
+                    {savingReimbursement ? "Saving…" : data.reimbursement ? "Update" : "Save"}
                   </button>
-                )}
-              </div>
-
-              <div className="mt-3">
-                <label className="text-xs font-medium text-muted">
-                  Note (optional)
-                </label>
-                <input
-                  type="text"
-                  value={noteInput}
-                  onChange={(e) => setNoteInput(e.target.value)}
-                  placeholder="e.g. includes toll charges"
-                  className="mt-1 w-full rounded-lg border border-border px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent transition-all"
-                />
-              </div>
-
-              {reimbursementError && (
-                <div className="mt-3 rounded-lg bg-red-50 text-red-600 p-2.5 text-sm border border-red-100">
-                  {reimbursementError}
+                  {reimbursementSaved && !reimbursementError && (
+                    <span className="text-sm font-medium text-emerald-600">Saved.</span>
+                  )}
                 </div>
-              )}
+              </div>
+            </div>
 
-              <div className="mt-3 flex items-center gap-3">
-                <button
-                  onClick={handleSaveReimbursement}
-                  disabled={savingReimbursement}
-                  className="rounded-xl border border-transparent bg-orange-600 shadow-sm px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700 transition disabled:opacity-50"
-                >
-                  {savingReimbursement
-                    ? "Saving…"
-                    : data.reimbursement
-                      ? "Update"
-                      : "Save"}
-                </button>
-                {reimbursementSaved && !reimbursementError && (
-                  <span className="text-sm text-emerald-600 font-medium">
-                    Saved.
-                  </span>
+            <div className="flex min-w-0 flex-col gap-5">
+              {/* Journey timeline — clicking a stop flies the map to it */}
+              <div className={`${CARD} p-5`}>
+                <p className="mb-4 text-sm font-semibold text-slate-900">Journey</p>
+                {places.length === 0 && !data.start ? (
+                  <p className="py-4 text-center text-sm text-slate-500">Nothing recorded for this day.</p>
+                ) : (
+                  <ol className="relative flex max-h-[640px] flex-col gap-0.5 overflow-y-auto pr-1">
+                    {data.start && (
+                      <li className="flex gap-3 pb-4">
+                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-green-600 text-white shadow-sm">
+                          <Flag className="h-3.5 w-3.5" />
+                        </span>
+                        <div className="pt-0.5">
+                          <p className="text-sm font-medium text-slate-900">Starting point</p>
+                          <p className="text-xs text-slate-500">{formatTime(data.start.timestamp)}</p>
+                        </div>
+                      </li>
+                    )}
+                    {places.map((p) => {
+                      const active = focusOrder === p.order;
+                      const logged = p.logged.length > 0;
+                      return (
+                        <li key={p.order}>
+                          <button
+                            onClick={() => setFocusOrder(p.order)}
+                            className={`flex w-full gap-3 rounded-xl p-2 -m-2 mb-2 text-left transition-colors ${
+                              active ? "bg-orange-50 ring-1 ring-orange-200" : "hover:bg-slate-50"
+                            }`}
+                          >
+                            <span
+                              className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-semibold text-white shadow-sm ${
+                                logged ? "bg-orange-600" : "bg-indigo-600"
+                              }`}
+                            >
+                              {p.order}
+                            </span>
+                            <span className="min-w-0 flex-1 pt-0.5">
+                              <span className="block truncate text-sm font-medium text-slate-900">{p.name}</span>
+                              <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
+                                <span className="inline-flex items-center gap-1">
+                                  <Clock className="h-3 w-3" />
+                                  {formatTime(p.arrivedAt)}
+                                  {p.departedAt !== p.arrivedAt ? ` – ${formatTime(p.departedAt)}` : ""}
+                                </span>
+                                {formatStay(p.durationMs) && <span>· {formatStay(p.durationMs)}</span>}
+                                {p.stays > 1 && <span>· visited {p.stays}×</span>}
+                              </span>
+                              {p.logged.map((v) => (
+                                <span key={v.id} className="mt-1.5 flex items-start gap-2">
+                                  {v.hasPhoto ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                      src={`/api/admin/field-visits/${v.id}/photo`}
+                                      alt={v.name}
+                                      className="h-10 w-10 shrink-0 rounded-lg border border-black/10 object-cover"
+                                    />
+                                  ) : (
+                                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-black/10 bg-slate-50 text-slate-400">
+                                      <Camera className="h-4 w-4" />
+                                    </span>
+                                  )}
+                                  <span className="min-w-0 text-xs text-slate-600">
+                                    {v.name !== p.name && <span className="block font-medium text-slate-700">{v.name}</span>}
+                                    {v.description && <span className="block whitespace-pre-line break-words">{v.description}</span>}
+                                  </span>
+                                </span>
+                              ))}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                    {data.end && (
+                      <li className="flex gap-3 pt-2">
+                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-slate-900 text-white shadow-sm">
+                          <Square className="h-3 w-3 fill-white" />
+                        </span>
+                        <div className="pt-0.5">
+                          <p className="text-sm font-medium text-slate-900">{data.checkOutAt ? "Last location" : "Last seen"}</p>
+                          <p className="text-xs text-slate-500">{formatTime(data.end.timestamp)}</p>
+                        </div>
+                      </li>
+                    )}
+                  </ol>
                 )}
               </div>
             </div>
           </div>
-        </div>
+        </>
       ) : null}
     </div>
   );
