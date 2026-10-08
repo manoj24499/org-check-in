@@ -4,7 +4,7 @@ import Providers from "@/components/Providers";
 import TabSecurity from "@/components/TabSecurity";
 import AdminShell from "@/components/AdminShell";
 import { FaceVerifyStatusBanner } from "@/components/FaceVerifyStatusBanner";
-import { checkFaceVerifyHealth } from "@/lib/faceVerify";
+import { checkFaceVerifyHealth, happenedWithin } from "@/lib/faceVerify";
 import { startOfISTDay } from "@/lib/istTime";
 
 export default async function AdminLayout({
@@ -35,11 +35,16 @@ export default async function AdminLayout({
     isAdmin && organizationId
       ? await prisma.supportTicket.count({ where: { status: "OPEN", user: { organizationId } } })
       : 0;
-  const [faceVerifyStatus, unavailableCheckInsToday] =
+  // The banner follows the service's *current* state: it shows while the service is
+  // down, and for a short while after check-ins slipped through without a face check,
+  // then clears by itself once the service has been healthy again for a while.
+  const [faceVerifyStatus, unavailableToday] =
     isAdmin && organizationId
       ? await Promise.all([
           checkFaceVerifyHealth(),
-          prisma.attendance.count({
+          prisma.attendance.aggregate({
+            _count: true,
+            _max: { timestamp: true },
             where: {
               faceVerifyStatus: "UNAVAILABLE",
               timestamp: { gte: startOfISTDay() },
@@ -47,7 +52,9 @@ export default async function AdminLayout({
             },
           }),
         ])
-      : (["ok", 0] as const);
+      : (["ok", { _count: 0, _max: { timestamp: null } }] as const);
+  const unavailableCheckInsToday = unavailableToday._count;
+  const lastUnavailableAt = unavailableToday._max.timestamp?.toISOString() ?? null;
 
   return (
     <Providers>
@@ -63,7 +70,11 @@ export default async function AdminLayout({
         pendingSupportCount={pendingSupportCount}
         banner={
           isAdmin ? (
-            <FaceVerifyStatusBanner status={faceVerifyStatus} unavailableCheckInsToday={unavailableCheckInsToday} />
+            <FaceVerifyStatusBanner
+              status={faceVerifyStatus}
+              unavailableCheckInsToday={unavailableCheckInsToday}
+              recentlyMissed={happenedWithin(lastUnavailableAt, 30 * 60 * 1000)}
+            />
           ) : null
         }
       >

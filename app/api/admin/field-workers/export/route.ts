@@ -92,6 +92,11 @@ export async function GET(req: NextRequest) {
     { header: "End km (odometer)", key: "endKm", width: 18 },
     { header: "Odometer distance (km)", key: "odoKm", width: 21 },
     { header: "GPS distance (km)", key: "km", width: 18 },
+    { header: "Difference GPS - odometer (km)", key: "diff", width: 26 },
+    { header: "GPS accuracy vs odometer (%)", key: "acc", width: 25 },
+    { header: "Error (%)", key: "err", width: 11 },
+    { header: "Ping interval (sec)", key: "interval", width: 18 },
+    { header: "GPS points", key: "points", width: 12 },
     { header: "Stops logged", key: "stops", width: 13 },
     { header: "Reimbursement (₹)", key: "reimb", width: 18 },
     { header: "Note", key: "note", width: 28 },
@@ -175,6 +180,19 @@ export async function GET(req: NextRequest) {
       totalKm += km;
       const reimb = reimbByDay.get(key);
 
+      // Accuracy record: how close the GPS total is to the odometer reading, and
+      // how often the phone actually reported (median seconds between points).
+      const odoKm =
+        checkIn?.odometerKm != null && checkOut?.odometerKm != null
+          ? Math.round((checkOut.odometerKm - checkIn.odometerKm) * 100) / 100
+          : null;
+      const gaps = dayPings.slice(1).map((p, i) => (p.timestamp.getTime() - dayPings[i].timestamp.getTime()) / 1000);
+      const sortedGaps = [...gaps].sort((a, b) => a - b);
+      const medianGap = sortedGaps.length ? Math.round(sortedGaps[Math.floor(sortedGaps.length / 2)]) : "";
+      const diff = odoKm != null ? Math.round((km - odoKm) * 100) / 100 : "";
+      const acc = odoKm != null && odoKm > 0 ? Math.round((km / odoKm) * 1000) / 10 : "";
+      const err = odoKm != null && odoKm > 0 ? Math.round(((km - odoKm) / odoKm) * 1000) / 10 : "";
+
       summary.addRow({
         date: key,
         code: emp.employeeCode,
@@ -188,6 +206,11 @@ export async function GET(req: NextRequest) {
             ? Math.round((checkOut.odometerKm - checkIn.odometerKm) * 10) / 10
             : "",
         km,
+        diff,
+        acc,
+        err,
+        interval: medianGap,
+        points: dayPings.length,
         stops: dayVisits.length,
         reimb: reimb?.amount ?? "",
         note: reimb?.note ?? "",

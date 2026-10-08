@@ -262,14 +262,28 @@ export async function deleteFaceEnrollment(
 export async function checkFaceVerifyHealth(): Promise<"ok" | "unreachable" | "not_configured"> {
   const baseUrl = process.env.FACE_VERIFY_URL;
   if (!baseUrl) return "not_configured";
+  // The service sits on another machine reached over Tailscale, so a reply can
+  // occasionally take a few seconds. Wait 4 seconds (this runs on every admin
+  // page load, so it can't be longer), and count any HTTP answer below 500 as
+  // up: a bare GET on the base URL can legitimately return 404 while /verify
+  // works. Only a timeout, a refused connection or a 5xx is "unreachable".
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 3000);
+  const timeout = setTimeout(() => controller.abort(), 4000);
   try {
     const res = await fetch(baseUrl, { signal: controller.signal });
-    return res.ok ? "ok" : "unreachable";
+    return res.status < 500 ? "ok" : "unreachable";
   } catch {
     return "unreachable";
   } finally {
     clearTimeout(timeout);
   }
+}
+
+/**
+ * True when `iso` (the time of the latest check-in that skipped face verification)
+ * is within `windowMs` of now. Used by the admin banner so a past outage's notice
+ * clears itself shortly after the service is healthy again.
+ */
+export function happenedWithin(iso: string | null, windowMs: number): boolean {
+  return iso !== null && Date.now() - new Date(iso).getTime() < windowMs;
 }

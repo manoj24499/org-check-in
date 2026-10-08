@@ -12,11 +12,17 @@ import { AlertTriangle } from "lucide-react";
 export function FaceVerifyStatusBanner({
   status,
   unavailableCheckInsToday,
+  recentlyMissed,
 }: {
   status: "ok" | "unreachable" | "not_configured";
   unavailableCheckInsToday: number;
+  /** True when a check-in skipped face verification within the last half hour. */
+  recentlyMissed: boolean;
 }) {
-  if (status === "ok" && unavailableCheckInsToday === 0) return null;
+  // Once the service is healthy again, the "check-ins went through without face
+  // verification" notice is only worth showing for a short while after the last
+  // one, not for the rest of the day.
+  if (status === "ok" && (unavailableCheckInsToday === 0 || !recentlyMissed)) return null;
 
   const message =
     status !== "ok"
