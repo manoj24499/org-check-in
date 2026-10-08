@@ -18,6 +18,7 @@ import {
   Route,
   Square,
   Timer,
+  TriangleAlert,
   User,
 } from "lucide-react";
 import VisitDatePicker from "./VisitDatePicker";
@@ -53,6 +54,8 @@ interface VisitedPlacesResponse {
   hoursSplit: HoursSplit | null;
   pings: { latitude: number; longitude: number; timestamp: string }[];
   places: VisitedPlace[];
+  gaps: { from: string; to: string; minutes: number; straightMeters: number }[];
+  trackingCoveragePct: number | null;
   start: TrailPoint | null;
   end: TrailPoint | null;
   checkInAt: string | null;
@@ -86,6 +89,14 @@ function formatHours(hours: number) {
 
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatGapMinutes(m: number) {
+  return m >= 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")} min` : `${m} min`;
+}
+
+function formatGapTotal(gaps: { minutes: number }[]) {
+  return formatGapMinutes(gaps.reduce((sum, g) => sum + g.minutes, 0));
 }
 
 function formatStay(ms: number) {
@@ -408,6 +419,36 @@ export default function VisitedPlacesPanel({
               hint={data.hoursSplit ? `Office ${formatHours(data.hoursSplit.officeHours)}` : "Shown once checked out"}
             />
           </div>
+
+          {/* Tracking gaps: stretches where the phone stopped reporting */}
+          {data.gaps.length > 0 && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
+              <div className="flex items-start gap-3">
+                <TriangleAlert className="mt-0.5 h-[18px] w-[18px] shrink-0 text-amber-600" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold">
+                    Location tracking was interrupted {data.gaps.length} {data.gaps.length === 1 ? "time" : "times"}
+                    {data.trackingCoveragePct != null ? ` (data for ${data.trackingCoveragePct}% of the shift)` : ""}
+                  </p>
+                  <p className="mt-0.5 text-[13px] text-amber-800">
+                    {formatGapTotal(data.gaps)} had no location data, usually because the phone's battery saver or app
+                    settings stopped tracking in the background. These stretches are dashed on the map and are not counted
+                    in the GPS distance, so use the odometer reading for this day.
+                  </p>
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-[13px] font-medium text-amber-900">Show the gaps</summary>
+                    <ul className="mt-2 flex flex-col gap-1 text-[13px] text-amber-900">
+                      {data.gaps.map((g, i) => (
+                        <li key={i} className="tabular-nums">
+                          {formatTime(g.from)} – {formatTime(g.to)} · {formatGapMinutes(g.minutes)} without data
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Row 1: map | journey (same height). Row 2: reimbursement | visit details. */}
           <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
-import { clusterPings, computeTotalDistanceMeters, type RawPing } from "@/lib/locationClustering";
+import { clusterPings, computeTotalDistanceMeters, findTrackingGaps, type RawPing } from "@/lib/locationClustering";
 import { reverseGeocode } from "@/lib/geocoding";
 import { endOfISTDay, istDateKey, parseDateOnlyKey, startOfISTDay } from "@/lib/istTime";
 
@@ -44,7 +44,8 @@ function styleHeader(sheet: ExcelJS.Worksheet) {
  * and how far they travelled — for a picked date range and one employee or all
  * field workers. Three sheets: a per-day summary, the stops the employee logged
  * by hand (with their description), and the stops detected from GPS.
- * Query: from=YYYY-MM-DD, to=YYYY-MM-DD, employeeId=<id>|all.
+ * Query: from=YYYY-MM-DD, to=YYYY-MM-DD, employeeIds=<id>,<id>,... (omit or "all" for every
+ * active field worker; the older single employeeId=<id> still works).
  */
 export async function GET(req: NextRequest) {
   const admin = await requireAdmin();
@@ -60,12 +61,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: `Pick a range of ${MAX_DAYS} days or fewer.` }, { status: 400 });
   }
 
-  const employeeId = params.get("employeeId") ?? "all";
+  const rawIds = params.get("employeeIds") ?? params.get("employeeId") ?? "all";
+  const ids = rawIds === "all" ? [] : [...new Set(rawIds.split(",").map((x) => x.trim()).filter(Boolean))].slice(0, 200);
   const employees = await prisma.user.findMany({
     where: {
       organizationId: admin.organizationId,
       role: "EMPLOYEE",
-      ...(employeeId === "all" ? { active: true, workMode: "FIELD" } : { id: employeeId }),
+      ...(ids.length === 0 ? { active: true, workMode: "FIELD" } : { id: { in: ids } }),
     },
     orderBy: { name: "asc" },
     select: { id: true, name: true, employeeCode: true },
@@ -97,6 +99,9 @@ export async function GET(req: NextRequest) {
     { header: "Error (%)", key: "err", width: 11 },
     { header: "Ping interval (sec)", key: "interval", width: 18 },
     { header: "GPS points", key: "points", width: 12 },
+    { header: "Tracking coverage (%)", key: "coverage", width: 20 },
+    { header: "Time without data (min)", key: "gapMin", width: 22 },
+    { header: "Use odometer?", key: "useOdo", width: 26 },
     { header: "Stops logged", key: "stops", width: 13 },
     { header: "Reimbursement (₹)", key: "reimb", width: 18 },
     { header: "Note", key: "note", width: 28 },
@@ -189,6 +194,17 @@ export async function GET(req: NextRequest) {
       const gaps = dayPings.slice(1).map((p, i) => (p.timestamp.getTime() - dayPings[i].timestamp.getTime()) / 1000);
       const sortedGaps = [...gaps].sort((a, b) => a - b);
       const medianGap = sortedGaps.length ? Math.round(sortedGaps[Math.floor(sortedGaps.length / 2)]) : "";
+      // How much of the shift the phone actually reported, and what that means for trust in the GPS total.
+      const gapSec = findTrackingGaps(dayPings).reduce((sum, g) => sum + g.seconds, 0);
+      const shiftSec =
+        checkIn && checkOut ? (checkOut.timestamp.getTime() - checkIn.timestamp.getTime()) / 1000 : null;
+      const coverage = shiftSec && shiftSec > 0 ? Math.max(0, Math.round((1 - gapSec / shiftSec) * 100)) : "";
+      const noData = dayPings.length === 0 && checkIn != null;
+      const useOdo = noData
+        ? "Yes - no location data"
+        : typeof coverage === "number" && coverage < 90
+          ? "Yes - tracking gaps"
+          : "";
       const diff = odoKm != null ? Math.round((km - odoKm) * 100) / 100 : "";
       const acc = odoKm != null && odoKm > 0 ? Math.round((km / odoKm) * 1000) / 10 : "";
       const err = odoKm != null && odoKm > 0 ? Math.round(((km - odoKm) / odoKm) * 1000) / 10 : "";
@@ -211,6 +227,9 @@ export async function GET(req: NextRequest) {
         err,
         interval: medianGap,
         points: dayPings.length,
+        coverage: noData ? 0 : coverage,
+        gapMin: Math.round(gapSec / 60),
+        useOdo,
         stops: dayVisits.length,
         reimb: reimb?.amount ?? "",
         note: reimb?.note ?? "",

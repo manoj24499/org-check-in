@@ -623,6 +623,10 @@ model Attendance {
   // a CHECK_IN row, the end reading on a CHECK_OUT row. Null when not entered.
   odometerKm Float?
 
+  // When the tracking-stopped push was last sent for this session (see
+  // /api/cron/tracking-watch), so a silent phone is nudged at most every 30 minutes.
+  trackingAlertSentAt DateTime?
+
   // Auto-pause (see /api/kiosk/location): pauseWarningAt marks the moment 3
   // consecutive out-of-range pings were confirmed, starting a 10-minute grace
   // period before an AttendancePause row is actually created. Cleared once

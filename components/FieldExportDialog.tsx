@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Download, FileSpreadsheet, Loader2, X } from "lucide-react";
+import { Check, Download, FileSpreadsheet, Loader2, Search, X } from "lucide-react";
 import { BTN_PRIMARY, BTN_SECONDARY, IconChip } from "./admin/ui";
 
 interface FieldEmployee {
@@ -32,13 +32,35 @@ export default function FieldExportDialog({ employees }: { employees: FieldEmplo
   const [open, setOpen] = useState(false);
   const [from, setFrom] = useState(() => dayKey(new Date()));
   const [to, setTo] = useState(() => dayKey(new Date()));
-  const [employeeId, setEmployeeId] = useState("all");
+  // Every field worker starts ticked; untick to narrow the report down.
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(employees.map((e) => e.id)));
+  const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const allSelected = selected.size === employees.length;
+  const q = query.trim().toLowerCase();
+  const shown = q
+    ? employees.filter((e) => e.name.toLowerCase().includes(q) || e.employeeCode.toLowerCase().includes(q))
+    : employees;
+
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function toggleAll() {
+    setSelected(allSelected ? new Set() : new Set(employees.map((e) => e.id)));
+  }
+
   const days = from && to ? daysBetween(from, to) : 0;
   const rangeError =
-    !from || !to
+    selected.size === 0
+      ? "Select at least one employee."
+      : !from || !to
       ? "Pick both dates."
       : days < 1
         ? "The end date is before the start date."
@@ -69,7 +91,7 @@ export default function FieldExportDialog({ employees }: { employees: FieldEmplo
     setBusy(true);
     setError(null);
     try {
-      const qs = new URLSearchParams({ from, to, employeeId });
+      const qs = new URLSearchParams({ from, to, employeeIds: allSelected ? "all" : [...selected].join(",") });
       const res = await fetch(`/api/admin/field-workers/export?${qs}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -96,7 +118,12 @@ export default function FieldExportDialog({ employees }: { employees: FieldEmplo
   const chip =
     "rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700";
   const field =
-    "w-full rounded-xl border border-black/10 bg-slate-50 px-3 py-2.5 text-sm transition-colors focus:border-orange-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500/30";
+    "w-full rounded-xl border border-black/10 bg-slate-50 px-3 py-2 text-sm transition-colors focus:border-orange-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500/30";
+  const box = (on: boolean) =>
+    `grid h-4 w-4 shrink-0 place-items-center rounded border ${
+      on ? "border-orange-600 bg-orange-600 text-white" : "border-slate-300 bg-white"
+    }`;
+  const message = rangeError && (from || to || selected.size === 0) ? rangeError : error;
 
   return (
     <>
@@ -107,15 +134,14 @@ export default function FieldExportDialog({ employees }: { employees: FieldEmplo
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[1px]">
-          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-white/50 bg-white shadow-2xl">
-            <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-6 py-5">
-              <div className="flex items-start gap-3">
-                <IconChip icon={FileSpreadsheet} tone="green" />
-                <div>
-                  <h2 className="text-lg font-semibold tracking-[-0.01em] text-slate-900">Export field report</h2>
-                  <p className="mt-0.5 text-sm text-slate-500">
-                    Places visited, times reached and distance travelled, as an Excel file.
-                  </p>
+          <div className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/50 bg-white shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <IconChip icon={FileSpreadsheet} tone="green" size="sm" />
+                <div className="min-w-0">
+                  <h2 className="text-base font-semibold leading-tight tracking-[-0.01em] text-slate-900">Export field report</h2>
+                  <p className="truncate text-xs text-slate-500">Places, times reached and distance travelled · Excel</p>
                 </div>
               </div>
               <button
@@ -127,63 +153,95 @@ export default function FieldExportDialog({ employees }: { employees: FieldEmplo
               </button>
             </div>
 
-            <div className="flex flex-col gap-4 px-6 py-5">
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-slate-600">Employee</label>
-                <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} className={field}>
-                  <option value="all">All field workers ({employees.length})</option>
-                  {employees.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.name} ({e.employeeCode})
-                    </option>
-                  ))}
-                </select>
+            {/* Body: employees on the left, dates on the right (stacked on a phone) */}
+            <div className="grid min-h-0 flex-1 gap-5 overflow-y-auto p-5 sm:grid-cols-2">
+              <div className="min-w-0">
+                <div className="mb-1.5 flex items-center justify-between">
+                  <label className="text-xs font-medium text-slate-600">Employees</label>
+                  <span className="text-xs text-slate-500">
+                    {selected.size} of {employees.length}
+                  </span>
+                </div>
+                <div className="overflow-hidden rounded-xl border border-black/10">
+                  {employees.length > 6 && (
+                    <div className="relative border-b border-black/[0.06]">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <input
+                        id="export-employee-search"
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        placeholder="Search name or ID"
+                        className="w-full bg-slate-50 py-2 pl-9 pr-3 text-sm focus:bg-white focus:outline-none"
+                      />
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={toggleAll}
+                    className="flex w-full items-center gap-2.5 border-b border-black/[0.06] bg-slate-50 px-3 py-2 text-left text-sm font-medium text-slate-800 hover:bg-slate-100"
+                  >
+                    <span className={box(allSelected)}>{allSelected && <Check className="h-3 w-3" strokeWidth={3} />}</span>
+                    All field workers
+                  </button>
+                  <ul className="max-h-52 overflow-y-auto">
+                    {shown.map((e) => {
+                      const on = selected.has(e.id);
+                      return (
+                        <li key={e.id}>
+                          <button
+                            type="button"
+                            onClick={() => toggle(e.id)}
+                            role="checkbox"
+                            aria-checked={on}
+                            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                          >
+                            <span className={box(on)}>{on && <Check className="h-3 w-3" strokeWidth={3} />}</span>
+                            <span className="min-w-0 flex-1 truncate">{e.name}</span>
+                            <span className="text-xs text-slate-400">{e.employeeCode}</span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                    {shown.length === 0 && <li className="px-3 py-3 text-sm text-slate-500">No match.</li>}
+                  </ul>
+                </div>
               </div>
 
-              <div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="mb-1.5 block text-xs font-medium text-slate-600">From</label>
-                    <input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className={field} />
+              <div className="flex min-w-0 flex-col gap-3">
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600">Dates</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input id="export-from" type="date" aria-label="From date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className={field} />
+                    <input id="export-to" type="date" aria-label="To date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className={field} />
                   </div>
-                  <div>
-                    <label className="mb-1.5 block text-xs font-medium text-slate-600">To</label>
-                    <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className={field} />
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <button type="button" onClick={() => preset("today")} className={chip}>Today</button>
+                    <button type="button" onClick={() => preset("yesterday")} className={chip}>Yesterday</button>
+                    <button type="button" onClick={() => preset("week")} className={chip}>Last 7 days</button>
+                    <button type="button" onClick={() => preset("month")} className={chip}>This month</button>
                   </div>
                 </div>
-                <div className="mt-2.5 flex flex-wrap gap-1.5">
-                  <button type="button" onClick={() => preset("today")} className={chip}>Today</button>
-                  <button type="button" onClick={() => preset("yesterday")} className={chip}>Yesterday</button>
-                  <button type="button" onClick={() => preset("week")} className={chip}>Last 7 days</button>
-                  <button type="button" onClick={() => preset("month")} className={chip}>This month</button>
-                </div>
+                <p className="rounded-xl bg-slate-50 px-3 py-2.5 text-xs leading-relaxed text-slate-500">
+                  <span className="font-medium text-slate-700">3 sheets:</span> Daily summary, Logged stops, Detected stops.
+                  Up to {MAX_DAYS} days; place names for detected stops are looked up for ranges of 3 days or fewer.
+                </p>
               </div>
-
-              <div className="rounded-xl bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-500">
-                <p className="mb-1 font-medium text-slate-700">The file has 3 sheets</p>
-                <ul className="list-disc pl-4">
-                  <li><strong className="font-medium text-slate-600">Daily summary:</strong> check-in/out, distance (km), stops, reimbursement</li>
-                  <li><strong className="font-medium text-slate-600">Logged stops:</strong> place, description, time reached, map link</li>
-                  <li><strong className="font-medium text-slate-600">Detected stops:</strong> where they stayed, arrived, left, time spent</li>
-                </ul>
-                <p className="mt-1.5">Up to {MAX_DAYS} days at a time. Place names for detected stops are looked up for ranges of 3 days or fewer.</p>
-              </div>
-
-              {(rangeError && (from || to) ? rangeError : error) && (
-                <div className="rounded-xl border border-red-100 bg-red-50 p-3 text-sm text-red-600">
-                  {rangeError && (from || to) ? rangeError : error}
-                </div>
-              )}
             </div>
 
-            <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50/60 px-6 py-4">
-              <button type="button" onClick={() => setOpen(false)} className={BTN_SECONDARY}>
-                Cancel
-              </button>
-              <button type="button" onClick={download} disabled={busy || !!rangeError} className={`${BTN_PRIMARY} disabled:cursor-not-allowed disabled:opacity-50`}>
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                {busy ? "Preparing…" : "Download .xlsx"}
-              </button>
+            {/* Footer */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/60 px-5 py-3">
+              <p className={`min-w-0 text-sm ${message ? "text-red-600" : "text-slate-500"}`}>
+                {message ?? `${selected.size} ${selected.size === 1 ? "employee" : "employees"} · ${days} ${days === 1 ? "day" : "days"}`}
+              </p>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setOpen(false)} className={BTN_SECONDARY}>
+                  Cancel
+                </button>
+                <button type="button" onClick={download} disabled={busy || !!rangeError} className={`${BTN_PRIMARY} disabled:cursor-not-allowed disabled:opacity-50`}>
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                  {busy ? "Preparing…" : "Download .xlsx"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

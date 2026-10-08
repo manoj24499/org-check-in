@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
-import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from "react-leaflet";
+import { Fragment, useEffect, useMemo, useRef } from "react";
+import { MapContainer, TileLayer, Marker, Polyline, Popup, Tooltip, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 export interface VisitedPlacesPing {
   latitude: number;
   longitude: number;
+  /** ISO time; used to find silences in the route. */
+  timestamp?: string;
 }
 
 export interface LoggedVisit {
@@ -135,6 +137,35 @@ export default function VisitedPlacesMap({
 }) {
   const markers = useRef(new Map<number, L.Marker>());
   const path = useMemo<[number, number][]>(() => pings.map((p) => [p.latitude, p.longitude]), [pings]);
+  // Split the route wherever the phone went silent for more than GAP_MS: the real
+  // path is drawn solid, and the unmeasured stretch between is drawn dashed.
+  const { segments, gapLines } = useMemo(() => {
+    const GAP_MS = 5 * 60 * 1000;
+    const segs: [number, number][][] = [];
+    const gaps: { a: [number, number]; b: [number, number]; minutes: number; from: string; to: string }[] = [];
+    let cur: [number, number][] = [];
+    pings.forEach((p, i) => {
+      const pt: [number, number] = [p.latitude, p.longitude];
+      const prev = pings[i - 1];
+      if (prev && p.timestamp && prev.timestamp) {
+        const ms = new Date(p.timestamp).getTime() - new Date(prev.timestamp).getTime();
+        if (ms > GAP_MS) {
+          segs.push(cur);
+          gaps.push({
+            a: [prev.latitude, prev.longitude],
+            b: pt,
+            minutes: Math.round(ms / 60000),
+            from: prev.timestamp,
+            to: p.timestamp,
+          });
+          cur = [];
+        }
+      }
+      cur.push(pt);
+    });
+    if (cur.length) segs.push(cur);
+    return { segments: segs, gapLines: gaps };
+  }, [pings]);
   const bounds = useMemo<[number, number][]>(
     () => [...path, ...places.map((p) => [p.latitude, p.longitude] as [number, number])],
     [path, places],
@@ -149,7 +180,7 @@ export default function VisitedPlacesMap({
   }
 
   return (
-    <div className="relative h-full w-full">
+    <div className="relative isolate h-full w-full">
       <MapContainer center={bounds[0]} zoom={13} scrollWheelZoom style={{ height: "100%", width: "100%" }}>
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -159,12 +190,29 @@ export default function VisitedPlacesMap({
         <Focus order={focusOrder} places={places} markers={markers} />
 
         {/* White casing under the route keeps it readable on busy map tiles. */}
-        {path.length > 1 && (
-          <>
-            <Polyline positions={path} pathOptions={{ color: "#ffffff", weight: 7, opacity: 0.9, lineCap: "round", lineJoin: "round" }} />
-            <Polyline positions={path} pathOptions={{ color: "#ea580c", weight: 4, opacity: 0.95, lineCap: "round", lineJoin: "round" }} />
-          </>
+        {segments.map((seg, i) =>
+          seg.length > 1 ? (
+            <Fragment key={i}>
+              <Polyline positions={seg} pathOptions={{ color: "#ffffff", weight: 7, opacity: 0.9, lineCap: "round", lineJoin: "round" }} />
+              <Polyline positions={seg} pathOptions={{ color: "#ea580c", weight: 4, opacity: 0.95, lineCap: "round", lineJoin: "round" }} />
+            </Fragment>
+          ) : null,
         )}
+
+        {/* Silences: the line is a guess, so it is dashed grey and labelled. */}
+        {gapLines.map((g, i) => (
+          <Polyline
+            key={`gap-${i}`}
+            positions={[g.a, g.b]}
+            pathOptions={{ color: "#64748b", weight: 3, opacity: 0.9, dashArray: "3 9", lineCap: "round" }}
+          >
+            <Tooltip sticky>
+              No location data · {g.minutes >= 60 ? `${Math.floor(g.minutes / 60)} h ${g.minutes % 60} min` : `${g.minutes} min`}
+              <br />
+              {timeLabel(g.from)} – {timeLabel(g.to)}
+            </Tooltip>
+          </Polyline>
+        ))}
 
         {places.map((p) => (
           <Marker
@@ -261,6 +309,9 @@ export default function VisitedPlacesMap({
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-[3px] bg-slate-900" /> Last seen
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-4 border-t-[3px] border-dotted" style={{ borderColor: "#64748b" }} /> No data
         </span>
       </div>
     </div>

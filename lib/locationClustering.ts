@@ -27,6 +27,47 @@ const DEFAULT_MIN_DURATION_MS = 5 * 60 * 1000;
 const MAX_ACCURACY_METERS = 100;
 const MIN_STEP_METERS = 10;
 const MAX_SPEED_MPS = 70; // ~250 km/h
+// Regular pings arrive about every 2 minutes, so a silence longer than this means
+// the phone stopped reporting (battery saver, signal, app closed). The straight
+// line across such a silence is a guess, not a measured path, so it is not
+// counted as distance and the map draws it dashed.
+export const TRACKING_GAP_SECONDS = 5 * 60;
+
+export interface TrackingGap {
+  from: Date;
+  to: Date;
+  seconds: number;
+  fromLatitude: number;
+  fromLongitude: number;
+  toLatitude: number;
+  toLongitude: number;
+  /** Straight-line distance between the two points either side of the gap. */
+  straightMeters: number;
+}
+
+/** Silences longer than TRACKING_GAP_SECONDS between consecutive readings. */
+export function findTrackingGaps(pings: RawPing[]): TrackingGap[] {
+  const sorted = [...pings].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+  const gaps: TrackingGap[] = [];
+  for (let i = 1; i < sorted.length; i++) {
+    const a = sorted[i - 1];
+    const b = sorted[i];
+    const seconds = (b.timestamp.getTime() - a.timestamp.getTime()) / 1000;
+    if (seconds > TRACKING_GAP_SECONDS) {
+      gaps.push({
+        from: a.timestamp,
+        to: b.timestamp,
+        seconds,
+        fromLatitude: a.latitude,
+        fromLongitude: a.longitude,
+        toLatitude: b.latitude,
+        toLongitude: b.longitude,
+        straightMeters: haversineDistanceMeters(a.latitude, a.longitude, b.latitude, b.longitude),
+      });
+    }
+  }
+  return gaps;
+}
 
 /**
  * Distance travelled along the recorded readings, in metres: the sum of
@@ -47,6 +88,11 @@ export function computeTotalDistanceMeters(pings: RawPing[]): number {
     const d = haversineDistanceMeters(anchor.latitude, anchor.longitude, p.latitude, p.longitude);
     if (d < MIN_STEP_METERS) continue;
     const seconds = (p.timestamp.getTime() - anchor.timestamp.getTime()) / 1000;
+    // Don't count the straight line across a silence; resume measuring from here.
+    if (seconds > TRACKING_GAP_SECONDS) {
+      anchor = p;
+      continue;
+    }
     if (seconds > 0 && d / seconds > MAX_SPEED_MPS) continue;
     total += d;
     anchor = p;

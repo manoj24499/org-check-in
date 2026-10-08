@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CalendarOff, Clock, UserCheck, UserPlus, Users } from "lucide-react";
-import { BTN_PRIMARY, Card, Page, PageHeader, StatCard } from "@/components/admin/ui";
+import { CalendarOff, Clock, ScanEye, MapPinOff, UserCheck, UserPlus, Users } from "lucide-react";
+import { Avatar, BTN_PRIMARY, Card, Page, PageHeader, Pill, StatCard } from "@/components/admin/ui";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import DashboardWorkspace from "@/components/DashboardWorkspace";
 import PendingPermissionsPanel from "@/components/PendingPermissionsPanel";
 import { startOfISTDay, todayDateOnlyIST } from "@/lib/istTime";
 import { istGreeting } from "@/lib/greeting";
+import { findSilentFieldWorkers } from "@/lib/trackingWatch";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,33 @@ export default async function AdminDashboard() {
         select: { type: true, timestamp: true, lateMinutes: true, leaveType: true },
       },
     },
+  });
+
+  // Check-ins from the last 7 days that went through without a face check
+  // because the face service could not be reached (fail-open, see
+  // lib/faceVerify.ts). Kept here so the record stays visible after the
+  // top banner clears itself.
+  const missedFaceChecks = await prisma.attendance.findMany({
+    where: {
+      type: "CHECK_IN",
+      faceVerifyStatus: "UNAVAILABLE",
+      timestamp: { gte: new Date(startOfISTDay().getTime() - 6 * 24 * 3600 * 1000) },
+      user: { organizationId },
+    },
+    orderBy: { timestamp: "desc" },
+    select: { id: true, timestamp: true, user: { select: { id: true, name: true, employeeCode: true } } },
+    take: 50,
+  });
+  // Field workers who are checked in but whose phone has stopped sending location.
+  const silentWorkers = await findSilentFieldWorkers(organizationId);
+  const istWhen = new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
   });
 
   // Most recent location ping per employee (one query via `distinct`, rather
@@ -144,6 +172,45 @@ export default async function AdminDashboard() {
 
       {pendingPermissions.length > 0 ? <PendingPermissionsPanel initialPermissions={pendingPermissions} /> : null}
 
+      {silentWorkers.length > 0 && (
+        <Card className="p-5">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="flex items-start gap-3">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-red-500/10 text-red-600">
+                <MapPinOff className="h-[18px] w-[18px]" />
+              </span>
+              <div>
+                <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-slate-900">Tracking stopped</h2>
+                <p className="mt-0.5 max-w-2xl text-[13px] text-slate-500">
+                  Checked in on a field day, but the phone has stopped sending location. Their route and distance are not
+                  being recorded. They have been sent a reminder; if it keeps happening, check the phone&apos;s battery and
+                  location settings.
+                </p>
+              </div>
+            </div>
+            <Pill tone="red">{silentWorkers.length} now</Pill>
+          </div>
+          <ul className="mt-4 divide-y divide-black/[0.06]">
+            {silentWorkers.map((w) => (
+              <li key={w.attendanceId} className="flex flex-wrap items-center gap-3 py-2.5">
+                <Avatar name={w.name} size={32} />
+                <div className="min-w-0 flex-1">
+                  <Link href={`/admin/employees/${w.userId}`} className="truncate text-sm font-medium text-slate-900 hover:text-orange-600">
+                    {w.name}
+                  </Link>
+                  <p className="text-xs text-slate-500">{w.employeeCode}</p>
+                </div>
+                <p className="text-[13px] tabular-nums text-slate-600">
+                  {w.lastPingAt
+                    ? `Last location ${Math.round(w.silentMs / 60000)} min ago`
+                    : `No location since check-in (${Math.round(w.silentMs / 60000)} min)`}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Total employees" value={total} icon={Users} tone="indigo" hint="Active on your plan" />
         <StatCard
@@ -200,6 +267,43 @@ export default async function AdminDashboard() {
           ))}
         </ul>
       </Card>
+
+      {missedFaceChecks.length > 0 && (
+        <Card className="p-5">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="flex items-start gap-3">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-amber-500/10 text-amber-600">
+                <ScanEye className="h-[18px] w-[18px]" />
+              </span>
+              <div>
+                <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-slate-900">Missed face checks</h2>
+                <p className="mt-0.5 max-w-2xl text-[13px] text-slate-500">
+                  Check-ins in the last 7 days that went through without a face check, because the face service could not
+                  be reached at that moment.
+                </p>
+              </div>
+            </div>
+            <Pill tone="amber">{missedFaceChecks.length} in 7 days</Pill>
+          </div>
+          <ul className="mt-4 divide-y divide-black/[0.06]">
+            {missedFaceChecks.map((m) => (
+              <li key={m.id} className="flex flex-wrap items-center gap-3 py-2.5">
+                <Avatar name={m.user.name} size={32} />
+                <div className="min-w-0 flex-1">
+                  <Link
+                    href={`/admin/employees/${m.user.id}`}
+                    className="truncate text-sm font-medium text-slate-900 hover:text-orange-600"
+                  >
+                    {m.user.name}
+                  </Link>
+                  <p className="text-xs text-slate-500">{m.user.employeeCode}</p>
+                </div>
+                <p className="text-[13px] tabular-nums text-slate-600">{istWhen.format(m.timestamp)}</p>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <DashboardWorkspace employees={employees} />
     </Page>

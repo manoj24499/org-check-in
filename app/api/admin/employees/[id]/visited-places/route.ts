@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
-import { computeTotalDistanceMeters, clusterPings } from "@/lib/locationClustering";
+import { computeTotalDistanceMeters, clusterPings, findTrackingGaps } from "@/lib/locationClustering";
 import { reverseGeocode } from "@/lib/geocoding";
 import { buildPlaces, shortPlaceName } from "@/lib/visitedPlaces";
 import { getSettings } from "@/lib/settings";
@@ -131,6 +131,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const firstPing = pings[0];
   const lastPing = pings[pings.length - 1];
 
+  // Stretches where the phone stopped reporting. They are drawn dashed on the map
+  // and excluded from the GPS distance (see lib/locationClustering.ts).
+  const gaps = findTrackingGaps(pings);
+  const missingMs = gaps.reduce((sum, g) => sum + g.seconds * 1000, 0);
+  const sessionStart = checkIn?.timestamp ?? firstPing?.timestamp;
+  const sessionEnd = checkOut?.timestamp ?? lastPing?.timestamp;
+  const sessionMs = sessionStart && sessionEnd ? Math.max(0, sessionEnd.getTime() - sessionStart.getTime()) : 0;
+
   return NextResponse.json({
     date: istDateKey(day),
     totalDistanceMeters,
@@ -139,6 +147,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       : null,
     pings: pings.map((p) => ({ latitude: p.latitude, longitude: p.longitude, timestamp: p.timestamp })),
     places,
+    gaps: gaps.map((g) => ({
+      from: g.from,
+      to: g.to,
+      minutes: Math.round(g.seconds / 60),
+      straightMeters: Math.round(g.straightMeters),
+    })),
+    trackingCoveragePct: sessionMs > 0 ? Math.max(0, Math.round((1 - missingMs / sessionMs) * 100)) : null,
     start: firstPing ? { latitude: firstPing.latitude, longitude: firstPing.longitude, timestamp: firstPing.timestamp } : null,
     end: lastPing && pings.length > 1 ? { latitude: lastPing.latitude, longitude: lastPing.longitude, timestamp: lastPing.timestamp } : null,
     odometer:
