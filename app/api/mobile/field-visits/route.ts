@@ -22,6 +22,8 @@ const createSchema = z.object({
   photo: z.string(),
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
+  // Set when this visit completes a place an admin assigned (see AssignedPlace).
+  assignedPlaceId: z.string().min(1).max(40).optional(),
 });
 
 /** The active FIELD check-in — the parent every FieldVisit hangs off. Built
@@ -105,6 +107,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // The assigned place being completed must be the caller's own and still pending.
+  if (parsed.data.assignedPlaceId) {
+    const place = await prisma.assignedPlace.findFirst({
+      where: { id: parsed.data.assignedPlaceId, userId: auth.sub, status: "PENDING" },
+      select: { id: true },
+    });
+    if (!place) {
+      return NextResponse.json({ error: "That assigned place is no longer available." }, { status: 409 });
+    }
+  }
+
   const visit = await prisma.fieldVisit.create({
     data: {
       attendanceId: checkIn.id,
@@ -118,8 +131,14 @@ export async function POST(req: NextRequest) {
       hasPhoto: true,
       latitude: parsed.data.latitude,
       longitude: parsed.data.longitude,
+      ...(parsed.data.assignedPlaceId
+        ? { assignedPlace: { connect: { id: parsed.data.assignedPlaceId } } }
+        : {}),
     },
   });
+  if (parsed.data.assignedPlaceId) {
+    await prisma.assignedPlace.update({ where: { id: parsed.data.assignedPlaceId }, data: { status: "VISITED" } });
+  }
 
   return NextResponse.json({
     id: visit.id,

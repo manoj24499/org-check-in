@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { MapPinned, Search } from "lucide-react";
 import VisitedPlacesPanel from "./VisitedPlacesPanel";
-import { Avatar, CARD, EmptyState } from "./admin/ui";
+import AssignPlacesPanel from "./AssignPlacesPanel";
+import { Avatar, CARD, EmptyState, Segmented } from "./admin/ui";
 
 interface FieldEmployee {
   id: string;
@@ -19,6 +20,7 @@ interface FieldEmployee {
 export default function FieldWorkersPanel({ employees }: { employees: FieldEmployee[] }) {
   const [selectedId, setSelectedId] = useState<string | null>(employees[0]?.id ?? null);
   const [query, setQuery] = useState("");
+  const [view, setView] = useState<"journey" | "assign">("journey");
   const selected = employees.find((e) => e.id === selectedId) ?? null;
 
   if (employees.length === 0) {
@@ -86,12 +88,26 @@ export default function FieldWorkersPanel({ employees }: { employees: FieldEmplo
       {/* Selected worker's day */}
       <section className="min-w-0">
         {selected ? (
-          <VisitedPlacesPanel
-            key={selected.id}
-            userId={selected.id}
-            employeeName={selected.name}
-            employeeCode={selected.employeeCode}
-          />
+          <div className="flex flex-col gap-4">
+            <Segmented
+              options={[
+                { key: "journey", label: "Visited places" },
+                { key: "assign", label: "Assign places" },
+              ]}
+              value={view}
+              onChange={setView}
+            />
+            {view === "journey" ? (
+              <VisitedPlacesPanel
+                key={selected.id}
+                userId={selected.id}
+                employeeName={selected.name}
+                employeeCode={selected.employeeCode}
+              />
+            ) : (
+              <AssignPlacesPanel key={selected.id} userId={selected.id} employeeName={selected.name} />
+            )}
+          </div>
         ) : (
           <div className={CARD}>
             <EmptyState icon={MapPinned} title="Select a field worker" text="Pick someone to see where they went today." />

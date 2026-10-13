@@ -254,7 +254,7 @@ enum SignupCheckoutStatus {
 // cleaned up for that alone (see lib/billing/cleanup.ts for eventual row
 // pruning, which is unrelated to the hold itself).
 model SignupCheckout {
-  id     String               @id @default(cuid())
+  id        String               @id @default(cuid())
   // Random, URL-safe — used in /signup/complete and /api/signup/status
   // instead of `id`, so the checkout row's cuid (and therefore its creation
   // order) is never exposed to the browser.
@@ -378,13 +378,13 @@ model User {
   role         Role   @default(EMPLOYEE)
 
   organizationId String
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   // True only for the first admin created when an organization registers
   // (see the self-serve registration flow) — distinguishes "the account this
   // org would have zero admins without" from any other admin, so it can be
   // protected from deactivation/removal. Not a role/permission tier: every
   // ADMIN, owner or not, has identical capabilities today.
-  isOwner        Boolean       @default(false)
+  isOwner        Boolean      @default(false)
 
   // Admin auth (only set for ADMIN role)
   passwordHash String?
@@ -453,20 +453,21 @@ model User {
   profilePhoto    Bytes?
   hasProfilePhoto Boolean @default(false)
 
-  active    Boolean  @default(true)
+  active        Boolean   @default(true)
   // Set the moment an admin deactivates this employee (PATCH .../set-active)
   // — null while active. lib/employeeCleanup.ts's daily job uses this to
   // find who's been deactivated 7+ days and is due for archival + permanent
   // deletion (see DeletedEmployeeArchive). Cleared back to null on
   // reactivation, so the 7-day countdown restarts if deactivated again later.
   deactivatedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   attendances      Attendance[]
   locationPings    LocationPing[]
   pushTokens       PushToken[]
   shiftReminders   ShiftReminder[]
+  assignedPlaces   AssignedPlace[]
   reimbursements   Reimbursement[]
   timeOffRequests  TimeOffRequest[]
   // One shift per weekday, at most — see ShiftAssignment. Replaces the old
@@ -590,8 +591,6 @@ model Attendance {
   // /api/kiosk/scan's handling of the resulting unique-constraint error.
   dayKey String
 
-
-
   // Presence photo captured at check-in. `hasPhoto` is a cheap flag so list/
   // calendar views can decide whether to render a thumbnail without ever
   // pulling the (much larger) photo bytes into those queries. Photos older
@@ -612,8 +611,8 @@ model Attendance {
   // /api/kiosk/scan. faceSimilarity is the raw score the service returned
   // (kept for later threshold tuning), null whenever verification didn't
   // actually run.
-  faceVerifyStatus   FaceVerifyStatus @default(NOT_CHECKED)
-  faceSimilarity     Float?
+  faceVerifyStatus FaceVerifyStatus @default(NOT_CHECKED)
+  faceSimilarity   Float?
 
   // Set only on CHECK_IN records for FIELD-workMode employees — the choice
   // they made that day (see /api/kiosk/scan). Null for OFFICE/WFH employees,
@@ -622,7 +621,7 @@ model Attendance {
 
   // Vehicle odometer reading (km) the field worker entered: the start reading on
   // a CHECK_IN row, the end reading on a CHECK_OUT row. Null when not entered.
-  odometerKm Float?
+  odometerKm        Float?
   // True on a CHECK_OUT whose odometerKm was worked out by the system (start km plus the GPS
   // distance) because the employee was checked out automatically. Kept apart from real
   // readings so accuracy reports do not treat it as a measurement.
@@ -641,9 +640,9 @@ model Attendance {
   // consecutive out-of-range pings were confirmed, starting a 10-minute grace
   // period before an AttendancePause row is actually created. Cleared once
   // resolved either way (return to range, or converted into a real pause).
-  pauseWarningAt DateTime?
-  pauses         AttendancePause[]
-  fieldVisits    FieldVisit[]
+  pauseWarningAt   DateTime?
+  pauses           AttendancePause[]
+  fieldVisits      FieldVisit[]
   timedPermissions TimedPermission[]
   workSegments     WorkSegment[]
   overtimeRequests OvertimeRequest[]
@@ -733,15 +732,15 @@ enum OvertimeRequestStatus {
 // TimedPermission's inconsistency (framed as "immediate" in its own mobile
 // UI copy, but its actual pause-opening logic only honors APPROVED rows).
 model OvertimeRequest {
-  id             String                @id @default(cuid())
+  id             String     @id @default(cuid())
   attendanceId   String
-  attendance     Attendance            @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  attendance     Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
   // What the employee expects to finish by — drives the "remind me before
   // I should check out" push, same 10-minutes-before convention as the
   // plain shift-end reminder.
   estimatedEndAt DateTime
   reason         String
-  createdAt      DateTime              @default(now())
+  createdAt      DateTime   @default(now())
 
   status         OvertimeRequestStatus @default(PENDING)
   reviewedAt     DateTime?
@@ -831,6 +830,9 @@ model FieldVisit {
   longitude    Float
   createdAt    DateTime   @default(now())
 
+  // Set when this visit completed a place an admin had assigned (see AssignedPlace).
+  assignedPlace AssignedPlace?
+
   // Composite so the reachedAt-ordered per-attendance lists (field-visits,
   // field-summary, admin visited-places) don't need a separate sort step —
   // low-priority since visits-per-checkin is naturally small, but free
@@ -917,8 +919,8 @@ model OfficeLocation {
 // missing. Start here for future org-level toggles rather than adding more
 // one-off models.
 model AppSettings {
-  id                    String   @id @default(cuid())
-  checkOutPhotoRequired Boolean  @default(false)
+  id                     String  @id @default(cuid())
+  checkOutPhotoRequired  Boolean @default(false)
   // Default ₹/km used to suggest a reimbursement amount (see
   // /api/admin/employees/[id]/reimbursement). Null == no default set yet;
   // admin can still enter an amount manually per day.
@@ -977,6 +979,44 @@ model ShiftReminder {
   @@unique([userId, dayKey, kind])
 }
 
+enum AssignedPlaceStatus {
+  PENDING
+  VISITED
+  SKIPPED
+}
+
+// A place an admin has asked a field worker to visit on a given IST day. The app puts the
+// pending ones in a nearest-first order and guides the worker to them; completing one is an
+// ordinary FieldVisit (details and photo), linked here through fieldVisitId. Scoped to an
+// organization through its owning User, like the rest of the per-employee tables.
+model AssignedPlace {
+  id             String              @id @default(cuid())
+  userId         String
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // IST calendar day ("YYYY-MM-DD", see lib/istTime.ts istDateKey) the place is assigned for.
+  dayKey         String
+  name           String
+  address        String?
+  latitude       Float
+  longitude      Float
+  description    String?
+  contactName    String?
+  contactPhone   String?
+  // Instructions from the admin, shown to the employee at the stop.
+  notes          String?
+  // Initial visiting order chosen when the list was saved; the app re-plans from the live position.
+  sortOrder      Int                 @default(0)
+  status         AssignedPlaceStatus @default(PENDING)
+  skipReason     String?
+  fieldVisitId   String?             @unique
+  fieldVisit     FieldVisit?         @relation(fields: [fieldVisitId], references: [id], onDelete: SetNull)
+  assignedByName String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([userId, dayKey])
+}
+
 model PublicHoliday {
   id        String   @id @default(cuid())
   date      DateTime
@@ -1020,8 +1060,8 @@ model TimeOffRequest {
   // Calendar days in [startDate, endDate] minus any PublicHoliday dates,
   // snapshotted at submission time — a later change to the holiday calendar
   // must never silently change the cost of an already-decided request.
-  days   Int
-  reason String?
+  days      Int
+  reason    String?
 
   status         TimeOffRequestStatus @default(PENDING)
   reviewedAt     DateTime?
@@ -1029,8 +1069,8 @@ model TimeOffRequest {
   // Only ever set alongside a REJECTED decision — an admin's optional note
   // on why, surfaced to the employee in the decline notification and in
   // their own request history.
-  reviewNote String?
-  createdAt  DateTime @default(now())
+  reviewNote     String?
+  createdAt      DateTime             @default(now())
 
   // True only for the dashboard's quick "Mark as leave" action (see
   // /api/admin/employees/[id]/leave-today) — always a single day

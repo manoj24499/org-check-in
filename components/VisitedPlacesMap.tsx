@@ -136,7 +136,7 @@ function ZoomWatcher({ onZoom }: { onZoom: (z: number) => void }) {
   return null;
 }
 
-interface NearbyPlace {
+export interface NearbyPlace {
   id: string;
   name: string;
   kind: string;
@@ -164,7 +164,7 @@ const NEARBY_LABEL_ZOOM = 17;
  * OpenStreetMap around whatever part of the map is on screen. Loaded only once the
  * map is zoomed in, and can be switched off in the layer control.
  */
-function NearbyPlaces() {
+export function NearbyPlaces({ onPick }: { onPick?: (place: NearbyPlace) => void } = {}) {
   const map = useMap();
   const [on, setOn] = useState(true);
   const [zoom, setZoom] = useState(() => map.getZoom());
@@ -272,6 +272,18 @@ function NearbyPlaces() {
             <strong>{p.name}</strong>
             <br />
             {p.kind}
+            {onPick && (
+              <>
+                <br />
+                <button
+                  type="button"
+                  onClick={() => onPick(p)}
+                  style={{ marginTop: 6, padding: "3px 10px", borderRadius: 8, background: "#ea580c", color: "#fff", fontWeight: 600, fontSize: 12 }}
+                >
+                  Assign this place
+                </button>
+              </>
+            )}
           </Popup>
         </CircleMarker>
       ))}
