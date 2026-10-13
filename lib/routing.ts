@@ -12,6 +12,17 @@ const PROFILE = "driving-car";
 const TIMEOUT_MS = 12_000;
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const MAX_CACHE = 500;
+/**
+ * How the route is chosen. "recommended" favours fast main roads and can add a lot of distance;
+ * "shortest" takes the shortest way; "fastest" minimises time. Field workers mostly ride two-wheelers
+ * through town, so the shortest way is the default. Set ROUTE_PREFERENCE in .env to change it.
+ */
+type RoutePreference = "recommended" | "shortest" | "fastest";
+function routePreference(): RoutePreference {
+  const v = (process.env.ROUTE_PREFERENCE ?? "").toLowerCase();
+  return v === "recommended" || v === "fastest" ? v : "shortest";
+}
+
 /** Matrix requests are capped by the provider; above this we use straight lines instead. */
 export const MAX_MATRIX_POINTS = 50;
 /** Straight-line fallback speed, about 25 km/h in traffic. */
@@ -85,7 +96,8 @@ export async function getRouteLeg(from: LatLng, to: LatLng, toName?: string): Pr
   const key = process.env.ORS_API_KEY;
   if (!key) return straightLeg(from, to, toName);
 
-  const cacheKey = `${from.latitude.toFixed(4)},${from.longitude.toFixed(4)}>${to.latitude.toFixed(5)},${to.longitude.toFixed(5)}`;
+  const preference = routePreference();
+  const cacheKey = `${preference}:${from.latitude.toFixed(4)},${from.longitude.toFixed(4)}>${to.latitude.toFixed(5)},${to.longitude.toFixed(5)}`;
   const hit = cache.get(cacheKey);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.leg;
 
@@ -99,6 +111,7 @@ export async function getRouteLeg(from: LatLng, to: LatLng, toName?: string): Pr
           [to.longitude, to.latitude],
         ],
         instructions: true,
+        preference,
         language: "en",
         units: "m",
         // Snap to the nearest road however far it is, shops are often down lanes the profile skips.
