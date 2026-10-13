@@ -299,6 +299,27 @@ html.theme-fade .admin-root *::after {
   isolation: isolate;
 }
 
+/* Compact name labels beside the numbered stops on the field-worker map */
+.leaflet-tooltip.vp-label {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 7px;
+  font: 600 11.5px/1.35 system-ui, sans-serif;
+  color: #0f172a;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+.leaflet-tooltip.vp-label::before { display: none; }
+.leaflet-tooltip.vp-hover {
+  font: 600 12px/1.4 system-ui, sans-serif;
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+
 /* Pulsing ring on the field-worker map's starting point (components/VisitedPlacesMap.tsx) */
 @keyframes vp-pulse {
   0% { transform: scale(0.55); opacity: 0.9; }

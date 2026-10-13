@@ -52,6 +52,10 @@ interface VisitedPlacesResponse {
   // Only set once the day is complete (checked in and out) — see
   // /api/admin/employees/[id]/visited-places.
   hoursSplit: HoursSplit | null;
+  // Live mode of an open check-in, and time spent in Office segments today
+  // (left out of the map and GPS distance).
+  currentMode: "OFFICE" | "FIELD" | null;
+  officeMinutes: number;
   pings: { latitude: number; longitude: number; timestamp: string }[];
   places: VisitedPlace[];
   gaps: { from: string; to: string; minutes: number; straightMeters: number }[];
@@ -61,7 +65,7 @@ interface VisitedPlacesResponse {
   checkInAt: string | null;
   checkOutAt: string | null;
   fieldVisits: { id: string }[];
-  odometer: { startKm: number | null; endKm: number | null; distanceKm: number | null } | null;
+  odometer: { startKm: number | null; endKm: number | null; endEstimated: boolean; distanceKm: number | null } | null;
   mostRecentDataDate: string | null;
   defaultRatePerKm: number | null;
   reimbursement: ReimbursementRecord | null;
@@ -399,7 +403,7 @@ export default function VisitedPlacesPanel({
               hint={
                 data.odometer
                   ? data.odometer.distanceKm != null
-                    ? `Odometer: ${data.odometer.distanceKm} km`
+                    ? `Odometer: ${data.odometer.distanceKm} km${data.odometer.endEstimated ? " (estimated)" : ""}`
                     : "Odometer: awaiting end km"
                   : "From GPS"
               }
@@ -409,7 +413,17 @@ export default function VisitedPlacesPanel({
               tone="green"
               label="Started at"
               value={startedAt ? formatTime(startedAt) : "—"}
-              hint={data.checkOutAt ? `Finished ${formatTime(data.checkOutAt)}` : startedAt ? "Still in the field" : undefined}
+              hint={
+                data.checkOutAt
+                  ? `Finished ${formatTime(data.checkOutAt)}`
+                  : data.currentMode === "OFFICE"
+                    ? "Currently in the office"
+                    : data.currentMode === "FIELD"
+                      ? "Currently in the field"
+                      : startedAt
+                        ? "Still checked in"
+                        : undefined
+              }
             />
             <Metric
               icon={Timer}
@@ -419,6 +433,13 @@ export default function VisitedPlacesPanel({
               hint={data.hoursSplit ? `Office ${formatHours(data.hoursSplit.officeHours)}` : "Shown once checked out"}
             />
           </div>
+
+          {data.officeMinutes > 0 && (
+            <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-[13px] text-sky-900">
+              <span className="font-semibold">{formatGapMinutes(data.officeMinutes)} in the office.</span> Time in Office
+              mode is left out of the map, the stops and the GPS distance.
+            </div>
+          )}
 
           {/* Tracking gaps: stretches where the phone stopped reporting */}
           {data.gaps.length > 0 && (
@@ -580,6 +601,13 @@ export default function VisitedPlacesPanel({
                     </div>
                   ))}
                 </div>
+
+                {data.odometer?.endEstimated && (
+                  <p className="mb-4 rounded-xl bg-amber-50 px-3 py-2 text-[12.5px] text-amber-800">
+                    End km was worked out from the GPS distance because the employee was checked out automatically at the
+                    end of the shift. Check it before approving the reimbursement.
+                  </p>
+                )}
 
                 {data.odometer?.distanceKm != null && (
                   <div className="mb-4 flex flex-wrap items-center gap-2">

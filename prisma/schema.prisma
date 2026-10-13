@@ -466,6 +466,7 @@ model User {
   attendances      Attendance[]
   locationPings    LocationPing[]
   pushTokens       PushToken[]
+  shiftReminders   ShiftReminder[]
   reimbursements   Reimbursement[]
   timeOffRequests  TimeOffRequest[]
   // One shift per weekday, at most — see ShiftAssignment. Replaces the old
@@ -622,10 +623,19 @@ model Attendance {
   // Vehicle odometer reading (km) the field worker entered: the start reading on
   // a CHECK_IN row, the end reading on a CHECK_OUT row. Null when not entered.
   odometerKm Float?
+  // True on a CHECK_OUT whose odometerKm was worked out by the system (start km plus the GPS
+  // distance) because the employee was checked out automatically. Kept apart from real
+  // readings so accuracy reports do not treat it as a measurement.
+  odometerEstimated Boolean @default(false)
 
   // When the tracking-stopped push was last sent for this session (see
   // /api/cron/tracking-watch), so a silent phone is nudged at most every 30 minutes.
   trackingAlertSentAt DateTime?
+
+  // When the "your shift has ended, check out" push went out for this session
+  // (see lib/autoCheckout.ts). If the employee still hasn't checked out a few
+  // minutes later they are checked out automatically.
+  autoCheckoutWarnedAt DateTime?
 
   // Auto-pause (see /api/kiosk/location): pauseWarningAt marks the moment 3
   // consecutive out-of-range pings were confirmed, starting a 10-minute grace
@@ -953,6 +963,20 @@ model AppSettings {
 // the record. Uniqueness is per-organization (see @@unique below), not
 // global — two organizations can each hold a holiday on the same calendar
 // date.
+// One row per "check in" reminder push actually sent (see lib/shiftReminders.ts), so the same
+// reminder is never sent twice for the same employee on the same IST day, even when scheduler
+// runs overlap. kind is BEFORE_START or AFTER_START.
+model ShiftReminder {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dayKey    String
+  kind      String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, dayKey, kind])
+}
+
 model PublicHoliday {
   id        String   @id @default(cuid())
   date      DateTime

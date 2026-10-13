@@ -52,6 +52,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         type: true,
         timestamp: true,
         odometerKm: true,
+        odometerEstimated: true,
         pauses: { select: { pausedAt: true, resumedAt: true } },
         workSegments: { select: { mode: true, startedAt: true, endedAt: true } },
       },
@@ -92,14 +93,33 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       })
     : [];
 
-  const totalDistanceMeters = computeTotalDistanceMeters(pings);
+  // Time spent in an Office segment (checked in as Office, or auto-switched on
+  // reaching the office) is not travel: GPS wobble indoors would otherwise add
+  // phantom kilometres and a star of spikes around the office. Those pings are
+  // left out of the distance, the stops and the map line. Tracking gaps below
+  // still look at every ping, since they describe the phone going silent.
+  const now = new Date();
+  const officeIntervals = todaysCheckIns.flatMap((c) =>
+    c.workSegments
+      .filter((s) => s.mode === "OFFICE")
+      .map((s) => ({ from: s.startedAt.getTime(), to: (s.endedAt ?? now).getTime() })),
+  );
+  const inOffice = (t: Date) => officeIntervals.some((i) => t.getTime() >= i.from && t.getTime() < i.to);
+  const fieldPings = pings.filter((p) => !inOffice(p.timestamp));
+  const officeMinutes = Math.round(officeIntervals.reduce((sum, i) => sum + Math.max(0, i.to - i.from), 0) / 60_000);
+  const lastCheckIn = todaysCheckIns[todaysCheckIns.length - 1];
+  const currentMode = checkOut ? null : (lastCheckIn?.workSegments.find((s) => s.endedAt === null)?.mode ?? null);
+  // What gets drawn: the field route minus readings too imprecise to trust.
+  const drawnPings = fieldPings.filter((p) => p.accuracy <= 100);
+
+  const totalDistanceMeters = computeTotalDistanceMeters(fieldPings);
 
   // Raw GPS stops are merged into distinct places (see lib/visitedPlaces.ts) so
   // a worker circling one site is one place, not a pile of pins. Only these
   // merged places are reverse-geocoded; Nominatim's ~1 req/sec policy is
   // enforced inside reverseGeocode itself, and a place the employee logged by
   // hand uses their own name, so it needs no lookup at all.
-  const groups = buildPlaces(clusterPings(pings), fieldVisits);
+  const groups = buildPlaces(clusterPings(fieldPings), fieldVisits);
   const places = await Promise.all(
     groups.map(async (g, i) => {
       const loggedName = g.logged[0]?.name ?? null;
@@ -145,7 +165,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     hoursSplit: hoursSplit
       ? { fieldHours: hoursSplit.fieldMs / 3_600_000, officeHours: hoursSplit.officeMs / 3_600_000 }
       : null,
-    pings: pings.map((p) => ({ latitude: p.latitude, longitude: p.longitude, timestamp: p.timestamp })),
+    currentMode,
+    officeMinutes,
+    pings: drawnPings.map((p) => ({ latitude: p.latitude, longitude: p.longitude, timestamp: p.timestamp })),
     places,
     gaps: gaps.map((g) => ({
       from: g.from,
@@ -161,6 +183,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         ? {
             startKm: checkIn?.odometerKm ?? null,
             endKm: checkOut?.odometerKm ?? null,
+            // End km worked out by the system after an automatic check-out, not read from the vehicle.
+            endEstimated: checkOut?.odometerEstimated ?? false,
             distanceKm:
               checkIn?.odometerKm != null && checkOut?.odometerKm != null
                 ? Math.round((checkOut.odometerKm - checkIn.odometerKm) * 10) / 10

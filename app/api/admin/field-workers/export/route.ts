@@ -146,7 +146,13 @@ export async function GET(req: NextRequest) {
       prisma.attendance.findMany({
         where: { userId: emp.id, timestamp: { gte: windowStart, lte: windowEnd } },
         orderBy: { timestamp: "asc" },
-        select: { type: true, timestamp: true, odometerKm: true },
+        select: {
+          type: true,
+          timestamp: true,
+          odometerKm: true,
+          odometerEstimated: true,
+          workSegments: { select: { mode: true, startedAt: true, endedAt: true } },
+        },
       }),
       prisma.fieldVisit.findMany({
         where: { attendance: { userId: emp.id }, reachedAt: { gte: windowStart, lte: windowEnd } },
@@ -181,7 +187,18 @@ export async function GET(req: NextRequest) {
 
       const checkIn = dayAtt.find((a) => a.type === "CHECK_IN");
       const checkOut = dayAtt.find((a) => a.type === "CHECK_OUT" && (!checkIn || a.timestamp > checkIn.timestamp));
-      const km = Math.round((computeTotalDistanceMeters(dayPings) / 1000) * 100) / 100;
+      // Time spent in an Office segment is not travel; GPS wobble indoors would
+      // add phantom distance and stops, so those pings are left out of both.
+      const nowTs = Date.now();
+      const officeIntervals = dayAtt.flatMap((a) =>
+        a.workSegments
+          .filter((s) => s.mode === "OFFICE")
+          .map((s) => ({ from: s.startedAt.getTime(), to: s.endedAt ? s.endedAt.getTime() : nowTs })),
+      );
+      const fieldDayPings = dayPings.filter(
+        (p) => !officeIntervals.some((iv) => p.timestamp.getTime() >= iv.from && p.timestamp.getTime() < iv.to),
+      );
+      const km = Math.round((computeTotalDistanceMeters(fieldDayPings) / 1000) * 100) / 100;
       totalKm += km;
       const reimb = reimbByDay.get(key);
 
@@ -205,9 +222,12 @@ export async function GET(req: NextRequest) {
         : typeof coverage === "number" && coverage < 90
           ? "Yes - tracking gaps"
           : "";
-      const diff = odoKm != null ? Math.round((km - odoKm) * 100) / 100 : "";
-      const acc = odoKm != null && odoKm > 0 ? Math.round((km / odoKm) * 1000) / 10 : "";
-      const err = odoKm != null && odoKm > 0 ? Math.round(((km - odoKm) / odoKm) * 1000) / 10 : "";
+      // An end km the system filled in after an automatic check-out is built from the GPS
+      // distance itself, so comparing the two would always read 100% and prove nothing.
+      const endEstimated = checkOut?.odometerEstimated === true;
+      const diff = odoKm != null && !endEstimated ? Math.round((km - odoKm) * 100) / 100 : "";
+      const acc = odoKm != null && odoKm > 0 && !endEstimated ? Math.round((km / odoKm) * 1000) / 10 : "";
+      const err = odoKm != null && odoKm > 0 && !endEstimated ? Math.round(((km - odoKm) / odoKm) * 1000) / 10 : "";
 
       summary.addRow({
         date: key,
@@ -229,7 +249,7 @@ export async function GET(req: NextRequest) {
         points: dayPings.length,
         coverage: noData ? 0 : coverage,
         gapMin: Math.round(gapSec / 60),
-        useOdo,
+        useOdo: endEstimated ? "End km estimated from GPS" : useOdo,
         stops: dayVisits.length,
         reimb: reimb?.amount ?? "",
         note: reimb?.note ?? "",
@@ -256,7 +276,7 @@ export async function GET(req: NextRequest) {
         row.getCell("map").font = { color: { argb: "FF2563EB" }, underline: true };
       }
 
-      for (const c of clusterPings(dayPings)) {
+      for (const c of clusterPings(fieldDayPings)) {
         const place = geocode
           ? ((await reverseGeocode(c.centroidLatitude, c.centroidLongitude)) ?? "")
           : "";

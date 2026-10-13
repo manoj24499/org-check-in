@@ -1,7 +1,20 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef } from "react";
-import { MapContainer, TileLayer, Marker, Polyline, Popup, Tooltip, useMap } from "react-leaflet";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import {
+  CircleMarker,
+  LayersControl,
+  LayerGroup,
+  MapContainer,
+  Marker,
+  Polyline,
+  Popup,
+  ScaleControl,
+  TileLayer,
+  Tooltip,
+  useMap,
+  useMapEvents,
+} from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -92,6 +105,180 @@ const endIcon = L.divIcon({
   popupAnchor: [0, -12],
 });
 
+// Small chevron laid along the route to show which way the worker travelled.
+function arrowIcon(bearing: number) {
+  return L.divIcon({
+    className: "",
+    html: `<div style="width:16px;height:16px;transform:rotate(${bearing}deg);display:flex;align-items:center;justify-content:center"><svg width="14" height="14" viewBox="0 0 24 24"><path d="M12 3 L19 20 L12 16 L5 20 Z" fill="#ffffff" stroke="#c2410c" stroke-width="2" stroke-linejoin="round"/></svg></div>`,
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+  });
+}
+
+function kmIcon(label: string) {
+  return L.divIcon({
+    className: "",
+    html: `<div style="transform:translate(-50%,-50%);background:#0f172a;color:#fff;font:600 10.5px/1 system-ui,sans-serif;padding:3px 6px;border-radius:99px;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);white-space:nowrap">${label}</div>`,
+    iconSize: [0, 0],
+  });
+}
+
+function bearingDeg(a: [number, number], b: [number, number]) {
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const y = Math.sin(rad(b[1] - a[1])) * Math.cos(rad(b[0]));
+  const x = Math.cos(rad(a[0])) * Math.sin(rad(b[0])) - Math.sin(rad(a[0])) * Math.cos(rad(b[0])) * Math.cos(rad(b[1] - a[1]));
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+function ZoomWatcher({ onZoom }: { onZoom: (z: number) => void }) {
+  const map = useMapEvents({ zoomend: () => onZoom(map.getZoom()) });
+  useEffect(() => onZoom(map.getZoom()), [map, onZoom]);
+  return null;
+}
+
+interface NearbyPlace {
+  id: string;
+  name: string;
+  kind: string;
+  category: string;
+  latitude: number;
+  longitude: number;
+}
+
+const CATEGORY_COLOR: Record<string, string> = {
+  food: "#d97706",
+  education: "#2563eb",
+  health: "#dc2626",
+  shop: "#9333ea",
+  stay: "#0d9488",
+  worship: "#64748b",
+  service: "#475569",
+  other: "#16a34a",
+};
+const NEARBY_OVERLAY = "Nearby places";
+const NEARBY_MIN_ZOOM = 15;
+const NEARBY_LABEL_ZOOM = 17;
+
+/**
+ * Shops, restaurants, schools, colleges, hospitals and other named places from
+ * OpenStreetMap around whatever part of the map is on screen. Loaded only once the
+ * map is zoomed in, and can be switched off in the layer control.
+ */
+function NearbyPlaces() {
+  const map = useMap();
+  const [on, setOn] = useState(true);
+  const [zoom, setZoom] = useState(() => map.getZoom());
+  const [places, setPlaces] = useState<NearbyPlace[]>([]);
+  const [bounds, setBounds] = useState(() => map.getBounds());
+  const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
+  const known = useRef(new Map<string, NearbyPlace>());
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abort = useRef<AbortController | null>(null);
+
+  const schedule = () => {
+    if (map.getZoom() < NEARBY_MIN_ZOOM) return;
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(async () => {
+      const b = map.getBounds();
+      abort.current?.abort();
+      const ctrl = new AbortController();
+      abort.current = ctrl;
+      setStatus("loading");
+      try {
+        const qs = new URLSearchParams({
+          south: String(b.getSouth()),
+          west: String(b.getWest()),
+          north: String(b.getNorth()),
+          east: String(b.getEast()),
+        });
+        const res = await fetch(`/api/admin/places-nearby?${qs}`, { signal: ctrl.signal });
+        if (!res.ok) throw new Error("unavailable");
+        const body = (await res.json()) as { places: NearbyPlace[] };
+        for (const p of body.places) known.current.set(p.id, p);
+        // Keep memory in check on very long sessions.
+        if (known.current.size > 3000) known.current = new Map([...known.current].slice(-1500));
+        setPlaces([...known.current.values()]);
+        setStatus("idle");
+      } catch (err) {
+        if ((err as Error).name !== "AbortError") setStatus("error");
+      }
+    }, 600);
+  };
+  const load = () => {
+    setZoom(map.getZoom());
+    setBounds(map.getBounds());
+    schedule();
+  };
+
+  useMapEvents({
+    moveend: () => on && load(),
+    overlayadd: (e) => {
+      if (e.name === NEARBY_OVERLAY) {
+        setOn(true);
+        load();
+      }
+    },
+    overlayremove: (e) => {
+      if (e.name === NEARBY_OVERLAY) setOn(false);
+    },
+  });
+  useEffect(() => {
+    schedule();
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+      abort.current?.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const visible = useMemo(() => {
+    if (zoom < NEARBY_MIN_ZOOM) return [];
+    const padded = bounds.pad(0.1);
+    return places.filter((p) => padded.contains([p.latitude, p.longitude])).slice(0, 400);
+  }, [places, bounds, zoom]);
+  // Names are always visible only when few enough are on screen to stay readable; otherwise hover.
+  const showLabels = zoom >= NEARBY_LABEL_ZOOM && visible.length <= (zoom >= NEARBY_LABEL_ZOOM + 1 ? 140 : 70);
+
+  return (
+    <>
+      {on && zoom < NEARBY_MIN_ZOOM && (
+        <div className="pointer-events-none absolute bottom-8 left-3 z-[1000] rounded-md bg-white/90 px-2.5 py-1 text-[11.5px] font-medium text-slate-700 shadow">
+          Zoom in to see shops, restaurants and schools
+        </div>
+      )}
+      {on && zoom >= NEARBY_MIN_ZOOM && status === "error" && (
+        <div className="pointer-events-none absolute bottom-8 left-3 z-[1000] rounded-md bg-white/90 px-2.5 py-1 text-[11.5px] font-medium text-amber-800 shadow">
+          Nearby places are unavailable right now
+        </div>
+      )}
+      {visible.map((p) => (
+        <CircleMarker
+          // The tooltip's permanent flag is only read when it is created, so it is part of the key.
+          key={`${p.id}-${showLabels}`}
+          center={[p.latitude, p.longitude]}
+          radius={5.5}
+          pathOptions={{ color: "#ffffff", weight: 1.5, fillColor: CATEGORY_COLOR[p.category] ?? "#475569", fillOpacity: 0.95 }}
+        >
+          {showLabels ? (
+            <Tooltip permanent direction="right" offset={[7, 0]} className="vp-label">
+              {p.name}
+            </Tooltip>
+          ) : (
+            <Tooltip direction="top" offset={[0, -4]} className="vp-hover">
+              {p.name}
+            </Tooltip>
+          )}
+          <Popup>
+            <strong>{p.name}</strong>
+            <br />
+            {p.kind}
+          </Popup>
+        </CircleMarker>
+      ))}
+    </>
+  );
+}
+
 function FitBounds({ points }: { points: [number, number][] }) {
   const map = useMap();
   useEffect(() => {
@@ -171,6 +358,68 @@ export default function VisitedPlacesMap({
     [path, places],
   );
 
+  const [zoom, setZoom] = useState(13);
+  const [hover, setHover] = useState<number | null>(null);
+
+  // The route as a list of points with the time and the distance covered so far
+  // (stretches where the phone was silent add nothing). Drives the direction
+  // arrows, the km markers and the hover read-out.
+  const trail = useMemo(() => {
+    const GAP_MS = 5 * 60 * 1000;
+    const out: { pt: [number, number]; ts: string | null; km: number; contiguous: boolean }[] = [];
+    let km = 0;
+    pings.forEach((p, i) => {
+      const pt: [number, number] = [p.latitude, p.longitude];
+      let contiguous = i > 0;
+      if (i > 0) {
+        const prev = pings[i - 1];
+        const gap = p.timestamp && prev.timestamp ? new Date(p.timestamp).getTime() - new Date(prev.timestamp).getTime() : 0;
+        if (gap > GAP_MS) contiguous = false;
+        else km += L.latLng(prev.latitude, prev.longitude).distanceTo(L.latLng(pt[0], pt[1])) / 1000;
+      }
+      out.push({ pt, ts: p.timestamp ?? null, km, contiguous });
+    });
+    return out;
+  }, [pings]);
+
+  const { arrows, kmMarks } = useMemo(() => {
+    const total = trail.length ? trail[trail.length - 1].km : 0;
+    const arr: { pt: [number, number]; bearing: number }[] = [];
+    const marks: { pt: [number, number]; label: string }[] = [];
+    if (total < 0.3) return { arrows: arr, kmMarks: marks };
+    const step = Math.min(3, Math.max(0.35, total / 40));
+    const kmStep = total >= 15 ? 10 : total >= 6 ? 5 : 0;
+    let nextArrow = step;
+    let nextKm = kmStep;
+    trail.forEach((t, i) => {
+      if (!t.contiguous) return;
+      if (t.km >= nextArrow) {
+        const a = trail[Math.max(0, i - 3)].pt;
+        const b = trail[Math.min(trail.length - 1, i + 3)].pt;
+        if (a[0] !== b[0] || a[1] !== b[1]) arr.push({ pt: t.pt, bearing: bearingDeg(a, b) });
+        nextArrow = t.km + step;
+      }
+      if (kmStep && t.km >= nextKm) {
+        marks.push({ pt: t.pt, label: `${Math.round(nextKm)} km` });
+        nextKm += kmStep;
+      }
+    });
+    return { arrows: arr, kmMarks: marks };
+  }, [trail]);
+
+  const nearest = (lat: number, lng: number) => {
+    let best = -1;
+    let bestD = Infinity;
+    trail.forEach((t, i) => {
+      const d = (t.pt[0] - lat) ** 2 + (t.pt[1] - lng) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    });
+    return best;
+  };
+
   if (bounds.length === 0) {
     return (
       <div className="flex h-full w-full items-center justify-center rounded-xl bg-slate-50 text-sm text-slate-500">
@@ -182,10 +431,37 @@ export default function VisitedPlacesMap({
   return (
     <div className="relative isolate h-full w-full">
       <MapContainer center={bounds[0]} zoom={13} scrollWheelZoom style={{ height: "100%", width: "100%" }}>
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+        <LayersControl position="topright">
+          <LayersControl.BaseLayer checked name="Street map">
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+          </LayersControl.BaseLayer>
+          <LayersControl.BaseLayer name="Satellite + names">
+            {/* One base layer made of imagery plus a place-names overlay. */}
+            <LayerGroup>
+              <TileLayer
+                attribution="Imagery &copy; Esri, Maxar, Earthstar Geographics"
+                url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                maxNativeZoom={18}
+                maxZoom={19}
+              />
+              <TileLayer
+                url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
+                maxNativeZoom={18}
+                maxZoom={19}
+              />
+            </LayerGroup>
+          </LayersControl.BaseLayer>
+          <LayersControl.Overlay checked name={NEARBY_OVERLAY}>
+            <LayerGroup>
+              <NearbyPlaces />
+            </LayerGroup>
+          </LayersControl.Overlay>
+        </LayersControl>
+        <ScaleControl position="bottomright" imperial={false} />
+        <ZoomWatcher onZoom={setZoom} />
         <FitBounds points={bounds} />
         <Focus order={focusOrder} places={places} markers={markers} />
 
@@ -214,6 +490,41 @@ export default function VisitedPlacesMap({
           </Polyline>
         ))}
 
+        {/* Direction arrows and distance markers along the route */}
+        {arrows.map((a, i) => (
+          <Marker key={`arrow-${i}`} position={a.pt} icon={arrowIcon(a.bearing)} interactive={false} zIndexOffset={100} />
+        ))}
+        {kmMarks.map((m, i) => (
+          <Marker key={`km-${i}`} position={m.pt} icon={kmIcon(m.label)} interactive={false} zIndexOffset={150} />
+        ))}
+
+        {/* Hover anywhere on the route to read the time and distance at that point */}
+        {segments.map((seg, i) =>
+          seg.length > 1 ? (
+            <Polyline
+              key={`hit-${i}`}
+              positions={seg}
+              pathOptions={{ color: "#000000", weight: 22, opacity: 0 }}
+              eventHandlers={{
+                mousemove: (e) => setHover(nearest(e.latlng.lat, e.latlng.lng)),
+                mouseout: () => setHover(null),
+              }}
+            />
+          ) : null,
+        )}
+        {hover !== null && trail[hover] && (
+          <CircleMarker
+            center={trail[hover].pt}
+            radius={7}
+            pathOptions={{ color: "#ffffff", weight: 3, fillColor: "#ea580c", fillOpacity: 1 }}
+            interactive={false}
+          >
+            <Tooltip permanent direction="top" offset={[0, -8]} className="vp-hover">
+              {trail[hover].ts ? timeLabel(trail[hover].ts as string) : "Route"} · {trail[hover].km.toFixed(1)} km from start
+            </Tooltip>
+          </CircleMarker>
+        )}
+
         {places.map((p) => (
           <Marker
             key={p.order}
@@ -226,6 +537,11 @@ export default function VisitedPlacesMap({
             }}
             eventHandlers={{ click: () => onSelectPlace?.(p.order) }}
           >
+            {zoom >= 14 && (
+              <Tooltip permanent direction="right" offset={[14, 0]} className="vp-label">
+                {p.name}
+              </Tooltip>
+            )}
             <Popup>
               <div style={{ minWidth: 170, maxWidth: 230 }}>
                 <strong>
@@ -295,7 +611,7 @@ export default function VisitedPlacesMap({
 
       {/* Legend sits above the map's own panes (see .leaflet-container isolation). */}
       <div
-        className="pointer-events-none absolute bottom-3 left-3 z-[500] flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg px-3 py-2 text-[11px] font-medium shadow-md ring-1 ring-black/5"
+        className="pointer-events-none absolute bottom-3 left-3 z-[500] flex max-w-[calc(100%-110px)] flex-wrap items-center gap-x-3 gap-y-1 rounded-lg px-3 py-2 text-[11px] font-medium shadow-md ring-1 ring-black/5"
         style={{ background: "rgba(255,255,255,0.95)", color: "#475569" }}
       >
         <span className="flex items-center gap-1.5">

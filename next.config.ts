@@ -20,7 +20,7 @@ const CSP = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: https://*.tile.openstreetmap.org https://unpkg.com",
+  "img-src 'self' data: https://*.tile.openstreetmap.org https://unpkg.com https://server.arcgisonline.com",
   "font-src 'self' data:",
   "connect-src 'self'",
   "object-src 'none'",

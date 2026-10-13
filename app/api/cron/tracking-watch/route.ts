@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { sendPushNotification } from "@/lib/pushNotifications";
+import { runAutoCheckout } from "@/lib/autoCheckout";
+import { runShiftStartReminders } from "@/lib/shiftReminders";
 import { findSilentFieldWorkers, GIVE_UP_AFTER_MS, REALERT_AFTER_MS } from "@/lib/trackingWatch";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +40,11 @@ async function handle(req: NextRequest) {
     await prisma.attendance.update({ where: { id: w.attendanceId }, data: { trackingAlertSentAt: now } });
     alerted++;
   }
-  return NextResponse.json({ silent: silent.length, alerted });
+  // The same 5-minute run also handles forgotten check-outs and check-in reminders, so no
+  // second scheduler entry is needed.
+  const autoCheckout = await runAutoCheckout(now);
+  const shiftReminders = await runShiftStartReminders(now);
+  return NextResponse.json({ silent: silent.length, alerted, autoCheckout, shiftReminders });
 }
 
 export const GET = handle;
