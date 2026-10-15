@@ -73,6 +73,14 @@ export async function isRateLimited(key: string, windowMs = 60_000, max = 20): P
 const PIN_GUESS_WINDOW_MS = 5 * 60_000;
 const PIN_GUESS_MAX = 10;
 
-export function isPinGuessLimited(organizationId: string, employeeCode: string): Promise<boolean> {
-  return isRateLimited(`pin-guess:${organizationId}:${employeeCode}`, PIN_GUESS_WINDOW_MS, PIN_GUESS_MAX);
+// A second, slower budget on top of the 5-minute one: the short limit alone still allows about 2,900 guesses
+// a day, which is enough to get through a 4-digit PIN in a few days. Capping a whole hour at 30 brings that
+// down to about 700 a day, and a real person checking in and out never gets near it.
+const PIN_GUESS_HOUR_WINDOW_MS = 60 * 60_000;
+const PIN_GUESS_HOUR_MAX = 30;
+
+export async function isPinGuessLimited(organizationId: string, employeeCode: string): Promise<boolean> {
+  const who = `${organizationId}:${employeeCode}`;
+  if (await isRateLimited(`pin-guess:${who}`, PIN_GUESS_WINDOW_MS, PIN_GUESS_MAX)) return true;
+  return isRateLimited(`pin-guess-hour:${who}`, PIN_GUESS_HOUR_WINDOW_MS, PIN_GUESS_HOUR_MAX);
 }

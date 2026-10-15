@@ -3,6 +3,13 @@ import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
+/**
+ * The shortest PIN someone may choose for themselves. A 4-digit PIN has only 10,000 possibilities, which
+ * an attacker can work through in a few days even with the guess limits in lib/rateLimit.ts; 6 digits
+ * is a million. Existing shorter PINs keep working until their owner changes them, so sign-in still accepts 4.
+ */
+export const MIN_PIN_LENGTH = 6;
+
 /** Generates a random numeric PIN, e.g. "483920" */
 export function generatePin(length = 6): string {
   const digits = "0123456789";

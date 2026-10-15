@@ -2,13 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { hashPin, verifyPin, isPinTakenByAnotherEmployee } from "@/lib/credentials";
+import { hashPin, verifyPin, isPinTakenByAnotherEmployee, MIN_PIN_LENGTH } from "@/lib/credentials";
 import { isRateLimited } from "@/lib/rateLimit";
 import { revokeAllRefreshTokensForUser } from "@/lib/mobileAuth";
 
 const bodySchema = z.object({
   currentPin: z.string().min(4).max(10),
-  newPin: z.string().min(4).max(10).regex(/^\d+$/, "PIN must be numeric."),
+  newPin: z
+    .string()
+    .min(MIN_PIN_LENGTH, `PIN must be at least ${MIN_PIN_LENGTH} digits.`)
+    .max(10)
+    .regex(/^\d+$/, "PIN must be numeric."),
 });
 
 export async function POST(req: NextRequest) {
@@ -33,7 +37,9 @@ export async function POST(req: NextRequest) {
   const json = await req.json().catch(() => null);
   const parsed = bodySchema.safeParse(json);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+    // Say why a new PIN was refused (too short, not numeric) instead of a bare "Invalid request."
+    const pinIssue = parsed.error.issues.find((i) => i.path[0] === "newPin");
+    return NextResponse.json({ error: pinIssue?.message ?? "Invalid request." }, { status: 400 });
   }
 
   const user = await prisma.user.findUnique({ where: { id: session.user.id } });
