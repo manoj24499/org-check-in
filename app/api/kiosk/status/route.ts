@@ -45,6 +45,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ exists: false });
   }
 
+  // Anyone can call this without signing in, and employee codes are easy to guess (EMP001, EMP002, ...), so
+  // anonymous lookups get a tighter limit than the signed-in app. A kiosk only needs a few per person.
+  if (!auth && (await isRateLimited(`status-anon:${ip}`, 60_000, 30))) {
+    return NextResponse.json({ error: "Too many attempts." }, { status: 429 });
+  }
+
   const user = await prisma.user.findFirst({ where: { organizationId: orgId, employeeCode } });
   if (!user || user.role !== "EMPLOYEE" || !user.active) {
     return NextResponse.json({ exists: false });
@@ -112,6 +118,21 @@ export async function GET(req: NextRequest) {
 
   // `user` (and thus its organizationId) is already resolved above.
   const settings = user.organizationId ? await getSettings(user.organizationId) : null;
+
+  // The kiosk has no sign-in, so it only gets what it shows before the PIN: a first-name greeting, whether
+  // to offer Check in or Check out, and the check-in time. Full name, shift times, pauses, lateness and
+  // leave type stay with the signed-in app, so guessing employee codes reveals as little as possible.
+  if (!auth) {
+    return NextResponse.json({
+      exists: true,
+      name: user.name.trim().split(/\s+/)[0],
+      workMode: user.workMode,
+      checkedIn: Boolean(checkIn),
+      checkedOut: Boolean(checkOut),
+      checkInAt: checkIn?.timestamp ?? null,
+      checkOutPhotoRequired: settings?.checkOutPhotoRequired ?? false,
+    });
+  }
 
   // Fetch every pause today (not just the open one) so the mobile app can
   // compute a live, pause-adjusted "worked so far" figure the same way
