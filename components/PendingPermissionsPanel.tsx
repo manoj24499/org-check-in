@@ -1,5 +1,7 @@
 "use client";
 
+import { useSyncedState } from "./useSyncedState";
+import { refreshAdminCounts } from "./adminCountsEvent";
 import { useState } from "react";
 import { Clock, Hourglass } from "lucide-react";
 import { Avatar, BTN_PRIMARY, BTN_SECONDARY } from "./admin/ui";
@@ -25,7 +27,7 @@ export default function PendingPermissionsPanel({
 }: {
   initialPermissions: PendingPermission[];
 }) {
-  const [permissions, setPermissions] = useState(initialPermissions);
+  const [permissions, setPermissions] = useSyncedState(initialPermissions);
   const [actingOn, setActingOn] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,6 +45,7 @@ export default function PendingPermissionsPanel({
         throw new Error(data?.error ?? "Something went wrong.");
       }
       setPermissions((prev) => prev.filter((p) => p.id !== id));
+      refreshAdminCounts();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {

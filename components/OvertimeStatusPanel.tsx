@@ -1,5 +1,7 @@
 "use client";
 
+import { useSyncedState } from "./useSyncedState";
+import { refreshAdminCounts } from "./adminCountsEvent";
 import { useState } from "react";
 import { BTN_PRIMARY, BTN_SECONDARY } from "./admin/ui";
 import { Timer } from "lucide-react";
@@ -44,7 +46,7 @@ export default function OvertimeStatusPanel({
 }: {
   initialRequests: ActiveOvertimeRequest[];
 }) {
-  const [requests, setRequests] = useState(initialRequests);
+  const [requests, setRequests] = useSyncedState(initialRequests);
   const [actingOn, setActingOn] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,6 +64,7 @@ export default function OvertimeStatusPanel({
         throw new Error(data?.error ?? "Something went wrong.");
       }
       setRequests((prev) => prev.map((r) => (r.id === id ? { ...r, status: decision } : r)));
+      refreshAdminCounts();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {

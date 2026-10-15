@@ -1,5 +1,7 @@
 "use client";
 
+import { useSyncedState } from "./useSyncedState";
+import { refreshAdminCounts } from "./adminCountsEvent";
 import { useState } from "react";
 import { BTN_PRIMARY, BTN_SECONDARY } from "./admin/ui";
 import { History } from "lucide-react";
@@ -47,7 +49,7 @@ const STATUS_LABEL: Record<OvertimeHistoryEntry["status"], string> = {
  * panel — that decision is record-keeping only and never changes anything
  * the employee already did. */
 export default function OvertimeHistoryList({ requests: initial }: { requests: OvertimeHistoryEntry[] }) {
-  const [requests, setRequests] = useState(initial);
+  const [requests, setRequests] = useSyncedState(initial);
   const [actingOn, setActingOn] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,6 +67,7 @@ export default function OvertimeHistoryList({ requests: initial }: { requests: O
         throw new Error(data?.error ?? "Something went wrong.");
       }
       setRequests((prev) => prev.map((r) => (r.id === id ? { ...r, status: decision } : r)));
+      refreshAdminCounts();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {

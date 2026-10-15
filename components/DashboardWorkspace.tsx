@@ -1,5 +1,6 @@
 "use client";
 
+import { useSyncedState } from "./useSyncedState";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Search, X, Loader2, Download, MapPin, Users } from "lucide-react";
 import { Avatar, BTN_SECONDARY, CARD, EmptyState, Pill, SectionTitle, Segmented, TABLE } from "./admin/ui";
@@ -59,7 +60,7 @@ export default function DashboardWorkspace({
   employees: EmployeeSummary[];
 }) {
   const [tab, setTab] = useState<TabKey>("status");
-  const [employees, setEmployees] = useState(initialEmployees);
+  const [employees, setEmployees] = useSyncedState(initialEmployees);
 
   const applyUpdate = useCallback(
     (update: { userId: string } & EmployeeLocation) => {
@@ -79,7 +80,7 @@ export default function DashboardWorkspace({
         ),
       );
     },
-    [],
+    [setEmployees],
   );
 
   const fetchLatest = useCallback(async () => {

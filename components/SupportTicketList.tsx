@@ -1,5 +1,7 @@
 "use client";
 
+import { useSyncedState } from "./useSyncedState";
+import { refreshAdminCounts } from "./adminCountsEvent";
 import { useMemo, useState } from "react";
 import { CheckCircle2, ChevronDown, ImageIcon, LifeBuoy, MessageSquare } from "lucide-react";
 import { Avatar, BTN_PRIMARY, BTN_SECONDARY, CARD, Card, EmptyState, Pill, Segmented } from "./admin/ui";
@@ -37,7 +39,7 @@ type Filter = "OPEN" | "RESOLVED" | "ALL";
  * OvertimeHistoryList's approve/decline — except this one also pushes the
  * employee a notification on resolve (see the PATCH route). */
 export default function SupportTicketList({ tickets: initial }: { tickets: SupportTicketEntry[] }) {
-  const [tickets, setTickets] = useState(initial);
+  const [tickets, setTickets] = useSyncedState(initial);
   const [filter, setFilter] = useState<Filter>("OPEN");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [actingOn, setActingOn] = useState<string | null>(null);
@@ -74,6 +76,7 @@ export default function SupportTicketList({ tickets: initial }: { tickets: Suppo
         throw new Error(data?.error ?? "Something went wrong.");
       }
       const updated = await res.json();
+      refreshAdminCounts();
       setTickets((prev) =>
         prev.map((t) =>
           t.id === id ? { ...t, status: updated.status, resolvedAt: updated.resolvedAt, adminNote: updated.adminNote } : t,

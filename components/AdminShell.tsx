@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
+  Bell,
   CalendarClock,
   CalendarOff,
   Compass,
@@ -25,14 +26,18 @@ import {
 import { Logo } from "./Logo";
 import ThemeToggle from "./ThemeToggle";
 import AdminTour, { TOUR_START_EVENT } from "./AdminTour";
+import { COUNTS_REFRESH_EVENT } from "./adminCountsEvent";
 
-type Item = { href: string; label: string; icon: LucideIcon; badge?: "leave" | "overtime" | "support" };
+type Item = { href: string; label: string; icon: LucideIcon; badge?: "leave" | "overtime" | "support" | "notifications" };
 type Group = { title: string; items: Item[] };
 
 const GROUPS: Group[] = [
   {
     title: "Overview",
-    items: [{ href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard }],
+    items: [
+      { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/admin/notifications", label: "Notifications", icon: Bell, badge: "notifications" },
+    ],
   },
   {
     title: "Workforce",
@@ -101,6 +106,7 @@ export default function AdminShell({
   pendingLeaveCount,
   pendingOvertimeCount,
   pendingSupportCount,
+  notificationCount,
   banner,
   children,
 }: {
@@ -109,10 +115,12 @@ export default function AdminShell({
   pendingLeaveCount: number;
   pendingOvertimeCount: number;
   pendingSupportCount: number;
+  notificationCount: number;
   banner?: ReactNode;
   children: ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const collapsed = useSyncExternalStore(subscribeCollapsed, readCollapsed, () => false);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -133,7 +141,51 @@ export default function AdminShell({
     };
   }, [drawerOpen]);
 
-  const badges = { leave: pendingLeaveCount, overtime: pendingOvertimeCount, support: pendingSupportCount };
+  // The layout only runs on a full page load, so these start from what it computed and are then kept fresh
+  // here: after every page change, when the tab is focused again, every 15 seconds while the tab is open,
+  // and right after the admin approves, declines or deletes something (see adminCountsEvent). When the
+  // `signature` changes (a new request, alert or check-in arrived) the open page is re-rendered with fresh
+  // data, so new items appear without reloading.
+  const [fresh, setFresh] = useState<{ leave: number; overtime: number; support: number; notifications: number } | null>(null);
+  const lastSignature = useRef<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const load = () => {
+      fetch("/api/admin/badge-counts", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((c) => {
+          if (!alive || !c) return;
+          setFresh(c);
+          if (lastSignature.current !== null && c.signature !== lastSignature.current) router.refresh();
+          lastSignature.current = c.signature;
+        })
+        .catch(() => {});
+    };
+    load();
+    const onFocus = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    window.addEventListener(COUNTS_REFRESH_EVENT, load);
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") load();
+    }, 15_000);
+    return () => {
+      alive = false;
+      window.removeEventListener(COUNTS_REFRESH_EVENT, load);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+      clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+  const badges = fresh ?? {
+    leave: pendingLeaveCount,
+    overtime: pendingOvertimeCount,
+    support: pendingSupportCount,
+    notifications: notificationCount,
+  };
 
   function renderNav(compact: boolean) {
     return (

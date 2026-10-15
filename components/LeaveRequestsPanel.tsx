@@ -1,5 +1,7 @@
 "use client";
 
+import { useSyncedState } from "./useSyncedState";
+import { refreshAdminCounts } from "./adminCountsEvent";
 import { useState } from "react";
 import { CheckCircle2, Clock } from "lucide-react";
 import { BTN_PRIMARY, BTN_SECONDARY } from "./admin/ui";
@@ -41,7 +43,7 @@ export default function LeaveRequestsPanel({
 }: {
   initialRequests: PendingLeaveRequest[];
 }) {
-  const [requests, setRequests] = useState(initialRequests);
+  const [requests, setRequests] = useSyncedState(initialRequests);
   const [actingOn, setActingOn] = useState<string | null>(null);
   const [decliningId, setDecliningId] = useState<string | null>(null);
   const [declineNote, setDeclineNote] = useState("");
@@ -61,6 +63,7 @@ export default function LeaveRequestsPanel({
         throw new Error(data?.error ?? "Something went wrong.");
       }
       setRequests((prev) => prev.filter((r) => r.id !== id));
+      refreshAdminCounts();
       setDecliningId(null);
       setDeclineNote("");
     } catch (err) {

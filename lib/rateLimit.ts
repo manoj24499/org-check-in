@@ -2,20 +2,30 @@ import { ipAddress } from "@vercel/functions";
 import { prisma } from "@/lib/prisma";
 
 /**
- * Resolves the caller's IP for use as a rate-limit key. `X-Forwarded-For` is
- * a plain request header — anyone can set it to any value they like — so
- * reading it directly (as this code used to) lets an attacker get a fresh
- * rate-limit bucket on every request just by varying that header, fully
- * defeating the limit. `ipAddress()` reads Vercel's own edge-network
- * headers instead: Vercel overwrites those with the real connecting IP
- * before the request reaches this code, discarding whatever the client
- * sent, so it can't be spoofed in production. Falls back to the raw header
- * only when running outside Vercel (e.g. local `next dev`), where there's
- * no edge network to provide a trustworthy value and no production
- * spoofing risk to guard against.
+ * Resolves the caller's IP for use as a rate-limit key.
+ *
+ * `X-Forwarded-For` is a plain request header, so a caller can put anything in it. A reverse proxy such as
+ * nginx (`proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for`) does not replace what the caller
+ * sent, it appends the address it actually saw on the right. So the left side is untrusted and only the
+ * entries added by our own proxies can be believed. Reading the whole header, or its first entry, lets an
+ * attacker get a fresh rate-limit bucket on every request just by changing the part they control.
+ *
+ * `TRUSTED_PROXY_HOPS` is how many proxies sit in front of the app (default 1, e.g. nginx): the address that
+ * many entries from the right is the real client. On Vercel its own header is used instead, which Vercel
+ * overwrites. Without any proxy the header is entirely caller-controlled, so keep the app behind one.
  */
 export function getClientIp(request: Request): string {
-  return ipAddress(request) ?? request.headers.get("x-forwarded-for") ?? "unknown";
+  const vercel = ipAddress(request);
+  if (vercel) return vercel;
+
+  const hops = Math.max(1, Number.parseInt(process.env.TRUSTED_PROXY_HOPS ?? "1", 10) || 1);
+  const entries = (request.headers.get("x-forwarded-for") ?? "")
+    .split(",")
+    .map((e) => e.trim())
+    .filter(Boolean);
+  if (entries.length > 0) return entries[Math.max(0, entries.length - hops)];
+
+  return request.headers.get("x-real-ip")?.trim() || "unknown";
 }
 
 /**

@@ -141,6 +141,7 @@ model Organization {
   officeLocation          OfficeLocation?
   appSettings             AppSettings?
   publicHolidays          PublicHoliday[]
+  dismissedNotifications  DismissedNotification[]
   deletedEmployeeArchives DeletedEmployeeArchive[]
   signupCheckout          SignupCheckout?
   apiKeys                 OrganizationApiKey[]
@@ -1015,6 +1016,22 @@ model AssignedPlace {
   updatedAt      DateTime            @updatedAt
 
   @@index([userId, dayKey])
+}
+
+// An admin notification (tracking stopped, missed face check, face service down) that an admin
+// deleted from the Notifications page. Notifications themselves are worked out from live data
+// (see lib/adminNotifications.ts); this only remembers which ones to hide, for the whole
+// organization. `key` identifies one occurrence, so a new problem is not hidden by an old deletion.
+model DismissedNotification {
+  id              String       @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  key             String
+  dismissedByName String?
+  createdAt       DateTime     @default(now())
+
+  @@unique([organizationId, key])
+  @@index([createdAt])
 }
 
 model PublicHoliday {

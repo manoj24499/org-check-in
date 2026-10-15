@@ -9,6 +9,7 @@ import PendingPermissionsPanel from "@/components/PendingPermissionsPanel";
 import { startOfISTDay, todayDateOnlyIST } from "@/lib/istTime";
 import { istGreeting } from "@/lib/greeting";
 import { findSilentFieldWorkers } from "@/lib/trackingWatch";
+import { faceMissedKey, getDismissedKeys, trackingKey } from "@/lib/adminNotifications";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +43,7 @@ export default async function AdminDashboard() {
   // because the face service could not be reached (fail-open, see
   // lib/faceVerify.ts). Kept here so the record stays visible after the
   // top banner clears itself.
-  const missedFaceChecks = await prisma.attendance.findMany({
+  const missedFaceChecksAll = await prisma.attendance.findMany({
     where: {
       type: "CHECK_IN",
       faceVerifyStatus: "UNAVAILABLE",
@@ -54,7 +55,11 @@ export default async function AdminDashboard() {
     take: 50,
   });
   // Field workers who are checked in but whose phone has stopped sending location.
-  const silentWorkers = await findSilentFieldWorkers(organizationId);
+  const silentWorkersAll = await findSilentFieldWorkers(organizationId);
+  // Alerts the admin deleted from the Notifications page stay hidden here too.
+  const dismissedKeys = await getDismissedKeys(organizationId);
+  const silentWorkers = silentWorkersAll.filter((w) => !dismissedKeys.has(trackingKey(w)));
+  const missedFaceChecks = missedFaceChecksAll.filter((m) => !dismissedKeys.has(faceMissedKey(m.id)));
   const istWhen = new Intl.DateTimeFormat("en-IN", {
     timeZone: "Asia/Kolkata",
     weekday: "short",

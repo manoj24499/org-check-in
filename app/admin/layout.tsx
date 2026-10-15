@@ -6,6 +6,8 @@ import AdminShell from "@/components/AdminShell";
 import { FaceVerifyStatusBanner } from "@/components/FaceVerifyStatusBanner";
 import { checkFaceVerifyHealth, happenedWithin } from "@/lib/faceVerify";
 import { startOfISTDay } from "@/lib/istTime";
+import { faceServiceKey, getAdminNotifications, getDismissedKeys } from "@/lib/adminNotifications";
+import { getPendingCounts } from "@/lib/adminCounts";
 
 export default async function AdminLayout({
   children,
@@ -21,20 +23,11 @@ export default async function AdminLayout({
     isAdmin && organizationId
       ? (await prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } }))?.name
       : null;
-  const pendingLeaveCount =
-    isAdmin && organizationId
-      ? await prisma.timeOffRequest.count({ where: { status: "PENDING", user: { organizationId } } })
-      : 0;
-  const pendingOvertimeCount =
-    isAdmin && organizationId
-      ? await prisma.overtimeRequest.count({
-          where: { status: "PENDING", attendance: { user: { organizationId } } },
-        })
-      : 0;
-  const pendingSupportCount =
-    isAdmin && organizationId
-      ? await prisma.supportTicket.count({ where: { status: "OPEN", user: { organizationId } } })
-      : 0;
+  const pending =
+    isAdmin && organizationId ? await getPendingCounts(organizationId) : { leave: 0, overtime: 0, support: 0 };
+  const pendingLeaveCount = pending.leave;
+  const pendingOvertimeCount = pending.overtime;
+  const pendingSupportCount = pending.support;
   // The banner follows the service's *current* state: it shows while the service is
   // down, and for a short while after check-ins slipped through without a face check,
   // then clears by itself once the service has been healthy again for a while.
@@ -54,6 +47,13 @@ export default async function AdminLayout({
         ])
       : (["ok", { _count: 0, _max: { timestamp: null } }] as const);
   const unavailableCheckInsToday = unavailableToday._count;
+  // Notifications waiting for the admin (the badge on the sidebar item), and whether the admin already
+  // deleted today's face-service alert (then the top banner stays hidden too).
+  const [notifications, dismissedKeys] =
+    isAdmin && organizationId
+      ? await Promise.all([getAdminNotifications(organizationId, { faceStatus: faceVerifyStatus }), getDismissedKeys(organizationId)])
+      : [[], new Set<string>()];
+  const faceBannerDismissed = dismissedKeys.has(faceServiceKey());
   const lastUnavailableAt = unavailableToday._max.timestamp?.toISOString() ?? null;
 
   return (
@@ -68,8 +68,9 @@ export default async function AdminLayout({
         pendingLeaveCount={pendingLeaveCount}
         pendingOvertimeCount={pendingOvertimeCount}
         pendingSupportCount={pendingSupportCount}
+        notificationCount={notifications.length}
         banner={
-          isAdmin ? (
+          isAdmin && !faceBannerDismissed ? (
             <FaceVerifyStatusBanner
               status={faceVerifyStatus}
               unavailableCheckInsToday={unavailableCheckInsToday}
