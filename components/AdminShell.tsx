@@ -150,8 +150,8 @@ export default function AdminShell({
   const lastSignature = useRef<string | null>(null);
   useEffect(() => {
     let alive = true;
-    const load = () => {
-      fetch("/api/admin/badge-counts", { cache: "no-store" })
+    const load = (skipCache = false) => {
+      fetch(skipCache ? "/api/admin/badge-counts?fresh=1" : "/api/admin/badge-counts", { cache: "no-store" })
         .then((r) => (r.ok ? r.json() : null))
         .then((c) => {
           if (!alive || !c) return;
@@ -165,7 +165,8 @@ export default function AdminShell({
     const onFocus = () => {
       if (document.visibilityState === "visible") load();
     };
-    window.addEventListener(COUNTS_REFRESH_EVENT, load);
+    const loadFresh = () => load(true);
+    window.addEventListener(COUNTS_REFRESH_EVENT, loadFresh);
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
     const timer = setInterval(() => {
@@ -173,7 +174,7 @@ export default function AdminShell({
     }, 15_000);
     return () => {
       alive = false;
-      window.removeEventListener(COUNTS_REFRESH_EVENT, load);
+      window.removeEventListener(COUNTS_REFRESH_EVENT, loadFresh);
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onFocus);
       clearInterval(timer);
