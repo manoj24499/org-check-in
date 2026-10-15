@@ -1,0 +1,5 @@
+.state.json
+results/
+*.jpg
+*.jpeg
+*.png
