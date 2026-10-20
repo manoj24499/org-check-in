@@ -40,16 +40,11 @@ export default async function SettingsPage() {
         subtitle="App-wide configuration for the kiosk and mobile check-in flows."
       />
 
-      {/* Grid instead of one long stack — each card sizes to its column
-          rather than assuming it owns the full row (see each form's own
-          `h-full flex flex-col` for how they stay equal-height and put
-          their error/saved banner at the bottom regardless of how much
-          description text is above it). */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* Side-by-side grid — each card sizes to its column (see each form's own
+          `h-full flex flex-col` for how they stay equal-height). */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <AppSettingsForm checkOutPhotoRequired={settings.checkOutPhotoRequired} />
-        <ReimbursementRateForm
-          reimbursementRatePerKm={settings.reimbursementRatePerKm}
-        />
+        <ReimbursementRateForm reimbursementRatePerKm={settings.reimbursementRatePerKm} />
         <LeaveQuotaForm
           quotas={{
             casualLeaveQuota: settings.casualLeaveQuota,

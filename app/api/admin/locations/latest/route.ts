@@ -19,6 +19,22 @@ export async function GET() {
     },
   });
 
+  // Employees currently outside their working area: an open pause that came
+  // from a geofence departure (not an approved timed permission).
+  const openPauses = await prisma.attendancePause.findMany({
+    where: {
+      resumedAt: null,
+      timedPermissionId: null,
+      attendance: { user: { organizationId: admin.organizationId, active: true } },
+    },
+    select: { pausedAt: true, attendance: { select: { userId: true } } },
+    orderBy: { pausedAt: "asc" },
+  });
+  const outsideSince = new Map<string, string>();
+  for (const p of openPauses) {
+    if (!outsideSince.has(p.attendance.userId)) outsideSince.set(p.attendance.userId, p.pausedAt.toISOString());
+  }
+
   const latest = employees
     .filter((e) => e.locationPings.length > 0)
     .map((e) => {
@@ -29,6 +45,7 @@ export async function GET() {
         longitude: ping.longitude,
         accuracy: ping.accuracy,
         timestamp: ping.timestamp.toISOString(),
+        outsideSince: outsideSince.get(e.id) ?? null,
       };
     });
 

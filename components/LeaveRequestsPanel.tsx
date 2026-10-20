@@ -3,9 +3,8 @@
 import { useSyncedState } from "./useSyncedState";
 import { refreshAdminCounts } from "./adminCountsEvent";
 import { useState } from "react";
-import { CheckCircle2, Clock } from "lucide-react";
-import { BTN_PRIMARY, BTN_SECONDARY } from "./admin/ui";
-import { Avatar, EmptyState, IconChip, Pill } from "./admin/ui";
+import { CalendarDays, CheckCircle2, Clock } from "lucide-react";
+import { Avatar, BTN_PRIMARY, BTN_SECONDARY, CARD, EmptyState, IconChip, Pill } from "./admin/ui";
 
 export interface PendingLeaveRequest {
   id: string;
@@ -74,7 +73,7 @@ export default function LeaveRequestsPanel({
   };
 
   return (
-    <div className="rounded-2xl border border-black/[0.06] bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04),0_12px_32px_-20px_rgba(16,24,40,0.14)] overflow-hidden flex flex-col lg:max-h-[calc(100vh-240px)]">
+    <div className={`${CARD} overflow-hidden flex flex-col lg:max-h-[calc(100vh-240px)]`}>
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
         <div className="flex items-center gap-3">
           <IconChip icon={Clock} tone="orange" size="sm" />
@@ -84,9 +83,9 @@ export default function LeaveRequestsPanel({
           </div>
         </div>
         {requests.length > 0 && (
-          <span className="rounded-full bg-orange-500 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-white">
+          <Pill tone="orange" dot pulse>
             {requests.length} pending
-          </span>
+          </Pill>
         )}
       </div>
 
@@ -96,7 +95,7 @@ export default function LeaveRequestsPanel({
         {requests.length === 0 ? (
           <EmptyState icon={CheckCircle2} title="All caught up" text="No leave requests are waiting for you." />
         ) : (
-          <div className="flex flex-col">
+          <div className="flex flex-col gap-3 p-4">
             {requests.map((r) => {
               const dateLabel =
                 r.startDate === r.endDate
@@ -104,7 +103,7 @@ export default function LeaveRequestsPanel({
                   : `${formatDate(r.startDate)} – ${formatDate(r.endDate)}`;
               const isDeclining = decliningId === r.id;
               return (
-                <div key={r.id} className="border-b border-slate-100 px-5 py-4 last:border-b-0">
+                <div key={r.id} className={`${CARD} lift border-l-4 border-l-orange-400 px-4 py-4 transition-all duration-200`}>
                   <div className="flex items-center gap-3">
                     <Avatar name={r.employee.name} size={40} />
                     <div className="min-w-0 flex-1">
@@ -113,10 +112,13 @@ export default function LeaveRequestsPanel({
                       </p>
                       <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
                         <Pill tone={TYPE_TONE[r.type]}>{TYPE_LABEL[r.type]}</Pill>
-                        <span>{dateLabel}</span>
+                        <span className="inline-flex items-center gap-1 font-medium text-slate-700">
+                          <CalendarDays className="h-3.5 w-3.5 text-slate-400" />
+                          {dateLabel}
+                        </span>
                         <span>· {r.days} day{r.days === 1 ? "" : "s"}</span>
                       </p>
-                      {r.reason ? <p className="mt-1 truncate text-xs italic text-slate-500">&ldquo;{r.reason}&rdquo;</p> : null}
+                      {r.reason ? <p className="mt-2 truncate rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs italic text-slate-600">&ldquo;{r.reason}&rdquo;</p> : null}
                     </div>
                     {!isDeclining && (
                       <div className="flex items-center gap-1.5 shrink-0">
@@ -150,14 +152,14 @@ export default function LeaveRequestsPanel({
                         value={declineNote}
                         onChange={(e) => setDeclineNote(e.target.value)}
                         placeholder="Reason for declining (optional)"
-                        className="flex-1 min-w-0 basis-full sm:basis-auto rounded-xl border border-black/10 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 focus:bg-white transition-all"
+                        className="flex-1 min-w-0 basis-full sm:basis-auto rounded-xl border border-black/10 bg-white px-3 py-2 text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 transition-all duration-200"
                         autoFocus
                       />
                       <button
                         type="button"
                         onClick={() => setDecliningId(null)}
                         disabled={actingOn === r.id}
-                        className="rounded-xl border border-border px-2.5 py-1.5 text-xs font-medium text-muted hover:bg-surface transition disabled:opacity-50 shrink-0"
+                        className={`${BTN_SECONDARY} shrink-0 !px-3 !py-1.5 !text-xs`}
                       >
                         Cancel
                       </button>
@@ -165,7 +167,7 @@ export default function LeaveRequestsPanel({
                         type="button"
                         onClick={() => decide(r.id, "REJECTED", declineNote.trim() || undefined)}
                         disabled={actingOn === r.id}
-                        className="rounded-xl bg-red-600 text-white px-2.5 py-1.5 text-xs font-semibold hover:bg-red-700 transition disabled:opacity-50 shrink-0"
+                        className={`${BTN_PRIMARY} shrink-0 !bg-red-600 !px-3 !py-1.5 !text-xs hover:!bg-red-700`}
                       >
                         {actingOn === r.id ? "Declining…" : "Confirm decline"}
                       </button>

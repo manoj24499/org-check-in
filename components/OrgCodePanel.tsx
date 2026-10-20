@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Building2, Copy, Check } from "lucide-react";
+import { BTN_SECONDARY, CARD, IconChip } from "./admin/ui";
 
 export default function OrgCodePanel({ name, slug }: { name: string; slug: string }) {
   const [copied, setCopied] = useState(false);
@@ -13,28 +14,26 @@ export default function OrgCodePanel({ name, slug }: { name: string; slug: strin
   }
 
   return (
-    <div className="rounded-xl bg-surface-2 border border-white/60 shadow-[0_1px_2px_rgba(41,43,49,0.05)] p-4 flex flex-col h-full">
-      <div className="flex items-start gap-2.5">
-        <div className="w-7 h-7 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-          <Building2 className="w-3.5 h-3.5" />
-        </div>
+    <div className={`${CARD} flex h-full flex-col gap-4 p-5`}>
+      <div className="flex items-start gap-3">
+        <IconChip icon={Building2} />
         <div>
-          <p className="text-sm font-semibold text-foreground">Organization code</p>
-          <p className="text-xs text-secondary mt-1">
+          <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-slate-900">Organization code</h2>
+          <p className="mt-0.5 text-xs text-slate-500">
             Share this with employees for the kiosk, mobile app, and My Page login.
           </p>
         </div>
       </div>
 
-      <div className="mt-3 flex items-center gap-2">
+      <div className="flex items-center gap-3 rounded-xl border border-black/[0.06] bg-slate-50 px-4 py-3">
         <div className="flex-1 min-w-0">
-          <p className="text-xs text-secondary truncate">{name}</p>
-          <p className="font-mono text-sm font-semibold text-foreground truncate">{slug}</p>
+          <p className="text-xs text-slate-500 truncate">{name}</p>
+          <p className="font-mono text-sm font-semibold text-slate-900 truncate">{slug}</p>
         </div>
         <button
           type="button"
           onClick={copyCode}
-          className="inline-flex items-center gap-1 rounded-xl border border-transparent bg-orange-600 shadow-sm px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-orange-700 transition shrink-0"
+          className={`${BTN_SECONDARY} shrink-0 !px-3 !py-1.5`}
         >
           {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
           {copied ? "Copied" : "Copy"}

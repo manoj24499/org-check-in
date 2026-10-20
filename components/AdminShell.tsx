@@ -211,17 +211,17 @@ export default function AdminShell({
                   data-tour={`nav-${href}`}
                   aria-current={active ? "page" : undefined}
                   onClick={() => setDrawerOpen(false)}
-                  className={`group relative flex items-center gap-3 rounded-lg px-3 py-2 text-[14px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
+                  className={`group relative flex items-center gap-3 rounded-lg px-3 py-2 text-[14px] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
                     compact ? "justify-center" : ""
                   } ${
                     active
                       ? "bg-primary/10 font-medium text-primary-dark"
-                      : "text-muted-2 hover:bg-black/[0.04] hover:text-foreground"
+                      : "text-muted-2 hover:translate-x-0.5 hover:bg-black/[0.04] hover:text-foreground"
                   }`}
                 >
-                  {active && <span className="absolute -left-3 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-primary" />}
+                  {active && <span className="absolute -left-3 top-1.5 bottom-1.5 w-[3px] animate-[admin-fade_300ms_ease-out] rounded-r-full bg-primary" />}
                   <span className="relative shrink-0">
-                    <Icon className="h-[18px] w-[18px]" strokeWidth={active ? 2.2 : 1.9} />
+                    <Icon className="h-[18px] w-[18px]" strokeWidth={active ? 2 : 1.7} />
                     {compact && count > 0 && (
                       <span className="absolute -right-1.5 -top-1.5 grid h-3.5 min-w-3.5 place-items-center rounded-full bg-primary px-[3px] text-[8.5px] font-semibold leading-none text-white">
                         {count}
@@ -360,7 +360,11 @@ export default function AdminShell({
         </header>
 
         {banner}
-        <main className="admin-canvas flex-1 overflow-y-auto">{children}</main>
+        <main className="admin-canvas flex-1 overflow-y-auto">
+          <div key={pathname} className="page-enter">
+            {children}
+          </div>
+        </main>
       </div>
 
       <AdminTour userName={userName} />

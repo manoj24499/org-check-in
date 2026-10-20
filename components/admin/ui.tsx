@@ -30,7 +30,7 @@ export function Card({ className = "", children }: { className?: string; childre
 
 /** Consistent buttons (class strings so they work on <button>, <a> and <Link>). */
 export const BTN_BASE =
-  "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-[13px] font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/50 disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-[13px] font-medium transition-all duration-200 hover:-translate-y-px active:translate-y-0 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0";
 export const BTN_PRIMARY = `${BTN_BASE} bg-orange-600 text-white shadow-[0_6px_16px_-8px_rgba(234,88,12,0.7)] hover:bg-orange-700`;
 export const BTN_SECONDARY = `${BTN_BASE} border border-black/10 bg-white text-slate-700 shadow-sm hover:bg-slate-50`;
 export const BTN_GHOST = `${BTN_BASE} text-slate-600 hover:bg-black/[0.05]`;
@@ -62,7 +62,7 @@ export function PageHeader({
 
 /** Page content wrapper: consistent gutters and rhythm. */
 export function Page({ children }: { children: ReactNode }) {
-  return <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-5 py-7 sm:px-8 sm:py-8">{children}</div>;
+  return <div className="admin-stagger mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-5 py-7 sm:px-8 sm:py-8">{children}</div>;
 }
 
 export function IconChip({ icon: Icon, tone = "orange", size = "md" }: { icon: LucideIcon; tone?: Tone; size?: "sm" | "md" | "lg" }) {
@@ -70,7 +70,7 @@ export function IconChip({ icon: Icon, tone = "orange", size = "md" }: { icon: L
   const ic = size === "sm" ? "h-4 w-4" : size === "lg" ? "h-6 w-6" : "h-5 w-5";
   return (
     <span className={`grid shrink-0 place-items-center ${box} ${TONES[tone].chip}`}>
-      <Icon className={ic} strokeWidth={2} />
+      <Icon className={ic} strokeWidth={1.7} />
     </span>
   );
 }
@@ -93,7 +93,7 @@ export function StatCard({
 }) {
   const t = TONES[tone];
   return (
-    <div className={`${CARD} relative overflow-hidden p-5`}>
+    <div className={`${CARD} lift relative overflow-hidden p-5`}>
       <div className={`pointer-events-none absolute -right-8 -top-10 h-28 w-28 rounded-full bg-gradient-to-br ${t.glow} to-transparent blur-2xl`} />
       <div className="relative flex items-start justify-between gap-3">
         <div>
@@ -199,7 +199,7 @@ export const TABLE = {
   thead: "bg-slate-50/80 text-left",
   th: "px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500",
   tbody: "divide-y divide-slate-100",
-  tr: "transition-colors hover:bg-orange-50/40",
+  tr: "transition-colors duration-150 hover:bg-orange-50/40",
   td: "px-5 py-3.5 align-middle",
 };
 

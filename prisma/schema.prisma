@@ -392,6 +392,10 @@ model User {
 
   // Employee kiosk auth (only set for EMPLOYEE role)
   pinHash String?
+  // HMAC of (organizationId + plaintext PIN), keyed by PIN_LOOKUP_SECRET — lets
+  // PIN-uniqueness checks be one indexed lookup instead of a bcrypt scan. Null
+  // for PINs set before this existed; filled in on that employee's next login.
+  pinLookupHash String?
 
   // Embedded in every mobile access/refresh JWT at sign time (see
   // lib/mobileAuth.ts) and checked against this column on every use —
@@ -489,6 +493,7 @@ model User {
   // list) and lib/employeeCleanup.ts's deactivated-employee sweep — all of
   // them filter on some leftmost prefix of this exact combination.
   @@index([role, active, workMode])
+  @@index([organizationId, pinLookupHash])
 }
 
 enum UserTokenPurpose {
@@ -543,6 +548,9 @@ model Shift {
   name      String?
   startTime String // "HH:mm", 24-hour
   endTime   String // "HH:mm", 24-hour
+  // Days this shift runs, Date.getDay() convention (0 = Sunday ... 6 = Saturday).
+  // Pre-selects the days in Bulk assign; ShiftAssignment stays the source of truth.
+  weekdays  Int[]    @default([0, 1, 2, 3, 4, 5, 6])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

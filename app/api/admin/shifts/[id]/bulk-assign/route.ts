@@ -41,21 +41,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "One or more employees no longer exist." }, { status: 400 });
   }
 
-  // One upsert per (employee, weekday) — replaces that slot's existing
-  // assignment (to any shift) rather than erroring on the unique
-  // constraint, matching the "this will replace it for those days" warning
-  // the modal shows before calling this.
-  await prisma.$transaction(
-    parsed.data.employeeIds.flatMap((userId) =>
-      parsed.data.weekdays.map((weekday) =>
-        prisma.shiftAssignment.upsert({
-          where: { userId_weekday: { userId, weekday } },
-          create: { userId, weekday, shiftId: id },
-          update: { shiftId: id },
-        }),
-      ),
-    ),
-  );
+  // Replaces each (employee, weekday) slot's existing assignment (to any
+  // shift), matching the "this will replace it for those days" warning the
+  // modal shows before calling this. Two set-based queries instead of one
+  // upsert per slot: with the driver adapter every query in a transaction is
+  // a network round trip, and ~80+ upserts (12 people x 7 days) blew past
+  // Prisma's 5s transaction timeout (P2028) and 500'd the request.
+  const weekdays = [...new Set(parsed.data.weekdays)];
+  const employeeIds = [...new Set(parsed.data.employeeIds)];
+  await prisma.$transaction([
+    prisma.shiftAssignment.deleteMany({
+      where: { userId: { in: employeeIds }, weekday: { in: weekdays } },
+    }),
+    prisma.shiftAssignment.createMany({
+      data: employeeIds.flatMap((userId) => weekdays.map((weekday) => ({ userId, weekday, shiftId: id }))),
+    }),
+  ]);
 
   return NextResponse.json({ ok: true });
 }

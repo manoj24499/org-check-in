@@ -30,13 +30,15 @@ export default function BulkAssignModal({
   getConflict,
   onClose,
 }: {
-  shift: { id: string; name: string | null; startTime: string; endTime: string };
+  shift: { id: string; name: string | null; startTime: string; endTime: string; weekdays?: number[] };
   allEmployees: PickableEmployee[];
   getConflict: ConflictLookup;
   onClose: () => void;
 }) {
   const router = useRouter();
-  const [weekdays, setWeekdays] = useState<Set<number>>(new Set([0, 1, 2, 3, 4, 5, 6]));
+  const [weekdays, setWeekdays] = useState<Set<number>>(
+    new Set(shift.weekdays?.length ? shift.weekdays : [0, 1, 2, 3, 4, 5, 6]),
+  );
   const [employeeIds, setEmployeeIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

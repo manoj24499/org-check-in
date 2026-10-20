@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { verifyPin } from "@/lib/credentials";
+import { verifyPin, backfillPinLookupHash } from "@/lib/credentials";
 import { getClientIp, isRateLimited, isPinGuessLimited } from "@/lib/rateLimit";
 import { haversineDistanceMeters } from "@/lib/geofence";
 import { resolveGeofenceTarget } from "@/lib/geofenceTarget";
@@ -278,6 +278,9 @@ async function handlePost(req: NextRequest) {
       { error: "Not recognized. Please check your employee code and PIN and try again." },
       { status: 401 }
     );
+  }
+  if (!user.pinLookupHash && user.organizationId) {
+    backfillPinLookupHash(user.id, user.organizationId, parsed.data.pin);
   }
 
   let photoBuffer: Uint8Array<ArrayBuffer> | null = null;

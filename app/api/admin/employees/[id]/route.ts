@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
-import { generateUniquePin, hashPin } from "@/lib/credentials";
+import { generateUniquePin, hashPin, pinLookupHash } from "@/lib/credentials";
 import { DEFAULT_GEOFENCE_RADIUS_METERS } from "@/lib/geofence";
 import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
 import { embedFace } from "@/lib/faceVerify";
@@ -96,7 +96,10 @@ export async function PATCH(
   if (parsed.data.action === "regenerate-pin") {
     const pin = await generateUniquePin(admin.organizationId, id);
     const pinHash = await hashPin(pin);
-    await prisma.user.update({ where: { id }, data: { pinHash } });
+    await prisma.user.update({
+      where: { id },
+      data: { pinHash, pinLookupHash: pinLookupHash(admin.organizationId, pin) },
+    });
     return NextResponse.json({ pin });
   }
 

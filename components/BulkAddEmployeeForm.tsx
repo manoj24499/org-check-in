@@ -126,7 +126,7 @@ export default function BulkAddEmployeeForm() {
       return;
     }
     if (file.size > MAX_FILE_BYTES) {
-      setError("That file is too large. Keep it under 1 MB (about 500 employees).");
+      setError("That file is too large. Keep it under 1 MB.");
       return;
     }
     try {

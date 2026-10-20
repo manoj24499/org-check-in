@@ -9,6 +9,7 @@ const updateSchema = z.object({
   name: z.string().trim().max(60).nullable().optional(),
   startTime: z.string().regex(TIME_PATTERN, "Use 24-hour HH:mm.").optional(),
   endTime: z.string().regex(TIME_PATTERN, "Use 24-hour HH:mm.").optional(),
+  weekdays: z.array(z.number().int().min(0).max(6)).min(1, "Pick at least one day.").max(7).optional(),
 });
 
 export async function PATCH(
@@ -39,16 +40,26 @@ export async function PATCH(
     return NextResponse.json({ error: "Start and end time can't be the same." }, { status: 400 });
   }
 
+  // A day dropped from the shift no longer applies to anyone on it, so the
+  // team's per-employee assignments for that day are removed too. Adding a
+  // day doesn't assign anyone — use Bulk assign for that.
+  if (parsed.data.weekdays !== undefined) {
+    await prisma.shiftAssignment.deleteMany({
+      where: { shiftId: id, weekday: { notIn: parsed.data.weekdays } },
+    });
+  }
+
   const shift = await prisma.shift.update({
     where: { id },
     data: {
       ...(parsed.data.name !== undefined ? { name: parsed.data.name || null } : {}),
       ...(parsed.data.startTime !== undefined ? { startTime: parsed.data.startTime } : {}),
       ...(parsed.data.endTime !== undefined ? { endTime: parsed.data.endTime } : {}),
+      ...(parsed.data.weekdays !== undefined ? { weekdays: [...new Set(parsed.data.weekdays)].sort() } : {}),
     },
     include: {
       assignments: {
-        select: { weekday: true, user: { select: { id: true, employeeCode: true, name: true } } },
+        select: { weekday: true, user: { select: { id: true, employeeCode: true, name: true, createdAt: true } } },
       },
     },
   });

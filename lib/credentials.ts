@@ -36,6 +36,32 @@ export async function verifyPin(pin: string, hashed: string): Promise<boolean> {
   return bcrypt.compare(pin, hashed);
 }
 
+/**
+ * Keyed, searchable fingerprint of a PIN (HMAC-SHA256 over organizationId + PIN,
+ * keyed by PIN_LOOKUP_SECRET). Not a biometric — just a deterministic code so
+ * "is this PIN already taken?" is one indexed query instead of a bcrypt scan
+ * over every employee. Returns null when the secret isn't configured, in which
+ * case callers store nothing and the uniqueness check falls back to the scan.
+ */
+export function pinLookupHash(organizationId: string, pin: string): string | null {
+  const secret = process.env.PIN_LOOKUP_SECRET;
+  if (!secret || secret.length < 16) return null;
+  return crypto.createHmac("sha256", secret).update(`${organizationId}:${pin}`).digest("hex");
+}
+
+/**
+ * Saves the lookup hash for an employee whose PIN predates the column. Called
+ * after a successful PIN login (the only moment the plaintext is known).
+ * Best-effort: never blocks or fails the login.
+ */
+export function backfillPinLookupHash(userId: string, organizationId: string, pin: string): void {
+  const hash = pinLookupHash(organizationId, pin);
+  if (!hash) return;
+  prisma.user
+    .updateMany({ where: { id: userId, pinLookupHash: null }, data: { pinLookupHash: hash } })
+    .catch(() => {});
+}
+
 // Should essentially never loop — 1,000,000 possible 6-digit PINs against a
 // realistic active-employee count — but caps out rather than looping
 // forever in the pathological case, falling back to whatever the last
@@ -79,29 +105,37 @@ export async function generateUniquePin(
  * the admin create/regenerate flows for defense in depth) — not a fix to
  * the verification logic, which was never the problem.
  *
- * bcrypt hashes have no reversible/indexable lookup, so this is a linear
- * scan comparing against every other active employee's hash *in this
- * organization*, with an early exit on the first match. Fine at this app's
- * per-organization employee-count scale; it would need a separate
- * keyed-hash index (not a bcrypt rework) to stay fast
- * into the thousands.
+ * bcrypt hashes have no reversible/indexable lookup, so employees with a
+ * stored pinLookupHash (see pinLookupHash above) are matched with one indexed
+ * query, and only employees without one (legacy PINs) fall back to a linear
+ * bcrypt scan with an early exit on the first match.
  */
 export async function isPinTakenByAnotherEmployee(
   pin: string,
   organizationId: string,
   excludeUserId?: string,
 ): Promise<boolean> {
-  const others = await prisma.user.findMany({
-    where: {
-      organizationId,
-      role: "EMPLOYEE",
-      active: true,
-      pinHash: { not: null },
-      ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
-    },
+  const notSelf = excludeUserId ? { id: { not: excludeUserId } } : {};
+  const base = { organizationId, role: "EMPLOYEE" as const, active: true, ...notSelf };
+
+  // Fast path: employees whose PIN has a stored lookup hash — one indexed query.
+  const hash = pinLookupHash(organizationId, pin);
+  if (hash) {
+    const hit = await prisma.user.findFirst({
+      where: { ...base, pinLookupHash: hash },
+      select: { id: true },
+    });
+    if (hit) return true;
+  }
+
+  // Slow path, shrinking over time: PINs set before the lookup hash existed
+  // (or while PIN_LOOKUP_SECRET was unset) can only be checked by bcrypt scan.
+  // Each is backfilled on that employee's next login.
+  const legacy = await prisma.user.findMany({
+    where: { ...base, pinHash: { not: null }, pinLookupHash: null },
     select: { pinHash: true },
   });
-  for (const other of others) {
+  for (const other of legacy) {
     if (other.pinHash && (await bcrypt.compare(pin, other.pinHash))) {
       return true;
     }

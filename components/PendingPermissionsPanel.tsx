@@ -4,7 +4,7 @@ import { useSyncedState } from "./useSyncedState";
 import { refreshAdminCounts } from "./adminCountsEvent";
 import { useState } from "react";
 import { Clock, Hourglass } from "lucide-react";
-import { Avatar, BTN_PRIMARY, BTN_SECONDARY } from "./admin/ui";
+import { Avatar, BTN_PRIMARY, BTN_SECONDARY, IconChip, Pill } from "./admin/ui";
 
 export interface PendingPermission {
   id: string;
@@ -59,22 +59,20 @@ export default function PendingPermissionsPanel({
     <div className="overflow-hidden rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white shadow-[0_1px_2px_rgba(16,24,40,0.04),0_12px_32px_-20px_rgba(217,119,6,0.35)]">
       <div className="flex items-center justify-between gap-3 px-5 py-3.5">
         <div className="flex items-center gap-2.5">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-amber-500/15 text-amber-600">
-            <Hourglass className="h-4 w-4" />
-          </span>
+          <IconChip icon={Hourglass} tone="amber" size="sm" />
           <div>
             <p className="text-[14px] font-semibold text-slate-900">Permission requests awaiting review</p>
             <p className="text-[12px] text-slate-500">Employees are waiting on your decision.</p>
           </div>
         </div>
-        <span className="rounded-full bg-amber-500 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-white">
-          {permissions.length}
-        </span>
+        <Pill tone="amber" dot pulse>
+          {permissions.length} pending
+        </Pill>
       </div>
       {error ? <p className="px-5 pb-2 text-xs text-red-600">{error}</p> : null}
       <div className="flex flex-col divide-y divide-amber-100 border-t border-amber-100 bg-white/70">
         {permissions.map((p) => (
-          <div key={p.id} className="flex items-center gap-3 px-5 py-3">
+          <div key={p.id} className="lift flex items-center gap-3 px-5 py-3 transition-all duration-200">
             <Avatar name={p.employee.name} size={34} />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-slate-900">

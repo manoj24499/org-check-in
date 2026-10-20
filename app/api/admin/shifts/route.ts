@@ -10,6 +10,7 @@ const createSchema = z
     name: z.string().trim().max(60).optional(),
     startTime: z.string().regex(TIME_PATTERN, "Use 24-hour HH:mm."),
     endTime: z.string().regex(TIME_PATTERN, "Use 24-hour HH:mm."),
+    weekdays: z.array(z.number().int().min(0).max(6)).min(1, "Pick at least one day.").max(7).optional(),
   })
   // endTime < startTime is a valid overnight shift (e.g. 16:00-02:00 — see
   // isOvernightShift in lib/shiftAssignment.ts and Shift's schema comment),
@@ -34,7 +35,7 @@ export async function GET() {
     orderBy: { startTime: "asc" },
     include: {
       assignments: {
-        select: { weekday: true, user: { select: { id: true, employeeCode: true, name: true } } },
+        select: { weekday: true, user: { select: { id: true, employeeCode: true, name: true, createdAt: true } } },
       },
     },
   });
@@ -58,10 +59,11 @@ export async function POST(req: NextRequest) {
       name: parsed.data.name || null,
       startTime: parsed.data.startTime,
       endTime: parsed.data.endTime,
+      ...(parsed.data.weekdays ? { weekdays: [...new Set(parsed.data.weekdays)].sort() } : {}),
     },
     include: {
       assignments: {
-        select: { weekday: true, user: { select: { id: true, employeeCode: true, name: true } } },
+        select: { weekday: true, user: { select: { id: true, employeeCode: true, name: true, createdAt: true } } },
       },
     },
   });

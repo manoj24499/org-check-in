@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { hashPin, verifyPin, isPinTakenByAnotherEmployee, MIN_PIN_LENGTH } from "@/lib/credentials";
+import { hashPin, verifyPin, isPinTakenByAnotherEmployee, pinLookupHash, MIN_PIN_LENGTH } from "@/lib/credentials";
 import { isRateLimited } from "@/lib/rateLimit";
 import { requireMobileUser, signAccessToken, issueRefreshToken, revokeAllRefreshTokensForUser } from "@/lib/mobileAuth";
 
@@ -74,7 +74,11 @@ export async function POST(req: NextRequest) {
   // below and returned here instead of forcing an immediate re-login.
   const updated = await prisma.user.update({
     where: { id: user.id },
-    data: { pinHash: newPinHash, tokenVersion: { increment: 1 } },
+    data: {
+      pinHash: newPinHash,
+      pinLookupHash: pinLookupHash(auth.organizationId, parsed.data.newPin),
+      tokenVersion: { increment: 1 },
+    },
   });
 
   // Keeps RefreshToken.revokedAt in sync with the tokenVersion bump above

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ShieldCheck, Plus, X, Crown } from "lucide-react";
-import { BTN_PRIMARY } from "./admin/ui";
+import { Avatar, BTN_PRIMARY, BTN_SECONDARY, CARD, IconChip, Pill } from "./admin/ui";
 
 export interface AdminSummary {
   id: string;
@@ -69,22 +69,20 @@ export default function AdminsPanel({ admins: initialAdmins }: { admins: AdminSu
   }
 
   return (
-    <div className="rounded-xl bg-surface-2 border border-white/60 shadow-[0_1px_2px_rgba(41,43,49,0.05)] p-4 flex flex-col h-full">
+    <div className={`${CARD} flex h-full flex-col gap-4 p-5`}>
       <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-2.5">
-          <div className="w-7 h-7 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-            <ShieldCheck className="w-3.5 h-3.5" />
-          </div>
+        <div className="flex items-start gap-3">
+          <IconChip icon={ShieldCheck} />
           <div>
-            <p className="text-sm font-semibold text-foreground">Admins</p>
-            <p className="text-xs text-secondary mt-1">Who can manage this organization.</p>
+            <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-slate-900">Admins</h2>
+            <p className="mt-0.5 text-xs text-slate-500">Who can manage this organization.</p>
           </div>
         </div>
         {!adding && (
           <button
             type="button"
             onClick={openAdd}
-            className="inline-flex items-center gap-1 rounded-xl border border-transparent bg-orange-600 shadow-sm px-2.5 py-1 text-xs font-semibold text-white hover:bg-orange-700 transition shrink-0"
+            className={`${BTN_PRIMARY} shrink-0 !px-3 !py-1.5`}
           >
             <Plus className="w-3.5 h-3.5" />
             Add
@@ -92,29 +90,32 @@ export default function AdminsPanel({ admins: initialAdmins }: { admins: AdminSu
         )}
       </div>
 
-      <div className="mt-3 flex flex-col gap-1.5">
+      <div className="-mx-2 flex flex-col divide-y divide-slate-100">
         {admins.map((a) => (
-          <div key={a.id} className="flex items-center gap-2 text-sm">
-            <span className="font-medium text-foreground truncate">{a.name}</span>
+          <div key={a.id} className="flex items-center gap-3 rounded-xl px-2 py-2.5 text-sm transition-colors duration-150 hover:bg-slate-50">
+            <Avatar name={a.name} size={34} />
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-medium text-slate-900">{a.name}</p>
+              <p className="truncate text-xs text-slate-500">{a.email}</p>
+            </div>
             {a.isOwner && (
-              <span className="inline-flex items-center gap-0.5 text-[10px] font-medium uppercase tracking-wide text-primary-dark bg-primary/10 rounded px-1.5 py-0.5 shrink-0">
-                <Crown className="w-2.5 h-2.5" />
+              <Pill tone="orange">
+                <Crown className="w-3 h-3" />
                 Owner
-              </span>
+              </Pill>
             )}
-            <span className="text-xs text-secondary truncate ml-auto">{a.email}</span>
           </div>
         ))}
       </div>
 
       {adding && (
-        <div className="mt-3 pt-3 border-t border-border-soft flex flex-col gap-2">
+        <div className="pt-4 border-t border-slate-100 flex flex-col gap-2.5">
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Name"
-            className="rounded-xl border border-black/10 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 focus:bg-white transition-all"
+            className="rounded-xl border border-black/10 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 transition-all"
             autoFocus
           />
           <input
@@ -122,21 +123,21 @@ export default function AdminsPanel({ admins: initialAdmins }: { admins: AdminSu
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="Email"
-            className="rounded-xl border border-black/10 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 focus:bg-white transition-all"
+            className="rounded-xl border border-black/10 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 transition-all"
           />
           <input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Password (min 8 characters)"
-            className="rounded-xl border border-black/10 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 focus:bg-white transition-all"
+            className="rounded-xl border border-black/10 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 transition-all"
           />
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={handleAdd}
               disabled={loading}
-              className={`${BTN_PRIMARY} shrink-0 !px-3 !py-1.5 !text-xs`}
+              className={`${BTN_PRIMARY} shrink-0`}
             >
               {loading ? "Adding…" : "Save"}
             </button>
@@ -144,7 +145,7 @@ export default function AdminsPanel({ admins: initialAdmins }: { admins: AdminSu
               type="button"
               onClick={closeAdd}
               disabled={loading}
-              className="rounded-xl border border-border text-muted hover:bg-surface p-1.5 transition disabled:opacity-50"
+              className={`${BTN_SECONDARY} !px-2.5`}
               aria-label="Cancel"
             >
               <X className="w-3.5 h-3.5" />

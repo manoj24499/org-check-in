@@ -88,12 +88,12 @@ export default function VisitDatePicker({
       <div className="flex items-center justify-between mb-2">
         <button
           onClick={() => changeMonth(-1)}
-          className="p-2.5 -m-1 rounded-xl hover:bg-surface-2 transition"
+          className="grid h-8 w-8 place-items-center rounded-full transition-all duration-200 hover:bg-primary/10 active:scale-90"
           aria-label="Previous month"
         >
           <ChevronLeft className="w-4 h-4 text-muted" />
         </button>
-        <span className="text-sm font-medium text-foreground">
+        <span className="text-sm font-semibold tracking-tight text-foreground">
           {viewDate.toLocaleDateString("en-US", {
             month: "long",
             year: "numeric",
@@ -101,14 +101,14 @@ export default function VisitDatePicker({
         </span>
         <button
           onClick={() => changeMonth(1)}
-          className="p-2.5 -m-1 rounded-xl hover:bg-surface-2 transition"
+          className="grid h-8 w-8 place-items-center rounded-full transition-all duration-200 hover:bg-primary/10 active:scale-90"
           aria-label="Next month"
         >
           <ChevronRight className="w-4 h-4 text-muted" />
         </button>
       </div>
 
-      <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-medium text-secondary uppercase tracking-wide mb-1">
+      <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-semibold text-muted tracking-wider mb-1">
         {WEEKDAYS.map((w, i) => (
           <div key={i}>{w}</div>
         ))}
@@ -118,7 +118,7 @@ export default function VisitDatePicker({
           half-width column next to the map, so its width varies with the
           viewport. Tying cell height to width there would make the whole
           grid taller than its allotted row on wide screens. */}
-      <div className="grid grid-cols-7 gap-1">
+      <div key={`${year}-${month}`} className="cal-swap grid grid-cols-7 gap-1">
         {cells.map((day, i) => {
           if (day === null) return <div key={`blank-${i}`} />;
           const cellDate = new Date(year, month, day);
@@ -133,12 +133,12 @@ export default function VisitDatePicker({
               key={key}
               onClick={() => onSelect(key)}
               disabled={isFuture}
-              className={`relative h-8 rounded-xl flex items-center justify-center text-xs font-medium transition-colors ${
+              className={`cal-day relative h-8 rounded-xl flex items-center justify-center text-xs font-medium ${
  isSelected
- ? "bg-primary text-white"
+ ? "bg-primary text-white shadow-[0_6px_14px_-6px_rgba(240,100,0,0.7)]"
  : isToday
- ? "bg-primary/10 text-primary"
- : "text-muted-2 hover:bg-surface-2"
+ ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/40"
+ : "text-muted-2 hover:bg-primary/10 hover:text-primary"
  } ${isFuture ? "cursor-not-allowed opacity-30" : "cursor-pointer"}`}
               title={traveled ? "Logged a field visit this day" : undefined}
             >

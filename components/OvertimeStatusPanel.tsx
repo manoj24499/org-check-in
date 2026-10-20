@@ -3,9 +3,8 @@
 import { useSyncedState } from "./useSyncedState";
 import { refreshAdminCounts } from "./adminCountsEvent";
 import { useState } from "react";
-import { BTN_PRIMARY, BTN_SECONDARY } from "./admin/ui";
-import { Timer } from "lucide-react";
-import { Avatar, EmptyState, IconChip, Pill } from "./admin/ui";
+import { Clock, Timer } from "lucide-react";
+import { Avatar, BTN_PRIMARY, BTN_SECONDARY, CARD, EmptyState, IconChip, Pill, type Tone } from "./admin/ui";
 
 export interface ActiveOvertimeRequest {
   id: string;
@@ -24,10 +23,10 @@ const STATUS_LABEL: Record<ActiveOvertimeRequest["status"], string> = {
   APPROVED: "Approved",
   REJECTED: "Declined",
 };
-const STATUS_TONE: Record<ActiveOvertimeRequest["status"], string> = {
-  PENDING: "text-amber-600",
-  APPROVED: "text-primary-dark",
-  REJECTED: "text-red-600",
+const STATUS_TONE: Record<ActiveOvertimeRequest["status"], Tone> = {
+  PENDING: "amber",
+  APPROVED: "green",
+  REJECTED: "red",
 };
 
 /** Compact live view of everyone currently working overtime, org-wide — the
@@ -73,7 +72,7 @@ export default function OvertimeStatusPanel({
   };
 
   return (
-    <div className="rounded-2xl border border-black/[0.06] bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04),0_12px_32px_-20px_rgba(16,24,40,0.14)] overflow-hidden flex flex-col lg:max-h-[calc(100vh-240px)]">
+    <div className={`${CARD} overflow-hidden flex flex-col lg:max-h-[calc(100vh-240px)]`}>
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
         <div className="flex items-center gap-3">
           <IconChip icon={Timer} tone="orange" size="sm" />
@@ -83,9 +82,9 @@ export default function OvertimeStatusPanel({
           </div>
         </div>
         {requests.length > 0 && (
-          <span className="rounded-full bg-orange-500 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-white">
-            {requests.length}
-          </span>
+          <Pill tone="orange" dot pulse>
+            {requests.length} live
+          </Pill>
         )}
       </div>
       {error ? <p className="px-4 py-2 text-xs text-red-600 shrink-0">{error}</p> : null}
@@ -93,16 +92,19 @@ export default function OvertimeStatusPanel({
         {requests.length === 0 ? (
           <EmptyState icon={Timer} title="No overtime right now" text="Overtime requests will show up here as they come in." />
         ) : (
-          <div className="flex flex-col">
+          <div className="flex flex-col gap-3 p-4">
             {requests.map((r) => (
-              <div key={r.id} className="flex items-center gap-3 border-b border-slate-100 px-5 py-4 last:border-b-0">
+              <div key={r.id} className={`${CARD} lift flex flex-wrap items-center gap-3 border-l-4 border-l-amber-400 px-4 py-4 transition-all duration-200`}>
                 <Avatar name={r.employee.name} size={40} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-slate-900">
                     {r.employee.name} <span className="font-normal text-slate-500">· {r.employee.employeeCode}</span>
                   </p>
                   <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
-                    <Pill tone="amber">until ~{formatTime(r.estimatedEndAt)}</Pill>
+                    <Pill tone="amber">
+                      <Clock className="h-3 w-3" />
+                      until ~{formatTime(r.estimatedEndAt)}
+                    </Pill>
                     <span className="truncate">{r.reason}</span>
                   </p>
                 </div>
@@ -126,9 +128,9 @@ export default function OvertimeStatusPanel({
                     </button>
                   </>
                 ) : (
-                  <span className={`text-xs font-semibold shrink-0 ${STATUS_TONE[r.status]}`}>
+                  <Pill tone={STATUS_TONE[r.status]} dot>
                     {STATUS_LABEL[r.status]}
-                  </span>
+                  </Pill>
                 )}
               </div>
             ))}

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
-import { generateUniquePin, hashPin, allocateNextEmployeeCode } from "@/lib/credentials";
+import { generateUniquePin, hashPin, allocateNextEmployeeCode, pinLookupHash } from "@/lib/credentials";
 import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
 import { embedFace } from "@/lib/faceVerify";
 import { PayloadTooLargeError, readJsonWithLimit } from "@/lib/readJsonBody";
@@ -46,10 +46,15 @@ export async function GET(req: NextRequest) {
   const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10) || 1);
   const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get("pageSize") ?? "", 10) || EMPLOYEES_PAGE_SIZE));
   const q = searchParams.get("q")?.trim();
+  // Optional work-location filter for the admin list (OFFICE / WFH / FIELD).
+  const modeParam = searchParams.get("mode");
+  const workMode =
+    modeParam === "OFFICE" || modeParam === "WFH" || modeParam === "FIELD" ? (modeParam as "OFFICE" | "WFH" | "FIELD") : undefined;
 
   const where = {
     organizationId: admin.organizationId,
     role: "EMPLOYEE" as const,
+    ...(workMode ? { workMode } : {}),
     ...(q
       ? {
           OR: [
@@ -75,6 +80,7 @@ export async function GET(req: NextRequest) {
         name: true,
         email: true,
         active: true,
+        workMode: true,
       },
     }),
     prisma.user.count({ where }),
@@ -145,6 +151,7 @@ export async function POST(req: NextRequest) {
         role: "EMPLOYEE",
         employeeCode,
         pinHash,
+        pinLookupHash: pinLookupHash(admin.organizationId, pin),
       },
     });
 

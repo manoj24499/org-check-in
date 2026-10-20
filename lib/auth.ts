@@ -1,6 +1,7 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
+import { backfillPinLookupHash } from "@/lib/credentials";
 import { prisma } from "@/lib/prisma";
 import { getClientIp, isRateLimited, isPinGuessLimited } from "@/lib/rateLimit";
 import { resolveOrgBySlug } from "@/lib/organization";
@@ -103,6 +104,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const valid = await bcrypt.compare(pin, user.pinHash);
         if (!valid) return null;
+        if (!user.pinLookupHash) backfillPinLookupHash(user.id, user.organizationId, pin);
 
         return {
           id: user.id,

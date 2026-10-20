@@ -106,6 +106,23 @@ export default async function AdminDashboard() {
   });
   const leaveByUser = new Map(leaveTodayRaw.map((r) => [r.userId, r]));
 
+  // Currently outside the working area: an open geofence pause (an approved
+  // timed permission also opens a pause, but that one is expected, so it's
+  // excluded via timedPermissionId: null).
+  const openPausesRaw = await prisma.attendancePause.findMany({
+    where: {
+      resumedAt: null,
+      timedPermissionId: null,
+      attendance: { user: { organizationId, active: true } },
+    },
+    select: { pausedAt: true, attendance: { select: { userId: true } } },
+    orderBy: { pausedAt: "asc" },
+  });
+  const outsideSinceByUser = new Map<string, string>();
+  for (const p of openPausesRaw) {
+    if (!outsideSinceByUser.has(p.attendance.userId)) outsideSinceByUser.set(p.attendance.userId, p.pausedAt.toISOString());
+  }
+
   const employees = employeesRaw.map((e) => {
     const checkIn = e.attendances.find((a) => a.type === "CHECK_IN");
     const checkOut = e.attendances.find((a) => a.type === "CHECK_OUT");
@@ -119,6 +136,7 @@ export default async function AdminDashboard() {
       lateMinutes: checkIn?.lateMinutes ?? null,
       leaveType: checkIn?.leaveType ?? "NONE",
       location: locationByUser.get(e.id) ?? null,
+      outsideSince: outsideSinceByUser.get(e.id) ?? null,
       onLeaveToday: leave
         ? {
             requestId: leave.id,

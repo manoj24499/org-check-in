@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Pencil, Trash2, X, Plus, Users, CalendarClock, Sun, Sunrise, Sunset, Moon, type LucideIcon } from "lucide-react";
@@ -20,6 +20,7 @@ type Shift = {
   name: string | null;
   startTime: string;
   endTime: string;
+  weekdays: number[];
   assignments: ShiftAssignment[];
 };
 
@@ -33,7 +34,11 @@ type EditingState = {
   name: string;
   startTime: string;
   endTime: string;
+  weekdays: number[];
 };
+
+const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
+const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 // Same Date.getDay() convention (0 = Sunday ... 6 = Saturday) as
 // components/ShiftScheduleEditor.tsx, single-letter for the compact chip.
@@ -89,6 +94,11 @@ function groupByEmployee(assignments: ShiftAssignment[]) {
 export default function ShiftTable({ shifts: initialShifts, allEmployees }: ShiftTableProps) {
   const router = useRouter();
   const [shifts, setShifts] = useState(initialShifts);
+  // router.refresh() (after Bulk assign, edits, deletes) delivers fresh props;
+  // without this the local copy above would keep showing the stale roster.
+  useEffect(() => {
+    setShifts(initialShifts);
+  }, [initialShifts]);
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -125,12 +135,12 @@ export default function ShiftTable({ shifts: initialShifts, allEmployees }: Shif
   }, [shifts]);
 
   function openAdd() {
-    setEditing({ id: null, name: "", startTime: "09:00", endTime: "18:00" });
+    setEditing({ id: null, name: "", startTime: "09:00", endTime: "18:00", weekdays: [1, 2, 3, 4, 5] });
     setError(null);
   }
 
   function openEdit(shift: Shift) {
-    setEditing({ id: shift.id, name: shift.name ?? "", startTime: shift.startTime, endTime: shift.endTime });
+    setEditing({ id: shift.id, name: shift.name ?? "", startTime: shift.startTime, endTime: shift.endTime, weekdays: shift.weekdays ?? ALL_DAYS });
     setError(null);
   }
 
@@ -143,6 +153,10 @@ export default function ShiftTable({ shifts: initialShifts, allEmployees }: Shif
       setError("Start and end time can't be the same.");
       return;
     }
+    if (editing.weekdays.length === 0) {
+      setError("Pick at least one day for this shift.");
+      return;
+    }
     setLoading(true);
     setError(null);
 
@@ -150,6 +164,7 @@ export default function ShiftTable({ shifts: initialShifts, allEmployees }: Shif
       name: editing.name.trim() || undefined,
       startTime: editing.startTime,
       endTime: editing.endTime,
+      weekdays: editing.weekdays,
     };
 
     const res = await fetch(
@@ -278,7 +293,7 @@ export default function ShiftTable({ shifts: initialShifts, allEmployees }: Shif
             return (
               <div
                 key={shift.id}
-                className={`${CARD} flex flex-col overflow-hidden transition-opacity ${dimmed ? "opacity-40" : ""}`}
+                className={`${CARD} lift flex flex-col overflow-hidden transition-opacity ${dimmed ? "opacity-40" : ""}`}
               >
                 <div className="flex items-start gap-3.5 px-5 pb-4 pt-5">
                   <IconChip icon={tod.icon} tone={tod.tone} size="lg" />
@@ -290,6 +305,20 @@ export default function ShiftTable({ shifts: initialShifts, allEmployees }: Shif
                       {formatTimeLabel(shift.startTime)} <span className="text-slate-300">→</span>{" "}
                       {formatTimeLabel(shift.endTime)}
                       {overnight && <Pill tone="indigo">+1 day</Pill>}
+                    </p>
+                    <p className="mt-1 flex gap-1" aria-label="Shift days">
+                      {WEEKDAY_CHIP_LABELS.map((label, weekday) => (
+                        <span
+                          key={weekday}
+                          className={`flex h-[18px] w-[18px] items-center justify-center rounded text-[9.5px] font-semibold ${
+                            (shift.weekdays ?? ALL_DAYS).includes(weekday)
+                              ? "bg-slate-800 text-white"
+                              : "bg-slate-100 text-slate-300"
+                          }`}
+                        >
+                          {label}
+                        </span>
+                      ))}
                     </p>
                   </div>
                   <div className="text-right">
@@ -431,6 +460,36 @@ export default function ShiftTable({ shifts: initialShifts, allEmployees }: Shif
                   {editing.startTime && editing.endTime && editing.endTime <= editing.startTime && (
                     <p className="text-xs text-primary-dark mt-1">Ends the next day (overnight shift).</p>
                   )}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-muted-2 mb-1.5 block">Days</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {WEEKDAY_SHORT.map((label, weekday) => {
+                    const on = editing.weekdays.includes(weekday);
+                    return (
+                      <button
+                        key={weekday}
+                        type="button"
+                        onClick={() =>
+                          setEditing({
+                            ...editing,
+                            weekdays: on
+                              ? editing.weekdays.filter((d) => d !== weekday)
+                              : [...editing.weekdays, weekday].sort(),
+                          })
+                        }
+                        className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                          on
+                            ? "bg-orange-50 text-orange-700 border border-orange-200"
+                            : "bg-surface text-muted border border-border"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 

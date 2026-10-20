@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
+import { CheckCircle2, Hourglass, Timer } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import OvertimeHistoryList from "@/components/OvertimeHistoryList";
 import OvertimeStatusPanel from "@/components/OvertimeStatusPanel";
-import { Page, PageHeader } from "@/components/admin/ui";
+import { Page, PageHeader, StatCard } from "@/components/admin/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -67,6 +68,18 @@ export default async function OvertimePage() {
         title="Overtime"
         subtitle="Who is working overtime right now on the left; completed requests with work summaries and photos on the right."
       />
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatCard label="Working overtime now" value={active.length} hint="Still on the clock" icon={Timer} tone="orange" />
+        <StatCard
+          label="Awaiting review"
+          value={[...active, ...completed].filter((r) => r.status === "PENDING").length}
+          hint="Live and completed requests"
+          icon={Hourglass}
+          tone="amber"
+        />
+        <StatCard label="Completed sessions" value={completed.length} hint="With work summaries" icon={CheckCircle2} tone="green" />
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:items-start">
         <OvertimeStatusPanel initialRequests={active} />

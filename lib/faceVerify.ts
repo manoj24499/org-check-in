@@ -259,7 +259,34 @@ export async function deleteFaceEnrollment(
  * recognition pipeline. A short timeout so a hung host can't make either
  * caller slow.
  */
-export async function checkFaceVerifyHealth(): Promise<"ok" | "unreachable" | "not_configured"> {
+type FaceHealth = "ok" | "unreachable" | "not_configured";
+
+// The admin layout calls this on every navigation, so a down service would add
+// its full timeout to every page load. Remember the last answer briefly (and
+// share one in-flight probe between concurrent callers) — the banner only needs
+// to be roughly current, not per-request.
+const HEALTH_TTL_OK_MS = 30_000;
+const HEALTH_TTL_DOWN_MS = 15_000;
+let healthCache: { value: FaceHealth; expiresAt: number } | null = null;
+let healthInFlight: Promise<FaceHealth> | null = null;
+
+export async function checkFaceVerifyHealth(): Promise<FaceHealth> {
+  if (healthCache && healthCache.expiresAt > Date.now()) return healthCache.value;
+  healthInFlight ??= probeFaceVerifyHealth()
+    .then((value) => {
+      healthCache = {
+        value,
+        expiresAt: Date.now() + (value === "unreachable" ? HEALTH_TTL_DOWN_MS : HEALTH_TTL_OK_MS),
+      };
+      return value;
+    })
+    .finally(() => {
+      healthInFlight = null;
+    });
+  return healthInFlight;
+}
+
+async function probeFaceVerifyHealth(): Promise<FaceHealth> {
   const baseUrl = process.env.FACE_VERIFY_URL;
   if (!baseUrl) return "not_configured";
   // The service sits on another machine reached over Tailscale, so a reply can

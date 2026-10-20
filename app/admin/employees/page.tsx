@@ -35,6 +35,7 @@ export default async function EmployeesPage() {
         name: true,
         email: true,
         active: true,
+        workMode: true,
       },
     }),
     prisma.user.count({ where: { organizationId, role: "EMPLOYEE" } }),

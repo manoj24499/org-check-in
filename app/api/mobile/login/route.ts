@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { verifyPin } from "@/lib/credentials";
+import { verifyPin, backfillPinLookupHash } from "@/lib/credentials";
 import { getClientIp, isRateLimited, isPinGuessLimited } from "@/lib/rateLimit";
 import { resolveOrgBySlug } from "@/lib/organization";
 import { signAccessToken, issueRefreshToken } from "@/lib/mobileAuth";
@@ -75,6 +75,8 @@ async function handlePost(req: NextRequest) {
   if (!user || !valid) {
     return NextResponse.json({ error: "Invalid employee code or PIN." }, { status: 401 });
   }
+
+  if (!user.pinLookupHash) backfillPinLookupHash(user.id, org.id, parsed.data.pin);
 
   const [accessToken, refreshToken] = await Promise.all([
     signAccessToken(user),

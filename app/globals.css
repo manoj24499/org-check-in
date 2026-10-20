@@ -327,3 +327,96 @@ html.theme-fade .admin-root *::after {
 }
 .vp-pulse { animation: vp-pulse 1.8s ease-out infinite; }
 @media (prefers-reduced-motion: reduce) { .vp-pulse { animation: none; } }
+
+/* ==========================================================================
+   Admin console: motion + refinements (visual only).
+   ========================================================================== */
+
+/* Dropdowns: native <select>/<option> lists were picking up the page's text
+   colour but the browser's default (white) popup background in dark mode,
+   giving white-on-white. Give them explicit, theme-aware colours. */
+.admin-root select,
+.admin-root select option,
+.admin-root select optgroup {
+  background-color: var(--color-surface-2);
+  color: var(--foreground);
+}
+html[data-admin-theme="dark"] .admin-root select,
+html[data-admin-theme="dark"] .admin-root select option,
+html[data-admin-theme="dark"] .admin-root select optgroup {
+  background-color: #1a1e29;
+  color: #e8eaf2;
+}
+html[data-admin-theme="dark"] .admin-root select option:checked,
+html[data-admin-theme="dark"] .admin-root select option:hover {
+  background-color: #2c3242;
+  color: #ffffff;
+}
+html[data-admin-theme="dark"] .admin-root input,
+html[data-admin-theme="dark"] .admin-root textarea {
+  color: #e8eaf2;
+}
+html[data-admin-theme="dark"] .admin-root .focus\:bg-white:focus { background-color: var(--admin-card); }
+html[data-admin-theme="dark"] .admin-root input[type="date"],
+html[data-admin-theme="dark"] .admin-root input[type="time"],
+html[data-admin-theme="dark"] .admin-root input[type="month"] { color-scheme: dark; }
+
+/* Lighter, more modern icon stroke across the admin console. */
+.admin-root svg.lucide { stroke-width: 1.7; }
+
+/* Page enter: the page fades/slides in on navigation, and its direct blocks
+   (header, stat row, cards) rise in one after another. */
+@keyframes admin-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes admin-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.page-enter { animation: admin-fade 260ms ease-out backwards; }
+/* "backwards" (not "both"): once finished, no transform is left on the element,
+   so fixed-position modals inside it still anchor to the viewport. */
+.admin-stagger > * { animation: admin-rise 480ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
+.admin-stagger > *:nth-child(2) { animation-delay: 50ms; }
+.admin-stagger > *:nth-child(3) { animation-delay: 100ms; }
+.admin-stagger > *:nth-child(4) { animation-delay: 150ms; }
+.admin-stagger > *:nth-child(5) { animation-delay: 200ms; }
+.admin-stagger > *:nth-child(n + 6) { animation-delay: 250ms; }
+
+/* Lift-on-hover for cards that opt in (stat cards, shift cards). */
+.lift {
+  transition: transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 260ms ease, border-color 260ms ease;
+}
+.lift:hover {
+  transform: translateY(-3px);
+  border-color: rgba(240, 100, 0, 0.35);
+  box-shadow: 0 2px 4px rgba(16, 24, 40, 0.05), 0 18px 36px -18px rgba(240, 100, 0, 0.35);
+}
+
+/* Calendar month change + day cells */
+@keyframes cal-swap {
+  from { opacity: 0; transform: translateX(var(--cal-from, 10px)); }
+  to { opacity: 1; transform: none; }
+}
+.cal-swap { animation: cal-swap 260ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
+.cal-day { transition: transform 160ms cubic-bezier(0.3, 1.5, 0.5, 1), background-color 160ms ease, color 160ms ease, box-shadow 160ms ease; }
+.cal-day:not(:disabled):hover { transform: scale(1.08); }
+.cal-day:not(:disabled):active { transform: scale(0.95); }
+
+/* Loading skeleton shimmer (app/admin/loading.tsx) */
+@keyframes admin-shimmer {
+  to { background-position: -200% 0; }
+}
+.skeleton {
+  border-radius: 14px;
+  background: linear-gradient(90deg, rgba(148, 156, 180, 0.14) 25%, rgba(148, 156, 180, 0.26) 50%, rgba(148, 156, 180, 0.14) 75%);
+  background-size: 200% 100%;
+  animation: admin-shimmer 1.2s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter, .admin-stagger > *, .cal-swap, .skeleton { animation: none !important; }
+  .lift, .cal-day { transition: none !important; }
+  .lift:hover, .cal-day:not(:disabled):hover { transform: none; }
+}

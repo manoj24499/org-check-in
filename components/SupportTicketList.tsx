@@ -3,8 +3,8 @@
 import { useSyncedState } from "./useSyncedState";
 import { refreshAdminCounts } from "./adminCountsEvent";
 import { useMemo, useState } from "react";
-import { CheckCircle2, ChevronDown, ImageIcon, LifeBuoy, MessageSquare } from "lucide-react";
-import { Avatar, BTN_PRIMARY, BTN_SECONDARY, CARD, Card, EmptyState, Pill, Segmented } from "./admin/ui";
+import { CheckCircle2, ChevronDown, ImageIcon, Inbox, LifeBuoy, MessageSquare } from "lucide-react";
+import { Avatar, BTN_PRIMARY, BTN_SECONDARY, CARD, Card, EmptyState, Pill, Segmented, StatCard } from "./admin/ui";
 
 export interface SupportTicketEntry {
   id: string;
@@ -93,6 +93,12 @@ export default function SupportTicketList({ tickets: initial }: { tickets: Suppo
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatCard label="Open issues" value={openCount} hint="Waiting on a reply" icon={LifeBuoy} tone="amber" />
+        <StatCard label="Resolved" value={resolvedCount} hint="Closed out" icon={CheckCircle2} tone="green" />
+        <StatCard label="All tickets" value={tickets.length} hint="Reported from the app" icon={Inbox} tone="indigo" />
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Segmented
           options={[
@@ -124,11 +130,16 @@ export default function SupportTicketList({ tickets: initial }: { tickets: Suppo
           {filtered.map((t) => {
             const isOpen = expanded.has(t.id);
             return (
-              <div key={t.id} className={`${CARD} overflow-hidden`}>
+              <div
+                key={t.id}
+                className={`${CARD} lift overflow-hidden border-l-4 transition-all duration-200 ${
+                  t.status === "OPEN" ? "border-l-amber-400" : "border-l-emerald-400"
+                }`}
+              >
                 <button
                   type="button"
                   onClick={() => toggleExpanded(t.id)}
-                  className="flex w-full items-center gap-3.5 px-5 py-4 text-left transition-colors hover:bg-slate-50/70"
+                  className="flex w-full items-center gap-3.5 px-5 py-4 text-left transition-all duration-200 hover:bg-slate-50/70"
                 >
                   <Avatar name={t.user.name} size={40} />
                   <div className="min-w-0 flex-1">
@@ -150,13 +161,13 @@ export default function SupportTicketList({ tickets: initial }: { tickets: Suppo
                     {formatDateTime(t.createdAt)}
                   </span>
                   <ChevronDown
-                    className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                    className={`h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
                   />
                 </button>
 
                 {isOpen && (
                   <div className="border-t border-slate-100 bg-slate-50/50 px-5 pb-5 pt-4 sm:pl-[78px]">
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{t.message}</p>
+                    <p className="whitespace-pre-wrap rounded-xl border border-slate-100 bg-white p-3.5 text-sm leading-relaxed text-slate-700">{t.message}</p>
 
                     {t.hasPhoto ? (
                       // eslint-disable-next-line @next/next/no-img-element

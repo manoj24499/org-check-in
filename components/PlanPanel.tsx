@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CreditCard, ArrowRight } from "lucide-react";
 import { PAID_PLANS } from "@/lib/billing/plans";
+import { BTN_PRIMARY, CARD, IconChip } from "./admin/ui";
 
 /** Entry point into the self-serve plan-change flow (app/plans/) for an
  * admin who's already inside the app — the marketing site's pricing page is
@@ -10,14 +11,12 @@ export default function PlanPanel({ planId, seatLimit }: { planId: string | null
   const planName = planId ? PAID_PLANS.find((p) => p.id === planId)?.name ?? planId : null;
 
   return (
-    <div className="rounded-xl bg-surface-2 border border-white/60 shadow-[0_1px_2px_rgba(41,43,49,0.05)] p-4 flex flex-col h-full">
-      <div className="flex items-start gap-2.5">
-        <div className="w-7 h-7 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-          <CreditCard className="w-3.5 h-3.5" />
-        </div>
+    <div className={`${CARD} flex h-full flex-col gap-4 p-5`}>
+      <div className="flex items-start gap-3">
+        <IconChip icon={CreditCard} />
         <div>
-          <p className="text-sm font-semibold text-foreground">Plan &amp; billing</p>
-          <p className="text-xs text-secondary mt-1">
+          <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-slate-900">Plan &amp; billing</h2>
+          <p className="mt-0.5 text-xs text-slate-500">
             {planName ? `${planName} plan, ${seatLimit} seats` : "Free trial"}
           </p>
         </div>
@@ -25,7 +24,7 @@ export default function PlanPanel({ planId, seatLimit }: { planId: string | null
 
       <Link
         href="/plans"
-        className="mt-3 inline-flex items-center justify-center gap-1.5 rounded-xl border border-transparent bg-orange-600 shadow-sm px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-orange-700 transition self-start"
+        className={`${BTN_PRIMARY} self-start`}
       >
         Change plan
         <ArrowRight className="w-3.5 h-3.5" />

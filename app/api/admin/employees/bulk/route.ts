@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
-import { generateUniquePin, hashPin, allocateNextEmployeeCode } from "@/lib/credentials";
+import { generateUniquePin, hashPin, allocateNextEmployeeCode, pinLookupHash } from "@/lib/credentials";
 import { DEFAULT_GEOFENCE_RADIUS_METERS } from "@/lib/geofence";
 
 // Postgres' default transaction timeout comfortably covers a normal admin
@@ -12,6 +12,9 @@ import { DEFAULT_GEOFENCE_RADIUS_METERS } from "@/lib/geofence";
 // enough that failing loudly (rather than silently truncating) is the right
 // behavior.
 const BULK_CREATE_TRANSACTION_TIMEOUT_MS = 30_000;
+
+// Kept in step with MAX_BULK_ROWS in lib/bulkEmployeeCsv.ts (the dialog's cap).
+const MAX_BULK_ROWS = 50;
 
 const bulkCreateSchema = z.array(
   z
@@ -27,7 +30,7 @@ const bulkCreateSchema = z.array(
       (row) => row.workMode !== "WFH" || (row.homeLatitude !== undefined && row.homeLongitude !== undefined),
       { message: "WFH employees require Home Latitude and Home Longitude." },
     ),
-);
+).max(MAX_BULK_ROWS, `Add at most ${MAX_BULK_ROWS} employees at a time.`);
 
 export async function POST(req: NextRequest) {
   const admin = await requireAdmin();
@@ -122,6 +125,7 @@ export async function POST(req: NextRequest) {
         for (const empData of rowsWithPins) {
           const employeeCode = await allocateNextEmployeeCode(admin.organizationId);
           const { pin, pinHash } = empData;
+          const lookupHash = pinLookupHash(admin.organizationId, pin);
 
           const user = await tx.user.create({
             data: {
@@ -131,6 +135,7 @@ export async function POST(req: NextRequest) {
               role: "EMPLOYEE",
               employeeCode,
               pinHash,
+              pinLookupHash: lookupHash,
               workMode: empData.workMode,
               homeLatitude: empData.workMode === "WFH" ? empData.homeLatitude : null,
               homeLongitude: empData.workMode === "WFH" ? empData.homeLongitude : null,

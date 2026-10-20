@@ -3,9 +3,8 @@
 import { useSyncedState } from "./useSyncedState";
 import { refreshAdminCounts } from "./adminCountsEvent";
 import { useState } from "react";
-import { BTN_PRIMARY, BTN_SECONDARY } from "./admin/ui";
-import { History } from "lucide-react";
-import { EmptyState, IconChip } from "./admin/ui";
+import { History, Timer } from "lucide-react";
+import { Avatar, BTN_PRIMARY, BTN_SECONDARY, CARD, EmptyState, IconChip, Pill, type Tone } from "./admin/ui";
 
 export interface OvertimeHistoryEntry {
   id: string;
@@ -28,11 +27,20 @@ function formatDateTime(iso: string) {
   });
 }
 
-const STATUS_TONE: Record<OvertimeHistoryEntry["status"], string> = {
-  PENDING: "bg-amber-50 text-amber-700 border-amber-200",
-  APPROVED: "bg-primary/10 text-primary-dark border-primary/20",
-  REJECTED: "bg-red-50 text-red-600 border-red-200",
+const STATUS_TONE: Record<OvertimeHistoryEntry["status"], Tone> = {
+  PENDING: "amber",
+  APPROVED: "green",
+  REJECTED: "red",
 };
+
+/** Display-only duration chip text, from data already on the entry. */
+function durationLabel(startIso: string, endIso: string) {
+  const mins = Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / 60000);
+  if (!Number.isFinite(mins) || mins <= 0) return null;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return h > 0 ? `${h}h${m ? ` ${m}m` : ""}` : `${m}m`;
+}
 const STATUS_LABEL: Record<OvertimeHistoryEntry["status"], string> = {
   PENDING: "Pending review",
   APPROVED: "Approved",
@@ -76,7 +84,7 @@ export default function OvertimeHistoryList({ requests: initial }: { requests: O
   };
 
   return (
-    <div className="rounded-2xl border border-black/[0.06] bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04),0_12px_32px_-20px_rgba(16,24,40,0.14)] overflow-hidden flex flex-col lg:max-h-[calc(100vh-240px)]">
+    <div className={`${CARD} overflow-hidden flex flex-col lg:max-h-[calc(100vh-240px)]`}>
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
         <div className="flex items-center gap-3">
           <IconChip icon={History} tone="slate" size="sm" />
@@ -96,45 +104,54 @@ export default function OvertimeHistoryList({ requests: initial }: { requests: O
         {requests.length === 0 ? (
           <EmptyState icon={History} title="No completed overtime yet" text="Finished sessions will be listed here." />
         ) : (
-          <div className="flex flex-col">
+          <div className="flex flex-col gap-3 p-4">
             {requests.map((r) => (
-              <div key={r.id} className="border-b border-slate-100 px-5 py-4 last:border-b-0">
+              <div key={r.id} className={`${CARD} lift px-4 py-4 transition-all duration-200`}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    {r.employee ? (
-                      <p className="text-sm font-medium text-foreground">
-                        {r.employee.name} <span className="text-muted font-normal">· {r.employee.employeeCode}</span>
+                  <div className="flex min-w-0 items-center gap-3">
+                    {r.employee ? <Avatar name={r.employee.name} size={36} /> : null}
+                    <div className="min-w-0">
+                      {r.employee ? (
+                        <p className="truncate text-sm font-medium text-slate-900">
+                          {r.employee.name} <span className="font-normal text-slate-500">· {r.employee.employeeCode}</span>
+                        </p>
+                      ) : null}
+                      <p className="flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
+                        <span className="font-medium text-slate-700">{formatDateTime(r.createdAt)}</span>
+                        <span className="tabular-nums">until ~{formatDateTime(r.estimatedEndAt)}</span>
                       </p>
-                    ) : null}
-                    <span className="text-sm font-medium text-foreground">{formatDateTime(r.createdAt)}</span>
-                    <span className="text-xs text-muted ml-2 tabular-nums">
-                      until ~{formatDateTime(r.estimatedEndAt)}
-                    </span>
+                    </div>
                   </div>
-                  <span
-                    className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${STATUS_TONE[r.status]}`}
-                  >
-                    {STATUS_LABEL[r.status]}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {durationLabel(r.createdAt, r.estimatedEndAt) ? (
+                      <Pill tone="indigo">
+                        <Timer className="h-3 w-3" />
+                        {durationLabel(r.createdAt, r.estimatedEndAt)}
+                      </Pill>
+                    ) : null}
+                    <Pill tone={STATUS_TONE[r.status]} dot>
+                      {STATUS_LABEL[r.status]}
+                    </Pill>
+                  </div>
                 </div>
 
-                <p className="text-sm text-secondary mt-2">{r.reason}</p>
+                <p className="mt-3 text-sm text-slate-700">{r.reason}</p>
 
                 <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50 p-3.5">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1.5">
+                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                     Work summary
                   </p>
                   {r.workSummary ? (
-                    <p className="text-sm text-foreground whitespace-pre-wrap">{r.workSummary}</p>
+                    <p className="whitespace-pre-wrap text-sm text-slate-800">{r.workSummary}</p>
                   ) : (
-                    <p className="text-sm text-muted italic">No summary given.</p>
+                    <p className="text-sm italic text-slate-500">No summary given.</p>
                   )}
                   {r.hasPhoto ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={`/api/admin/overtime-requests/${r.id}/photo`}
                       alt="Overtime work photo"
-                      className="mt-2 max-w-xs rounded-md border border-border-soft"
+                      className="mt-2 max-w-xs rounded-xl border border-slate-200 shadow-sm"
                     />
                   ) : null}
                 </div>

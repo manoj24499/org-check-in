@@ -26,6 +26,8 @@ type EmployeeSummary = {
   lateMinutes: number | null;
   leaveType: LeaveType;
   location: EmployeeLocation | null;
+  /** ISO time the employee left their working area (open geofence pause), or null when inside / not applicable. */
+  outsideSince: string | null;
   /** A full-day TimeOffRequest (any origin — employee-submitted or
    * admin-quick-marked) approved and covering today, if any — see
    * /api/admin/employees/[id]/leave-today. */
@@ -63,7 +65,7 @@ export default function DashboardWorkspace({
   const [employees, setEmployees] = useSyncedState(initialEmployees);
 
   const applyUpdate = useCallback(
-    (update: { userId: string } & EmployeeLocation) => {
+    (update: { userId: string; outsideSince?: string | null } & EmployeeLocation) => {
       setEmployees((prev) =>
         prev.map((emp) =>
           emp.id === update.userId
@@ -75,6 +77,7 @@ export default function DashboardWorkspace({
                   accuracy: update.accuracy,
                   timestamp: update.timestamp,
                 },
+                outsideSince: update.outsideSince ?? null,
               }
             : emp,
         ),
@@ -87,7 +90,7 @@ export default function DashboardWorkspace({
     try {
       const res = await fetch("/api/admin/locations/latest");
       if (!res.ok) return;
-      const data: ({ userId: string } & EmployeeLocation)[] = await res.json();
+      const data: ({ userId: string; outsideSince?: string | null } & EmployeeLocation)[] = await res.json();
       if (!Array.isArray(data)) return;
       data.forEach(applyUpdate);
     } catch {
@@ -179,7 +182,10 @@ function leaveBadge(leaveType: LeaveType, lateMinutes: number | null, onLeaveTod
   );
 }
 
-type Filter = "all" | "in" | "out" | "late" | "leave" | "absent";
+type Filter = "all" | "in" | "out" | "late" | "leave" | "absent" | "outside";
+
+// Working now but away from the office / home area (open geofence pause).
+const isOutside = (e: EmployeeSummary) => Boolean(e.checkInAt) && !e.checkOutAt && e.outsideSince !== null;
 
 function CurrentStatusPanel({ employees }: { employees: EmployeeSummary[] }) {
   const [viewing, setViewing] = useState<EmployeeSummary | null>(null);
@@ -202,6 +208,7 @@ function CurrentStatusPanel({ employees }: { employees: EmployeeSummary[] }) {
       late: employees.filter((e) => (e.lateMinutes ?? 0) > 0).length,
       leave: employees.filter((e) => e.onLeaveToday).length,
       absent: employees.filter((e) => !e.checkInAt && !e.onLeaveToday).length,
+      outside: employees.filter(isOutside).length,
     }),
     [employees],
   );
@@ -221,6 +228,8 @@ function CurrentStatusPanel({ employees }: { employees: EmployeeSummary[] }) {
           return Boolean(e.onLeaveToday);
         case "absent":
           return !e.checkInAt && !e.onLeaveToday;
+        case "outside":
+          return isOutside(e);
         default:
           return true;
       }
@@ -234,6 +243,7 @@ function CurrentStatusPanel({ employees }: { employees: EmployeeSummary[] }) {
     { key: "late", label: "Late" },
     { key: "leave", label: "On leave" },
     { key: "absent", label: "Not in yet" },
+    { key: "outside", label: "Outside area" },
   ];
 
   return (
@@ -309,7 +319,14 @@ function CurrentStatusPanel({ employees }: { employees: EmployeeSummary[] }) {
                     </div>
                   </td>
                   <td className={TABLE.td}>
-                    {isIn ? (
+                    {isIn && emp.outsideSince ? (
+                      <div className="flex flex-col items-start gap-1">
+                        <Pill tone="amber" dot pulse>
+                          Outside area
+                        </Pill>
+                        <span className="text-[11px] tabular-nums text-slate-500">since {formatTime(emp.outsideSince)}</span>
+                      </div>
+                    ) : isIn ? (
                       <Pill tone="green" dot pulse>
                         Working
                       </Pill>

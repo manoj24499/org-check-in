@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Search, Loader2, ChevronRight, Users } from "lucide-react";
+import { Search, Loader2, ChevronRight, Users, Building2, Home, MapPinned, type LucideIcon } from "lucide-react";
 import { Avatar, BTN_SECONDARY, CARD, EmptyState, Pill, TABLE } from "./admin/ui";
 
 type Employee = {
@@ -11,7 +11,23 @@ type Employee = {
   name: string;
   email: string;
   active: boolean;
+  workMode: "OFFICE" | "WFH" | "FIELD";
 };
+
+type ModeFilter = "ALL" | Employee["workMode"];
+
+const WORK_MODE: Record<Employee["workMode"], { label: string; icon: LucideIcon; tone: "indigo" | "green" | "amber" }> = {
+  OFFICE: { label: "Office", icon: Building2, tone: "indigo" },
+  WFH: { label: "Work from home", icon: Home, tone: "green" },
+  FIELD: { label: "Field", icon: MapPinned, tone: "amber" },
+};
+
+const MODE_FILTERS: { key: ModeFilter; label: string }[] = [
+  { key: "ALL", label: "All locations" },
+  { key: "OFFICE", label: "Office" },
+  { key: "WFH", label: "Work from home" },
+  { key: "FIELD", label: "Field" },
+];
 
 type EmployeesResponse = {
   employees: Employee[];
@@ -36,6 +52,7 @@ export default function EmployeeTable({
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [mode, setMode] = useState<ModeFilter>("ALL");
   const [fetched, setFetched] = useState<{ employees: Employee[]; total: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,13 +70,14 @@ export default function EmployeeTable({
   // into `initialEmployees`/`initialTotal` (see app/admin/employees/page.tsx)
   // — nothing to fetch, `load` below returns immediately for this case and
   // the render further down falls back to those props directly.
-  async function load(targetPage: number, q: string) {
-    if (targetPage === 1 && q === "") return;
+  async function load(targetPage: number, q: string, m: ModeFilter = mode) {
+    if (targetPage === 1 && q === "" && m === "ALL") return;
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams({ page: String(targetPage), pageSize: String(pageSize) });
       if (q) params.set("q", q);
+      if (m !== "ALL") params.set("mode", m);
       const res = await fetch(`/api/admin/employees?${params.toString()}`);
       if (!res.ok) throw new Error("Request failed");
       const data: EmployeesResponse = await res.json();
@@ -81,16 +99,22 @@ export default function EmployeeTable({
       const trimmed = value.trim();
       setDebouncedQuery(trimmed);
       setPage(1);
-      void load(1, trimmed);
+      void load(1, trimmed, mode);
     }, SEARCH_DEBOUNCE_MS);
+  }
+
+  function changeMode(next: ModeFilter) {
+    setMode(next);
+    setPage(1);
+    void load(1, debouncedQuery, next);
   }
 
   function goToPage(nextPage: number) {
     setPage(nextPage);
-    void load(nextPage, debouncedQuery);
+    void load(nextPage, debouncedQuery, mode);
   }
 
-  const isDefaultView = page === 1 && debouncedQuery === "";
+  const isDefaultView = page === 1 && debouncedQuery === "" && mode === "ALL";
   const employees = isDefaultView ? initialEmployees : (fetched?.employees ?? []);
   const total = isDefaultView ? initialTotal : (fetched?.total ?? 0);
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -111,8 +135,25 @@ export default function EmployeeTable({
           </div>
           <p className="text-[13px] text-slate-500">
             <span className="font-semibold tabular-nums text-slate-800">{total}</span> {total === 1 ? "employee" : "employees"}
-            {debouncedQuery ? " found" : ""}
+            {debouncedQuery || mode !== "ALL" ? " found" : ""}
           </p>
+        </div>
+
+        <div className="flex flex-wrap gap-1.5 px-5 pb-4" role="group" aria-label="Filter by work location">
+          {MODE_FILTERS.map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => changeMode(f.key)}
+              className={`rounded-full px-3.5 py-1.5 text-[12.5px] font-medium ring-1 ring-inset transition-all duration-200 active:scale-95 ${
+                mode === f.key
+                  ? "bg-slate-900 text-white ring-slate-900"
+                  : "bg-white text-slate-600 ring-slate-200 hover:bg-slate-50"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
         </div>
 
         {error && <p className="px-5 pb-3 text-sm text-red-600">{error}</p>}
@@ -124,6 +165,7 @@ export default function EmployeeTable({
                 <th className={TABLE.th}>Employee</th>
                 <th className={TABLE.th}>ID</th>
                 <th className={TABLE.th}>Email</th>
+                <th className={TABLE.th}>Work location</th>
                 <th className={TABLE.th}>Status</th>
                 <th className={`${TABLE.th} text-right`}>Action</th>
               </tr>
@@ -139,6 +181,18 @@ export default function EmployeeTable({
                   </td>
                   <td className={`${TABLE.td} font-mono text-[13px] text-slate-600`}>{emp.employeeCode}</td>
                   <td className={`${TABLE.td} max-w-[260px] truncate text-slate-500`}>{emp.email}</td>
+                  <td className={TABLE.td}>
+                    {(() => {
+                      const wm = WORK_MODE[emp.workMode] ?? WORK_MODE.OFFICE;
+                      const Icon = wm.icon;
+                      return (
+                        <Pill tone={wm.tone}>
+                          <Icon className="h-3 w-3" />
+                          {wm.label}
+                        </Pill>
+                      );
+                    })()}
+                  </td>
                   <td className={TABLE.td}>
                     <Pill tone={emp.active ? "green" : "slate"} dot>
                       {emp.active ? "Active" : "Deactivated"}
@@ -160,9 +214,9 @@ export default function EmployeeTable({
           {employees.length === 0 && !loading && (
             <EmptyState
               icon={Users}
-              title={total === 0 && !debouncedQuery ? "No employees yet" : "No employees match your search"}
+              title={total === 0 && !debouncedQuery && mode === "ALL" ? "No employees yet" : "No employees match your search"}
               text={
-                total === 0 && !debouncedQuery
+                total === 0 && !debouncedQuery && mode === "ALL"
                   ? "Add your first employee, or import a whole team at once with Bulk add."
                   : "Check the spelling or try a name, email or employee ID."
               }

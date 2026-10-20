@@ -21,7 +21,7 @@ export type ParsedEmployeeRow = {
   problems: string[];
 };
 
-export const MAX_BULK_ROWS = 500;
+export const MAX_BULK_ROWS = 50;
 
 export const TEMPLATE_HEADER = ["Name", "Email", "WorkMode", "HomeLatitude", "HomeLongitude", "HomeRadius"];
 

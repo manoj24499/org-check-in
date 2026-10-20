@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Download } from "lucide-react";
+import { CalendarDays, Clock, Download, Flag } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import LeaveRequestsPanel from "@/components/LeaveRequestsPanel";
 import HolidayManager from "@/components/HolidayManager";
 import { istDateKey } from "@/lib/istTime";
-import { BTN_SECONDARY, Page, PageHeader } from "@/components/admin/ui";
+import { BTN_SECONDARY, Page, PageHeader, StatCard } from "@/components/admin/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +57,18 @@ export default async function LeavePage() {
           </Link>
         }
       />
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatCard label="Pending requests" value={pending.length} hint="Waiting for your decision" icon={Clock} tone="orange" />
+        <StatCard
+          label="Days requested"
+          value={pending.reduce((sum, r) => sum + r.days, 0)}
+          hint="Across all pending requests"
+          icon={CalendarDays}
+          tone="indigo"
+        />
+        <StatCard label={`Holidays in ${year}`} value={holidays.length} hint="On the public calendar" icon={Flag} tone="green" />
+      </div>
 
       {/* Side by side, each capped to roughly the viewport height so neither
           section's list can push the page into a long scroll — see

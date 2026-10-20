@@ -14,6 +14,9 @@ import {
   Check,
   ScanFace,
   ScanEye,
+  CalendarCheck,
+  Timer,
+  CircleAlert,
 } from "lucide-react";
 import { computeWorkedMs } from "@/lib/attendanceHours";
 
@@ -133,6 +136,8 @@ export default function AttendanceCalendar({
     () => new Date(latest.getFullYear(), latest.getMonth(), 1),
   );
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  // Which way the month grid slides in (visual only).
+  const [navDir, setNavDir] = useState(1);
   const [lightboxId, setLightboxId] = useState<string | null>(null);
 
   const year = viewDate.getFullYear();
@@ -167,6 +172,7 @@ export default function AttendanceCalendar({
   const selectedSpecial = selectedKey && !selectedList?.length ? specialDays[selectedKey] : undefined;
 
   function changeMonth(delta: number) {
+    setNavDir(delta);
     setViewDate(new Date(year, month + delta, 1));
     setSelectedDay(null);
   }
@@ -222,17 +228,18 @@ export default function AttendanceCalendar({
     <div className="flex items-center justify-between">
       <button
         onClick={() => changeMonth(-1)}
-        className="rounded-lg p-2 hover:bg-surface text-muted transition"
+        className="grid h-9 w-9 place-items-center rounded-full text-muted transition-all duration-200 hover:bg-primary/10 hover:text-primary active:scale-90"
         aria-label="Previous month"
       >
         <ChevronLeft className="w-4 h-4" />
       </button>
       <button
         onClick={goToToday}
-        className="flex items-center gap-2 rounded-lg px-3 py-1.5 hover:bg-surface transition"
+        className="flex items-center gap-2 rounded-full px-4 py-1.5 transition-all duration-200 hover:bg-primary/10 active:scale-95"
+        title="Jump to today"
       >
         <CalendarDays className="w-4 h-4 text-primary" />
-        <span className="font-medium text-foreground">
+        <span className="text-[15px] font-semibold tracking-tight text-foreground">
           {viewDate.toLocaleDateString("en-US", {
             month: "long",
             year: "numeric",
@@ -241,7 +248,7 @@ export default function AttendanceCalendar({
       </button>
       <button
         onClick={() => changeMonth(1)}
-        className="rounded-lg p-2 hover:bg-surface text-muted transition"
+        className="grid h-9 w-9 place-items-center rounded-full text-muted transition-all duration-200 hover:bg-primary/10 hover:text-primary active:scale-90"
         aria-label="Next month"
       >
         <ChevronRight className="w-4 h-4" />
@@ -250,36 +257,30 @@ export default function AttendanceCalendar({
   );
 
   const monthSummaryEl = (
-    <div className="grid grid-cols-3 gap-3 text-center">
-      <div className="rounded-lg bg-primary/5 border border-primary/20 py-3">
-        <p className="text-2xl font-medium tracking-tight text-primary">
-          {monthSummary.daysPresent}
-        </p>
-        <p className="text-[11px] font-medium text-primary uppercase tracking-wide mt-0.5">
-          Days Present
-        </p>
-      </div>
-      <div className="rounded-lg bg-surface border border-border py-3">
-        <p className="text-2xl font-medium tracking-tight text-foreground">
-          {monthSummary.totalHours.toFixed(1)}
-        </p>
-        <p className="text-[11px] font-medium text-secondary uppercase tracking-wide mt-0.5">
-          Total Hours
-        </p>
-      </div>
-      <div className="rounded-lg bg-surface border border-border py-3">
-        <p className="text-2xl font-medium tracking-tight text-foreground">
-          {monthSummary.incompleteDays}
-        </p>
-        <p className="text-[11px] font-medium text-secondary uppercase tracking-wide mt-0.5">
-          Incomplete
-        </p>
-      </div>
+    <div className="grid grid-cols-3 gap-3">
+      {[
+        { label: "Days present", value: String(monthSummary.daysPresent), icon: CalendarCheck, accent: true },
+        { label: "Total hours", value: monthSummary.totalHours.toFixed(1), icon: Timer, accent: false },
+        { label: "Incomplete", value: String(monthSummary.incompleteDays), icon: CircleAlert, accent: false },
+      ].map((s) => (
+        <div
+          key={s.label}
+          className={`lift rounded-2xl border px-3 py-3 ${
+            s.accent ? "border-primary/25 bg-primary/[0.06]" : "border-border bg-surface"
+          }`}
+        >
+          <s.icon className={`h-4 w-4 ${s.accent ? "text-primary" : "text-muted"}`} />
+          <p className={`mt-2 text-2xl font-semibold leading-none tracking-tight tabular-nums ${s.accent ? "text-primary" : "text-foreground"}`}>
+            {s.value}
+          </p>
+          <p className="mt-1.5 text-[11px] font-medium text-secondary">{s.label}</p>
+        </div>
+      ))}
     </div>
   );
 
   const weekdayHeader = (
-    <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-medium text-secondary uppercase tracking-wide">
+    <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-semibold text-muted tracking-wider">
       {WEEKDAYS.map((w) => (
         <div key={w}>{w}</div>
       ))}
@@ -287,7 +288,11 @@ export default function AttendanceCalendar({
   );
 
   const dayGrid = (
-    <div className="grid grid-cols-7 gap-1">
+    <div
+      key={`${year}-${month}`}
+      className="cal-swap grid grid-cols-7 gap-1.5"
+      style={{ ["--cal-from" as string]: `${navDir * 14}px` }}
+    >
       {cells.map((day, i) => {
         if (day === null) return <div key={`blank-${i}`} />;
         const cellDate = new Date(year, month, day);
@@ -306,16 +311,16 @@ export default function AttendanceCalendar({
             key={key}
             onClick={() => setSelectedDay(isSelected ? null : day)}
             disabled={isFuture}
-            className={`relative aspect-square rounded-lg flex items-center justify-center text-sm font-medium transition-colors ${
+            className={`cal-day relative aspect-square rounded-xl flex items-center justify-center text-sm font-medium ${
               isSelected
-                ? "border border-primary text-primary-dark"
+                ? "bg-primary text-white shadow-[0_6px_14px_-6px_rgba(240,100,0,0.7)]"
                 : isToday
-                  ? "bg-primary/10 text-primary"
+                  ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/40"
                   : special?.kind === "holiday"
                     ? "bg-sky-50 text-sky-700"
                     : special?.kind === "leave"
                       ? "bg-emerald-50 text-emerald-700"
-                      : "text-muted-2 hover:bg-surface"
+                      : "text-muted-2 hover:bg-primary/10 hover:text-primary"
             } ${isFuture ? "cursor-not-allowed opacity-30" : "cursor-pointer"}`}
           >
             {day}
@@ -343,7 +348,7 @@ export default function AttendanceCalendar({
   );
 
   const dayDetail = (
-    <div className="rounded-lg border border-border bg-surface p-4 min-h-[92px]">
+    <div key={selectedDay ?? "none"} className="cal-swap rounded-2xl border border-border bg-surface p-4 min-h-[92px]">
       {!selectedDay && (
         <p className="text-sm text-secondary text-center py-2">
           Select a date to see check-in / check-out times.

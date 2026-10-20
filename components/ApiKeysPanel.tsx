@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { KeyRound, Plus, X, Copy, Check, Ban } from "lucide-react";
-import { BTN_PRIMARY } from "./admin/ui";
+import { BTN_PRIMARY, BTN_SECONDARY, CARD, IconChip, Pill } from "./admin/ui";
 
 export interface ApiKeySummary {
   id: string;
@@ -87,22 +87,20 @@ export default function ApiKeysPanel({ keys: initialKeys }: { keys: ApiKeySummar
   }
 
   return (
-    <div className="rounded-xl bg-surface-2 border border-white/60 shadow-[0_1px_2px_rgba(41,43,49,0.05)] p-4 flex flex-col h-full">
+    <div className={`${CARD} flex h-full flex-col gap-4 p-5`}>
       <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-2.5">
-          <div className="w-7 h-7 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-            <KeyRound className="w-3.5 h-3.5" />
-          </div>
+        <div className="flex items-start gap-3">
+          <IconChip icon={KeyRound} />
           <div>
-            <p className="text-sm font-semibold text-foreground">API keys</p>
-            <p className="text-xs text-secondary mt-1">For partner integrations, like a payroll system.</p>
+            <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-slate-900">API keys</h2>
+            <p className="mt-0.5 text-xs text-slate-500">For partner integrations, like a payroll system.</p>
           </div>
         </div>
         {!adding && (
           <button
             type="button"
             onClick={openAdd}
-            className="inline-flex items-center gap-1 rounded-xl border border-transparent bg-orange-600 shadow-sm px-2.5 py-1 text-xs font-semibold text-white hover:bg-orange-700 transition shrink-0"
+            className={`${BTN_PRIMARY} shrink-0 !px-3 !py-1.5`}
           >
             <Plus className="w-3.5 h-3.5" />
             New key
@@ -111,16 +109,16 @@ export default function ApiKeysPanel({ keys: initialKeys }: { keys: ApiKeySummar
       </div>
 
       {revealedKey && (
-        <div className="mt-3 rounded-xl border border-primary/40 bg-primary/5 p-3 flex flex-col gap-2">
-          <p className="text-xs font-semibold text-foreground">
+        <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 flex flex-col gap-2.5">
+          <p className="text-xs font-semibold text-slate-800">
             Copy this now &mdash; you won&apos;t be able to see it again.
           </p>
           <div className="flex items-center gap-2">
-            <code className="flex-1 min-w-0 truncate text-xs bg-surface border border-border rounded px-2 py-1.5">{revealedKey}</code>
+            <code className="flex-1 min-w-0 truncate rounded-lg border border-black/10 bg-white px-2.5 py-2 font-mono text-xs text-slate-800">{revealedKey}</code>
             <button
               type="button"
               onClick={copyRevealed}
-              className="inline-flex items-center gap-1 rounded-xl border border-transparent bg-orange-600 shadow-sm px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-orange-700 transition shrink-0"
+              className={`${BTN_PRIMARY} shrink-0 !px-3 !py-1.5`}
             >
               {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
               {copied ? "Copied" : "Copy"}
@@ -129,30 +127,31 @@ export default function ApiKeysPanel({ keys: initialKeys }: { keys: ApiKeySummar
           <button
             type="button"
             onClick={() => setRevealedKey(null)}
-            className="self-start text-xs text-secondary hover:text-foreground transition"
+            className="self-start text-xs text-slate-500 hover:text-slate-900 transition-all duration-200"
           >
             Done, I&apos;ve saved it
           </button>
         </div>
       )}
 
-      <div className="mt-3 flex flex-col gap-1.5">
+      <div className="-mx-2 flex flex-col divide-y divide-slate-100">
         {keys.length === 0 && !adding && (
-          <p className="text-xs text-secondary">No keys yet.</p>
+          <p className="px-2 py-3 text-xs text-slate-500">No keys yet.</p>
         )}
         {keys.map((k) => (
-          <div key={k.id} className="flex items-center gap-2 text-sm">
-            <span className="font-medium text-foreground truncate">{k.name}</span>
-            <span className="font-mono text-xs text-secondary truncate">{k.keyPrefix}&hellip;</span>
+          <div key={k.id} className="flex items-center gap-3 rounded-xl px-2 py-2.5 text-sm transition-colors duration-150 hover:bg-slate-50">
+            <IconChip icon={KeyRound} tone={k.revokedAt ? "slate" : "orange"} size="sm" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-medium text-slate-900">{k.name}</p>
+              <p className="truncate font-mono text-xs text-slate-500">{k.keyPrefix}&hellip;</p>
+            </div>
             {k.revokedAt ? (
-              <span className="text-[10px] font-medium uppercase tracking-wide text-red-700 bg-red-50 rounded px-1.5 py-0.5 shrink-0 ml-auto">
-                Revoked
-              </span>
+              <Pill tone="red">Revoked</Pill>
             ) : (
               <button
                 type="button"
                 onClick={() => handleRevoke(k.id)}
-                className="inline-flex items-center gap-1 text-xs text-secondary hover:text-red-700 transition shrink-0 ml-auto"
+                className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs text-slate-500 transition-all duration-200 hover:bg-red-50 hover:text-red-700"
               >
                 <Ban className="w-3 h-3" />
                 Revoke
@@ -163,13 +162,13 @@ export default function ApiKeysPanel({ keys: initialKeys }: { keys: ApiKeySummar
       </div>
 
       {adding && (
-        <div className="mt-3 pt-3 border-t border-border-soft flex flex-col gap-2">
+        <div className="pt-4 border-t border-slate-100 flex flex-col gap-2.5">
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Name, e.g. Payroll integration"
-            className="rounded-xl border border-black/10 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 focus:bg-white transition-all"
+            className="rounded-xl border border-black/10 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 transition-all"
             autoFocus
           />
           <div className="flex items-center gap-2">
@@ -177,7 +176,7 @@ export default function ApiKeysPanel({ keys: initialKeys }: { keys: ApiKeySummar
               type="button"
               onClick={handleAdd}
               disabled={loading}
-              className={`${BTN_PRIMARY} shrink-0 !px-3 !py-1.5 !text-xs`}
+              className={`${BTN_PRIMARY} shrink-0`}
             >
               {loading ? "Creating…" : "Create"}
             </button>
@@ -185,7 +184,7 @@ export default function ApiKeysPanel({ keys: initialKeys }: { keys: ApiKeySummar
               type="button"
               onClick={closeAdd}
               disabled={loading}
-              className="rounded-xl border border-border text-muted hover:bg-surface p-1.5 transition disabled:opacity-50"
+              className={`${BTN_SECONDARY} !px-2.5`}
               aria-label="Cancel"
             >
               <X className="w-3.5 h-3.5" />
