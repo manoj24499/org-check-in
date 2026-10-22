@@ -322,6 +322,10 @@ enum AttendanceMethod {
   // end (see /api/kiosk/location). Kept distinct from PIN so an admin
   // reviewing history can tell the difference at a glance.
   AUTO
+  // Entered by an admin (directly, or by approving an employee's
+  // ManualEntryRequest) for a day the device failed to record — see
+  // lib/manualEntry.ts. manualReason / manualApprovedByName say why and who.
+  MANUAL
 }
 
 enum WorkMode {
@@ -391,7 +395,7 @@ model User {
   passwordHash String?
 
   // Employee kiosk auth (only set for EMPLOYEE role)
-  pinHash String?
+  pinHash       String?
   // HMAC of (organizationId + plaintext PIN), keyed by PIN_LOOKUP_SECRET — lets
   // PIN-uniqueness checks be one indexed lookup instead of a bcrypt scan. Null
   // for PINs set before this existed; filled in on that employee's next login.
@@ -468,20 +472,21 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  attendances      Attendance[]
-  locationPings    LocationPing[]
-  pushTokens       PushToken[]
-  shiftReminders   ShiftReminder[]
-  assignedPlaces   AssignedPlace[]
-  reimbursements   Reimbursement[]
-  timeOffRequests  TimeOffRequest[]
+  attendances         Attendance[]
+  locationPings       LocationPing[]
+  pushTokens          PushToken[]
+  shiftReminders      ShiftReminder[]
+  assignedPlaces      AssignedPlace[]
+  reimbursements      Reimbursement[]
+  timeOffRequests     TimeOffRequest[]
   // One shift per weekday, at most — see ShiftAssignment. Replaces the old
   // single `shiftId` scalar so an employee can rotate between shifts across
   // the week (e.g. General Mon-Wed, Afternoon Thu-Fri) instead of having
   // exactly one shift for every day.
-  shiftAssignments ShiftAssignment[]
-  supportTickets   SupportTicket[]
-  userTokens       UserToken[]
+  shiftAssignments    ShiftAssignment[]
+  supportTickets      SupportTicket[]
+  userTokens          UserToken[]
+  manualEntryRequests ManualEntryRequest[]
 
   // Replaces the old bare @unique on employeeCode — see that field's own
   // comment.
@@ -671,6 +676,12 @@ model Attendance {
   // correction. Existing rows were backfilled to their migration time (see
   // that migration's comment) since their real edit history isn't known.
   updatedAt DateTime @updatedAt
+
+  // Set only on method = MANUAL rows: the reason given, and the admin who
+  // entered or approved it (a name snapshot, same precedent as
+  // TimedPermission.reviewedByName).
+  manualReason         String?
+  manualApprovedByName String?
 
   @@unique([userId, type, dayKey])
   @@index([userId, timestamp])
@@ -1176,4 +1187,33 @@ model DeletedEmployeeArchive {
   organization   Organization @relation(fields: [organizationId], references: [id])
 
   @@index([deletedAt])
+}
+
+enum ManualEntryStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// An employee's request for an admin to record a day's check-in/out they
+// couldn't punch (device failure etc.). Does nothing until approved; approval
+// creates the two Attendance rows (method MANUAL) — see lib/manualEntry.ts.
+// `date` is the IST day key ("YYYY-MM-DD"); checkInAt/checkOutAt are the real
+// instants requested.
+model ManualEntryRequest {
+  id             String            @id @default(cuid())
+  userId         String
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date           String
+  checkInAt      DateTime
+  checkOutAt     DateTime
+  reason         String
+  status         ManualEntryStatus @default(PENDING)
+  createdAt      DateTime          @default(now())
+  reviewedAt     DateTime?
+  reviewedByName String?
+  reviewNote     String?
+
+  @@index([userId, date])
+  @@index([status, createdAt])
 }

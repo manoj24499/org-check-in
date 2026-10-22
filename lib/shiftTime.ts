@@ -42,9 +42,9 @@ export function combineDateAndShiftEndTime(
 export type Lateness = { lateMinutes: number | null; leaveType: "NONE" | "PERMISSION" | "HALF_DAY" };
 
 /**
- * Late-arrival classification for OFFICE employees with a configured
+ * Late-arrival classification for OFFICE and FIELD employees with a configured
  * shiftStartTime: up to `thresholdMinutes` late is treated as Permission,
- * beyond it is Half-day leave. WFH/FIELD employees and anyone without a
+ * beyond it is Half-day leave. WFH employees and anyone without a
  * shiftStartTime set are never classified — leaveType stays NONE.
  *
  * `shift` is whatever applies to the *specific day* `checkInAt` falls on —
@@ -62,7 +62,9 @@ export function computeLateness(
   checkInAt: Date,
   thresholdMinutes: number,
 ): Lateness {
-  if (user.workMode !== "OFFICE" || !user.shift) {
+  // OFFICE and FIELD employees with a shift on that day are classified; WFH
+  // (and anyone with no shift that day) never is.
+  if ((user.workMode !== "OFFICE" && user.workMode !== "FIELD") || !user.shift) {
     return { lateMinutes: null, leaveType: "NONE" };
   }
   const shiftStart = combineDateAndShiftTime(checkInAt, user.shift.startTime);

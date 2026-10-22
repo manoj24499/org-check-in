@@ -6,9 +6,11 @@ import { resolveActiveOrgBySlug } from "@/lib/organization";
 import { requireMobileUser } from "@/lib/mobileAuth";
 import { resolveGeofenceTarget } from "@/lib/geofenceTarget";
 import { haversineDistanceMeters } from "@/lib/geofence";
-import { startOfISTDay } from "@/lib/istTime";
+import { startOfISTDay, todayDateOnlyIST } from "@/lib/istTime";
 import { loadShiftAssignments, shiftForDate } from "@/lib/shiftAssignment";
 import { findActiveCheckIn } from "@/lib/activeSession";
+import { computeLateness } from "@/lib/shiftTime";
+import { checkFaceVerifyHealth } from "@/lib/faceVerify";
 
 // Lightweight, PIN-less lookup so the kiosk can steer an employee to the
 // right button (Check In vs Check Out) and warn them about a forgotten
@@ -123,8 +125,41 @@ export async function GET(req: NextRequest) {
   // to offer Check in or Check out, and the check-in time. Full name, shift times, pauses, lateness and
   // leave type stay with the signed-in app, so guessing employee codes reveals as little as possible.
   if (!auth) {
+    // Three small, low-sensitivity extras for the kiosk's heads-up notices (no
+    // shift times are ever returned): whether a check-in right now would be
+    // late (minutes + classification only), whether they're on approved leave
+    // today (yes/no), and today's public holiday name (org-wide, not personal).
+    const today = todayDateOnlyIST();
+    const [holiday, leaveToday, shiftMap] = await Promise.all([
+      prisma.publicHoliday.findFirst({
+        where: { organizationId: orgId, date: today },
+        select: { name: true },
+      }),
+      prisma.timeOffRequest.findFirst({
+        where: { userId: user.id, status: "APPROVED", startDate: { lte: today }, endDate: { gte: today } },
+        select: { id: true },
+      }),
+      checkIn ? Promise.resolve(null) : loadShiftAssignments(user.id),
+    ]);
+    let lateWarning: { minutes: number; leaveType: "PERMISSION" | "HALF_DAY" } | null = null;
+    if (shiftMap && !holiday && !leaveToday) {
+      const shift = shiftForDate(shiftMap, new Date());
+      const lateness = computeLateness({ workMode: user.workMode, shift }, new Date(), settings?.lateThresholdMinutes ?? 0);
+      if (lateness.lateMinutes && lateness.lateMinutes > 0 && lateness.leaveType !== "NONE") {
+        lateWarning = { minutes: lateness.lateMinutes, leaveType: lateness.leaveType };
+      }
+    }
+
+    // Only meaningful for someone who has face verification on: if the service can't be reached right
+    // now, the check-in still goes through but is flagged for the admin, so tell them up front.
+    const faceCheckUnavailable = user.faceVerificationEnabled && (await checkFaceVerifyHealth()) === "unreachable";
+
     return NextResponse.json({
       exists: true,
+      faceCheckUnavailable,
+      lateWarning,
+      onLeaveToday: Boolean(leaveToday),
+      publicHoliday: holiday?.name ?? null,
       name: user.name.trim().split(/\s+/)[0],
       workMode: user.workMode,
       checkedIn: Boolean(checkIn),

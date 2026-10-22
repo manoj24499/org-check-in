@@ -223,7 +223,7 @@ export default function ShiftTable({ shifts: initialShifts, allEmployees }: Shif
         title="Shifts"
         subtitle={
           <>
-            Office employees are marked Permission or Half-day leave when they check in late for their shift, and everyone
+            Office and field employees are marked Permission or Half-day leave when they check in late for their shift, and everyone
             with a shift gets a reminder near its end. Assign weekly schedules from each{" "}
             <Link href="/admin/employees" className="font-medium text-orange-600 transition-colors hover:text-orange-700">
               employee page

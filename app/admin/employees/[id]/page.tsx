@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getCalendarSpecialDays } from "@/lib/timeOff";
 import EmployeeActions from "@/components/EmployeeActions";
 import AttendanceCalendar from "@/components/AttendanceCalendar";
+import ManualEntryButton from "@/components/ManualEntryButton";
 import ShiftScheduleEditor from "@/components/ShiftScheduleEditor";
 import { RecentActivityList } from "@/components/RecentActivityList";
 import { ArrowLeft, AlertTriangle } from "lucide-react";
@@ -201,9 +202,10 @@ export default async function EmployeeDetailPage({
         </div>
 
         <div className="rounded-2xl border border-black/[0.06] bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04),0_12px_32px_-20px_rgba(16,24,40,0.14)] p-6">
-          <h2 className="mb-4 text-[16px] font-semibold tracking-[-0.01em] text-slate-900">
-            Attendance Calendar
-          </h2>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-[16px] font-semibold tracking-[-0.01em] text-slate-900">Attendance Calendar</h2>
+            <ManualEntryButton employeeId={employee.id} employeeName={employee.name} />
+          </div>
           <AttendanceCalendar attendances={attendances} specialDays={specialDays} layout="split" editable />
         </div>
       </div>

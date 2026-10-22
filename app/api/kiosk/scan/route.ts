@@ -590,5 +590,6 @@ async function handlePost(req: NextRequest) {
     lateMinutes: record.lateMinutes,
     leaveType: record.leaveType,
     checkInMode: record.checkInMode,
+    workMode: user.workMode,
   });
 }

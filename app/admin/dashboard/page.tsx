@@ -6,7 +6,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import DashboardWorkspace from "@/components/DashboardWorkspace";
 import PendingPermissionsPanel from "@/components/PendingPermissionsPanel";
-import { startOfISTDay, todayDateOnlyIST } from "@/lib/istTime";
+import { istDateKey, startOfISTDay, todayDateOnlyIST } from "@/lib/istTime";
 import { istGreeting } from "@/lib/greeting";
 import { findSilentFieldWorkers } from "@/lib/trackingWatch";
 import { faceMissedKey, getDismissedKeys, trackingKey } from "@/lib/adminNotifications";
@@ -34,7 +34,7 @@ export default async function AdminDashboard() {
       attendances: {
         where: { timestamp: { gte: startOfISTDay() } },
         orderBy: { timestamp: "asc" },
-        select: { type: true, timestamp: true, lateMinutes: true, leaveType: true },
+        select: { type: true, timestamp: true, lateMinutes: true, leaveType: true, faceVerifyStatus: true },
       },
     },
   });
@@ -135,6 +135,7 @@ export default async function AdminDashboard() {
       checkOutAt: checkOut ? checkOut.timestamp.toISOString() : null,
       lateMinutes: checkIn?.lateMinutes ?? null,
       leaveType: checkIn?.leaveType ?? "NONE",
+      faceSkipped: checkIn?.faceVerifyStatus === "UNAVAILABLE",
       location: locationByUser.get(e.id) ?? null,
       outsideSince: outsideSinceByUser.get(e.id) ?? null,
       onLeaveToday: leave
@@ -194,6 +195,46 @@ export default async function AdminDashboard() {
       />
 
       {pendingPermissions.length > 0 ? <PendingPermissionsPanel initialPermissions={pendingPermissions} /> : null}
+
+      {missedFaceChecks.length > 0 && (
+        <Card className="p-5 ring-2 ring-amber-300/60">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="flex items-start gap-3">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-amber-500/10 text-amber-600">
+                <ScanEye className="h-[18px] w-[18px]" />
+              </span>
+              <div>
+                <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-slate-900">Missed face checks</h2>
+                <p className="mt-0.5 max-w-2xl text-[13px] text-slate-500">
+                  Check-ins in the last 7 days that went through without a face check, because the face service could not
+                  be reached at that moment.
+                </p>
+              </div>
+            </div>
+            <Pill tone="amber">{missedFaceChecks.length} in 7 days</Pill>
+          </div>
+          <ul className="mt-4 divide-y divide-black/[0.06]">
+            {missedFaceChecks.map((m) => (
+              <li key={m.id} className="flex flex-wrap items-center gap-3 py-2.5">
+                <Avatar name={m.user.name} size={32} />
+                <div className="min-w-0 flex-1">
+                  <Link
+                    href={`/admin/employees/${m.user.id}`}
+                    className="truncate text-sm font-medium text-slate-900 hover:text-orange-600"
+                  >
+                    {m.user.name}
+                  </Link>
+                  <p className="text-xs text-slate-500">{m.user.employeeCode}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {istDateKey(m.timestamp) === istDateKey() && <Pill tone="amber">Today</Pill>}
+                  <p className="text-[13px] tabular-nums text-slate-600">{istWhen.format(m.timestamp)}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       {silentWorkers.length > 0 && (
         <Card className="p-5">
@@ -291,42 +332,6 @@ export default async function AdminDashboard() {
         </ul>
       </Card>
 
-      {missedFaceChecks.length > 0 && (
-        <Card className="p-5">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div className="flex items-start gap-3">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-amber-500/10 text-amber-600">
-                <ScanEye className="h-[18px] w-[18px]" />
-              </span>
-              <div>
-                <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-slate-900">Missed face checks</h2>
-                <p className="mt-0.5 max-w-2xl text-[13px] text-slate-500">
-                  Check-ins in the last 7 days that went through without a face check, because the face service could not
-                  be reached at that moment.
-                </p>
-              </div>
-            </div>
-            <Pill tone="amber">{missedFaceChecks.length} in 7 days</Pill>
-          </div>
-          <ul className="mt-4 divide-y divide-black/[0.06]">
-            {missedFaceChecks.map((m) => (
-              <li key={m.id} className="flex flex-wrap items-center gap-3 py-2.5">
-                <Avatar name={m.user.name} size={32} />
-                <div className="min-w-0 flex-1">
-                  <Link
-                    href={`/admin/employees/${m.user.id}`}
-                    className="truncate text-sm font-medium text-slate-900 hover:text-orange-600"
-                  >
-                    {m.user.name}
-                  </Link>
-                  <p className="text-xs text-slate-500">{m.user.employeeCode}</p>
-                </div>
-                <p className="text-[13px] tabular-nums text-slate-600">{istWhen.format(m.timestamp)}</p>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
 
       <DashboardWorkspace employees={employees} />
     </Page>

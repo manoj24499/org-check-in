@@ -20,10 +20,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ officeLocation: null });
   }
 
+  // Lets the kiosk header say which organization it belongs to (employee IDs
+  // like EMP001 repeat across organizations). Only the public kiosk needs it.
+  const organizationName = auth
+    ? null
+    : ((await prisma.organization.findUnique({ where: { id: org.id }, select: { name: true } }))?.name ?? null);
+
   const officeLocation = await prisma.officeLocation.findUnique({
     where: { organizationId: org.id },
     select: { name: true, latitude: true, longitude: true, radiusMeters: true },
   });
 
-  return NextResponse.json({ officeLocation });
+  return NextResponse.json({ officeLocation, organizationName });
 }

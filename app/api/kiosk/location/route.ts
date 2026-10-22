@@ -436,7 +436,62 @@ const bodySchema = z.object({
     )
     .max(120)
     .optional(),
+  // Set when the phone is uploading samples it saved while it had no signal. Only the `trail` is
+  // stored (for the route/distance record); the main fields are ignored, no pause/geofence logic
+  // runs, and it is accepted even after the session has ended, so nothing recorded offline is lost.
+  backfill: z.boolean().optional(),
 });
+
+type TrailInput = { latitude: number; longitude: number; accuracy: number; timestamp: string };
+
+/**
+ * Stores extra GPS samples for a user: only plausible ones (within [from, to]), never ones already
+ * stored (a phone that never got our answer will send the same batch again), and none that
+ * coincide with `excludeTs`. Returns how many rows were added.
+ */
+async function storeTrailSamples(
+  userId: string,
+  trail: TrailInput[],
+  from: Date,
+  to: Date,
+  excludeTs?: Date,
+): Promise<number> {
+  const candidates = trail
+    .map((p) => ({ ...p, ts: new Date(p.timestamp) }))
+    .filter(
+      (p) =>
+        !Number.isNaN(p.ts.getTime()) &&
+        p.ts.getTime() >= from.getTime() &&
+        p.ts.getTime() <= to.getTime() &&
+        p.ts.getTime() !== excludeTs?.getTime(),
+    );
+  if (candidates.length === 0) return 0;
+
+  const times = candidates.map((p) => p.ts.getTime());
+  const existing = await prisma.locationPing.findMany({
+    where: { userId, timestamp: { gte: new Date(Math.min(...times)), lte: new Date(Math.max(...times)) } },
+    select: { timestamp: true },
+  });
+  const have = new Set(existing.map((e) => e.timestamp.getTime()));
+  const seen = new Set<number>();
+  const rows = candidates
+    .filter((p) => {
+      const t = p.ts.getTime();
+      if (have.has(t) || seen.has(t)) return false;
+      seen.add(t);
+      return true;
+    })
+    .map((p) => ({
+      userId,
+      latitude: p.latitude,
+      longitude: p.longitude,
+      accuracy: p.accuracy,
+      timestamp: p.ts,
+      isTrail: true,
+    }));
+  if (rows.length > 0) await prisma.locationPing.createMany({ data: rows });
+  return rows.length;
+}
 
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req);
@@ -480,6 +535,19 @@ export async function POST(req: NextRequest) {
   });
   if (!user || !user.active) {
     return NextResponse.json({ tracking: false });
+  }
+
+  // Offline catch-up upload: store the samples and stop — none of the live checks below apply to
+  // readings that are minutes or hours old. Allowed for an ended session too (capped at its check-out).
+  if (parsed.data.backfill) {
+    const endedAt = await prisma.attendance.findFirst({
+      where: { userId: checkIn.userId, type: "CHECK_OUT", timestamp: { gt: checkIn.timestamp } },
+      orderBy: { timestamp: "asc" },
+      select: { timestamp: true },
+    });
+    const upper = new Date((endedAt?.timestamp.getTime() ?? Date.now()) + 60_000);
+    const stored = await storeTrailSamples(checkIn.userId, parsed.data.trail ?? [], checkIn.timestamp, upper);
+    return NextResponse.json({ tracking: !endedAt, stored });
   }
 
   // Whatever shift applies on the check-in's own weekday — an employee can
@@ -545,27 +613,9 @@ export async function POST(req: NextRequest) {
   });
 
   // Batched dense samples: keep only plausible ones (after this session began,
-  // not from the future) and drop any that coincide with the main ping.
+  // not from the future), drop duplicates, and any that coincide with the main ping.
   if (parsed.data.trail?.length) {
-    const nowMs = Date.now();
-    const rows = parsed.data.trail
-      .map((p) => ({ ...p, ts: new Date(p.timestamp) }))
-      .filter(
-        (p) =>
-          !Number.isNaN(p.ts.getTime()) &&
-          p.ts.getTime() >= checkIn.timestamp.getTime() &&
-          p.ts.getTime() <= nowMs + 60_000 &&
-          p.ts.getTime() !== timestamp.getTime(),
-      )
-      .map((p) => ({
-        userId: checkIn.userId,
-        latitude: p.latitude,
-        longitude: p.longitude,
-        accuracy: p.accuracy,
-        timestamp: p.ts,
-        isTrail: true,
-      }));
-    if (rows.length > 0) await prisma.locationPing.createMany({ data: rows });
+    await storeTrailSamples(checkIn.userId, parsed.data.trail, checkIn.timestamp, new Date(Date.now() + 60_000), timestamp);
   }
 
   if (permissionResult.autoCheckedOut) {

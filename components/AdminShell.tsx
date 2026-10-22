@@ -8,6 +8,8 @@ import {
   Bell,
   CalendarClock,
   CalendarOff,
+  Clock,
+  PencilLine,
   Compass,
   LayoutDashboard,
   LifeBuoy,
@@ -52,6 +54,8 @@ const GROUPS: Group[] = [
     items: [
       { href: "/admin/leave", label: "Leave", icon: CalendarOff, badge: "leave" },
       { href: "/admin/overtime", label: "Overtime", icon: Timer, badge: "overtime" },
+      { href: "/admin/permissions", label: "Permissions", icon: Clock },
+      { href: "/admin/manual-entries", label: "Manual entries", icon: PencilLine },
       { href: "/admin/support", label: "Support", icon: LifeBuoy, badge: "support" },
     ],
   },

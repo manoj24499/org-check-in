@@ -26,6 +26,8 @@ type EmployeeSummary = {
   lateMinutes: number | null;
   leaveType: LeaveType;
   location: EmployeeLocation | null;
+  /** Today's check-in went through without a face check (face service unreachable). */
+  faceSkipped?: boolean;
   /** ISO time the employee left their working area (open geofence pause), or null when inside / not applicable. */
   outsideSince: string | null;
   /** A full-day TimeOffRequest (any origin — employee-submitted or
@@ -344,7 +346,16 @@ function CurrentStatusPanel({ employees }: { employees: EmployeeSummary[] }) {
                       </Pill>
                     )}
                   </td>
-                  <td className={`${TABLE.td} tabular-nums text-slate-700`}>{formatTime(emp.checkInAt)}</td>
+                  <td className={`${TABLE.td} tabular-nums text-slate-700`}>
+                    <div className="flex flex-col items-start gap-1">
+                      {formatTime(emp.checkInAt)}
+                      {emp.faceSkipped && (
+                        <span title="Checked in without a face check because the face service was unreachable">
+                          <Pill tone="amber">No face check</Pill>
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className={`${TABLE.td} tabular-nums text-slate-700`}>{formatTime(emp.checkOutAt)}</td>
                   <td className={TABLE.td}>
                     <div className="flex flex-col items-start gap-1.5">
