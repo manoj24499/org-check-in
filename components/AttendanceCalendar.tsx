@@ -17,6 +17,8 @@ import {
   CalendarCheck,
   Timer,
   CircleAlert,
+  WifiOff,
+  MapPinOff,
 } from "lucide-react";
 import { computeWorkedMs } from "@/lib/attendanceHours";
 
@@ -29,6 +31,10 @@ type AttendanceRecord = {
   // Absent on older serialized data that predates this field, same as
   // pauses[].reason below — treated identically to "NOT_CHECKED" (no badge).
   faceVerifyStatus?: "NOT_CHECKED" | "MATCHED" | "MISMATCH" | "UNAVAILABLE";
+  // Saved on the phone while offline and sent later (see /api/kiosk/scan). Absent on older serialized data.
+  recordedOffline?: boolean;
+  offlineOutsideArea?: boolean;
+  offlineTimeVerified?: boolean | null;
   // "permission": this pause was opened by an approved TimedPermission
   // request, not a detected geofence departure — see AttendancePause.
   // timedPermissionId. Falls back to "geofence" for older serialized data
@@ -460,6 +466,33 @@ export default function AttendanceCalendar({
                     <span className="inline-flex items-center rounded-md bg-surface px-2 py-0.5 text-xs font-medium text-muted border border-border">
                       {e.method}
                     </span>
+                    {e.recordedOffline && (
+                      <span
+                        className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700"
+                        title="Saved on the phone while it had no signal and sent later"
+                      >
+                        <WifiOff className="w-3 h-3" />
+                        Recorded offline
+                      </span>
+                    )}
+                    {e.recordedOffline && e.offlineOutsideArea && (
+                      <span
+                        className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
+                        title="The saved location was outside the allowed area. Accepted, but worth a look."
+                      >
+                        <MapPinOff className="w-3 h-3" />
+                        Outside area
+                      </span>
+                    )}
+                    {e.recordedOffline && e.offlineTimeVerified === false && (
+                      <span
+                        className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
+                        title="The phone could not prove its clock was untouched while offline"
+                      >
+                        <Clock className="w-3 h-3" />
+                        Time unverified
+                      </span>
+                    )}
                     {e.faceVerifyStatus && e.faceVerifyStatus !== "NOT_CHECKED" && (() => {
                       const badge = FACE_STATUS_BADGE[e.faceVerifyStatus];
                       const Icon = badge.icon;

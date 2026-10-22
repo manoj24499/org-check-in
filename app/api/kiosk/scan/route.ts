@@ -9,12 +9,13 @@ import { resolveGeofenceTarget } from "@/lib/geofenceTarget";
 import { getSettings } from "@/lib/settings";
 import { resolveOrgBySlug } from "@/lib/organization";
 import { requireMobileUser } from "@/lib/mobileAuth";
+import { OFFLINE_FUTURE_SLACK_MS, OFFLINE_MAX_AGE_MS } from "@/lib/offlineCheckIn";
 import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
 import { verifyFace } from "@/lib/faceVerify";
 import { PayloadTooLargeError, readJsonWithLimit } from "@/lib/readJsonBody";
 import { combineDateAndShiftEndTime, computeLateness } from "@/lib/shiftTime";
 import { loadShiftAssignments, shiftForDate, type WeekdayShiftMap } from "@/lib/shiftAssignment";
-import { startOfISTDay, endOfISTDay, todayDateOnlyIST, istDateKey } from "@/lib/istTime";
+import { startOfISTDay, endOfISTDay, todayDateOnlyIST, istDateKey, parseDateOnlyKey } from "@/lib/istTime";
 import { findActiveCheckIn } from "@/lib/activeSession";
 
 const scanSchema = z.object({
@@ -47,6 +48,17 @@ const scanSchema = z.object({
   // Vehicle odometer reading in km — the start reading on CHECK_IN, the end
   // reading on CHECK_OUT. Sent by the mobile app for Field-mode sessions.
   odometerKm: z.number().min(0).max(10_000_000).optional(),
+  // Present only when the mobile app saved this check-in/out while offline and is sending it later.
+  // `capturedAt` is the phone's clock at the moment of the action; `timeVerified` says whether the
+  // phone could prove its clock was untouched since its last contact with the server. `clientId` makes a
+  // retry idempotent. Requires the employee's own bearer token and the organization's offline setting.
+  offline: z
+    .object({
+      clientId: z.string().regex(/^[A-Za-z0-9-]{16,64}$/),
+      capturedAt: z.string().datetime({ offset: true }),
+      timeVerified: z.boolean(),
+    })
+    .optional(),
 });
 
 /**
@@ -283,6 +295,67 @@ async function handlePost(req: NextRequest) {
     backfillPinLookupHash(user.id, user.organizationId, parsed.data.pin);
   }
 
+  // Offline (saved on the phone, sent later). Only the employee's own signed-in app may send one, the
+  // organization must allow it, and the capture time has to be believable. The time of the action
+  // is then the capture time, not now.
+  const offline = parsed.data.offline;
+  let eventTime = new Date();
+  if (offline) {
+    if (!mobileAuth || mobileAuth.sub !== user.id) {
+      return NextResponse.json(
+        { error: "Offline check-ins can only be sent from your own signed-in app.", code: "OFFLINE_AUTH" },
+        { status: 403 },
+      );
+    }
+    if (!settings.offlineCheckInEnabled) {
+      return NextResponse.json(
+        { error: "Offline check-in isn't enabled for your organization.", code: "OFFLINE_DISABLED" },
+        { status: 403 },
+      );
+    }
+    // The same attempt sent twice (a reply was lost) returns what was already recorded.
+    const replay = await prisma.attendance.findUnique({
+      where: { clientId: offline.clientId },
+      select: { id: true, userId: true, type: true, timestamp: true, lateMinutes: true, leaveType: true, checkInMode: true, offlineOutsideArea: true },
+    });
+    if (replay) {
+      if (replay.userId !== user.id) {
+        return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+      }
+      return NextResponse.json({
+        id: replay.id,
+        name: user.name,
+        employeeCode: user.employeeCode,
+        type: replay.type,
+        timestamp: replay.timestamp,
+        lateMinutes: replay.lateMinutes,
+        leaveType: replay.leaveType,
+        checkInMode: replay.checkInMode,
+        workMode: user.workMode,
+        recordedOffline: true,
+        offlineOutsideArea: replay.offlineOutsideArea,
+        idempotentReplay: true,
+      });
+    }
+    const captured = new Date(offline.capturedAt);
+    if (Number.isNaN(captured.getTime()) || captured.getTime() > Date.now() + OFFLINE_FUTURE_SLACK_MS) {
+      return NextResponse.json(
+        { error: "The time on this check-in is in the future. Check your phone's date and time.", code: "OFFLINE_FUTURE" },
+        { status: 400 },
+      );
+    }
+    if (Date.now() - captured.getTime() > OFFLINE_MAX_AGE_MS) {
+      return NextResponse.json(
+        {
+          error: "This check-in is too old to send automatically. Ask your admin to add it manually.",
+          code: "OFFLINE_TOO_OLD",
+        },
+        { status: 422 },
+      );
+    }
+    eventTime = captured;
+  }
+
   let photoBuffer: Uint8Array<ArrayBuffer> | null = null;
   if (photoRequired) {
     // parsed.data.photo's presence was already checked above; TypeScript
@@ -327,7 +400,7 @@ async function handlePost(req: NextRequest) {
   // Sweep up any forgotten check-in from a previous day before doing
   // anything else — see autoCloseStaleCheckIns for why this can't wait.
   if (parsed.data.action === "CHECK_IN") {
-    await autoCloseStaleCheckIns(user, shiftMap, startOfISTDay());
+    await autoCloseStaleCheckIns(user, shiftMap, startOfISTDay(eventTime));
   }
 
   // An approved leave day blocks check-in outright — being on paid leave and
@@ -339,7 +412,7 @@ async function handlePost(req: NextRequest) {
     // TimeOffRequest.startDate/endDate are date-only fields (UTC midnight of
     // the picked calendar date — see lib/istTime.ts), so this needs that
     // same date-only encoding of "today", not a real IST-midnight instant.
-    const today = todayDateOnlyIST();
+    const today = offline ? (parseDateOnlyKey(istDateKey(eventTime)) ?? todayDateOnlyIST()) : todayDateOnlyIST();
     const onApprovedLeaveToday = await prisma.timeOffRequest.findFirst({
       where: { userId: user.id, status: "APPROVED", startDate: { lte: today }, endDate: { gte: today } },
     });
@@ -369,6 +442,10 @@ async function handlePost(req: NextRequest) {
           : "WFH"
         : user.workMode;
 
+  // Set for an offline upload whose saved location was outside the allowed radius: accepted anyway,
+  // flagged for the admin to review (the employee already left the signal-free spot long ago).
+  let offlineOutsideArea = false;
+
   // Geofence the check-in against whichever location applies to this
   // employee. No location configured yet (office or home) == not enforced.
   if (parsed.data.action === "CHECK_IN" && effectiveWorkMode !== "FIELD") {
@@ -392,7 +469,9 @@ async function handlePost(req: NextRequest) {
         target.latitude,
         target.longitude,
       );
-      if (distance > target.radiusMeters) {
+      if (distance > target.radiusMeters && offline) {
+        offlineOutsideArea = true;
+      } else if (distance > target.radiusMeters) {
         const message =
           effectiveWorkMode === "WFH"
             ? "You are outside your assigned work location."
@@ -406,7 +485,10 @@ async function handlePost(req: NextRequest) {
 
   // An employee may only check in once and check out once per calendar day.
   const todaysRecords = await prisma.attendance.findMany({
-    where: { userId: user.id, timestamp: { gte: startOfISTDay() } },
+    where: {
+      userId: user.id,
+      timestamp: offline ? { gte: startOfISTDay(eventTime), lte: endOfISTDay(eventTime) } : { gte: startOfISTDay() },
+    },
     orderBy: { timestamp: "asc" },
     select: { id: true, type: true },
   });
@@ -452,7 +534,7 @@ async function handlePost(req: NextRequest) {
     }
   }
 
-  const now = new Date();
+  const now = eventTime;
   const lateness =
     parsed.data.action === "CHECK_IN"
       ? computeLateness(
@@ -503,6 +585,15 @@ async function handlePost(req: NextRequest) {
           ...(photoBuffer ? { photo: photoBuffer, hasPhoto: true } : {}),
           faceVerifyStatus,
           faceSimilarity,
+          ...(offline
+            ? {
+                recordedOffline: true,
+                offlineReceivedAt: new Date(),
+                offlineTimeVerified: offline.timeVerified,
+                offlineOutsideArea,
+                clientId: offline.clientId,
+              }
+            : {}),
         },
       });
 
@@ -526,6 +617,29 @@ async function handlePost(req: NextRequest) {
     });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      // Two copies of the same offline attempt arrived together: the other one won, so report it as recorded.
+      if (offline) {
+        const winner = await prisma.attendance.findUnique({
+          where: { clientId: offline.clientId },
+          select: { id: true, type: true, timestamp: true, lateMinutes: true, leaveType: true, checkInMode: true, offlineOutsideArea: true },
+        });
+        if (winner) {
+          return NextResponse.json({
+            id: winner.id,
+            name: user.name,
+            employeeCode: user.employeeCode,
+            type: winner.type,
+            timestamp: winner.timestamp,
+            lateMinutes: winner.lateMinutes,
+            leaveType: winner.leaveType,
+            checkInMode: winner.checkInMode,
+            workMode: user.workMode,
+            recordedOffline: true,
+            offlineOutsideArea: winner.offlineOutsideArea,
+            idempotentReplay: true,
+          });
+        }
+      }
       const message =
         parsed.data.action === "CHECK_IN" ? "You've already checked in today." : "You've already checked out today.";
       return NextResponse.json({ error: message }, { status: 409 });
@@ -591,5 +705,6 @@ async function handlePost(req: NextRequest) {
     leaveType: record.leaveType,
     checkInMode: record.checkInMode,
     workMode: user.workMode,
+    ...(offline ? { recordedOffline: true, offlineOutsideArea } : {}),
   });
 }

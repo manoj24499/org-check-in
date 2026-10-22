@@ -11,6 +11,7 @@ import { loadShiftAssignments, shiftForDate } from "@/lib/shiftAssignment";
 import { findActiveCheckIn } from "@/lib/activeSession";
 import { computeLateness } from "@/lib/shiftTime";
 import { checkFaceVerifyHealth } from "@/lib/faceVerify";
+import { OFFLINE_MAX_AGE_MINUTES } from "@/lib/offlineCheckIn";
 
 // Lightweight, PIN-less lookup so the kiosk can steer an employee to the
 // right button (Check In vs Check Out) and warn them about a forgotten
@@ -205,6 +206,8 @@ export async function GET(req: NextRequest) {
     checkedOut: Boolean(checkOut),
     checkInAt: checkIn?.timestamp ?? null,
     checkOutPhotoRequired: settings?.checkOutPhotoRequired ?? false,
+    offlineCheckInEnabled: settings?.offlineCheckInEnabled ?? true,
+    offlineMaxAgeMinutes: OFFLINE_MAX_AGE_MINUTES,
     isPaused,
     pauses,
     lateMinutes: checkIn?.lateMinutes ?? null,

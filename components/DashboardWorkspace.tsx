@@ -28,6 +28,9 @@ type EmployeeSummary = {
   location: EmployeeLocation | null;
   /** Today's check-in went through without a face check (face service unreachable). */
   faceSkipped?: boolean;
+  /** Today's check-in was saved offline on the phone and sent later; `offlineOutsideArea` flags a saved location outside the allowed radius. */
+  recordedOffline?: boolean;
+  offlineOutsideArea?: boolean;
   /** ISO time the employee left their working area (open geofence pause), or null when inside / not applicable. */
   outsideSince: string | null;
   /** A full-day TimeOffRequest (any origin — employee-submitted or
@@ -349,6 +352,16 @@ function CurrentStatusPanel({ employees }: { employees: EmployeeSummary[] }) {
                   <td className={`${TABLE.td} tabular-nums text-slate-700`}>
                     <div className="flex flex-col items-start gap-1">
                       {formatTime(emp.checkInAt)}
+                      {emp.recordedOffline && (
+                        <span title="Saved on the phone while it had no signal and sent later">
+                          <Pill tone="indigo">Recorded offline</Pill>
+                        </span>
+                      )}
+                      {emp.recordedOffline && emp.offlineOutsideArea && (
+                        <span title="The saved location was outside the allowed area. Accepted, but worth a look.">
+                          <Pill tone="amber">Outside area</Pill>
+                        </span>
+                      )}
                       {emp.faceSkipped && (
                         <span title="Checked in without a face check because the face service was unreachable">
                           <Pill tone="amber">No face check</Pill>

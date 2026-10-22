@@ -13,6 +13,7 @@ const putSchema = z.object({
   // expectation — just enough to stop an obvious typo (e.g. missing a
   // digit) from silently taking effect.
   lateThresholdMinutes: z.number().int().min(1).max(480).optional(),
+  offlineCheckInEnabled: z.boolean().optional(),
 });
 
 export async function GET() {

@@ -34,7 +34,7 @@ export default async function AdminDashboard() {
       attendances: {
         where: { timestamp: { gte: startOfISTDay() } },
         orderBy: { timestamp: "asc" },
-        select: { type: true, timestamp: true, lateMinutes: true, leaveType: true, faceVerifyStatus: true },
+        select: { type: true, timestamp: true, lateMinutes: true, leaveType: true, faceVerifyStatus: true, recordedOffline: true, offlineOutsideArea: true },
       },
     },
   });
@@ -136,6 +136,8 @@ export default async function AdminDashboard() {
       lateMinutes: checkIn?.lateMinutes ?? null,
       leaveType: checkIn?.leaveType ?? "NONE",
       faceSkipped: checkIn?.faceVerifyStatus === "UNAVAILABLE",
+      recordedOffline: checkIn?.recordedOffline ?? false,
+      offlineOutsideArea: checkIn?.offlineOutsideArea ?? false,
       location: locationByUser.get(e.id) ?? null,
       outsideSince: outsideSinceByUser.get(e.id) ?? null,
       onLeaveToday: leave

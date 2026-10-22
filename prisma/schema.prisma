@@ -641,6 +641,19 @@ model Attendance {
   // readings so accuracy reports do not treat it as a measurement.
   odometerEstimated Boolean @default(false)
 
+  // Check-ins/outs recorded while the phone had no signal and sent later (see
+  // /api/kiosk/scan's `offline` block). `timestamp` is the time the employee actually pressed the
+  // button (their phone's clock at capture), `offlineReceivedAt` is when the server got it.
+  // `offlineTimeVerified` is false when the phone could not prove its clock was untouched since its
+  // last contact with the server. `offlineOutsideArea` flags an upload whose saved location was
+  // outside the allowed radius: accepted anyway, for the admin to review. `clientId` is made on the
+  // phone per attempt and makes a retry idempotent (the same attempt can never be recorded twice).
+  recordedOffline     Boolean   @default(false)
+  offlineReceivedAt   DateTime?
+  offlineTimeVerified Boolean?
+  offlineOutsideArea  Boolean   @default(false)
+  clientId            String?   @unique
+
   // When the tracking-stopped push was last sent for this session (see
   // /api/cron/tracking-watch), so a silent phone is nudged at most every 30 minutes.
   trackingAlertSentAt DateTime?
@@ -962,6 +975,11 @@ model AppSettings {
   // changing this has no effect on already-computed leaveType/lateMinutes
   // on existing records, same precedent as the leave quotas above.
   lateThresholdMinutes Int @default(60)
+
+  // Whether the mobile app may save a check-in/out while offline and send it later (see
+  // /api/kiosk/scan's `offline` block). Records older than OFFLINE_MAX_AGE_MINUTES
+  // (lib/offlineCheckIn.ts) are refused. The shared kiosk is always online-only.
+  offlineCheckInEnabled Boolean @default(true)
 
   // Persistent counter backing allocateNextEmployeeCode() (lib/credentials.ts)
   // — deliberately separate from MAX(User.employeeCode), which silently

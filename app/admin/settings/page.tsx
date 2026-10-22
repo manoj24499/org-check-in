@@ -43,7 +43,10 @@ export default async function SettingsPage() {
       {/* Side-by-side grid — each card sizes to its column (see each form's own
           `h-full flex flex-col` for how they stay equal-height). */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <AppSettingsForm checkOutPhotoRequired={settings.checkOutPhotoRequired} />
+        <AppSettingsForm
+          checkOutPhotoRequired={settings.checkOutPhotoRequired}
+          offlineCheckInEnabled={settings.offlineCheckInEnabled}
+        />
         <ReimbursementRateForm reimbursementRatePerKm={settings.reimbursementRatePerKm} />
         <LeaveQuotaForm
           quotas={{
