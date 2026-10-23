@@ -9,6 +9,8 @@ import { sendPushNotification } from "@/lib/pushNotifications";
 import { combineDateAndShiftEndTime } from "@/lib/shiftTime";
 import { loadShiftAssignments, shiftForDate } from "@/lib/shiftAssignment";
 import { istDateKey } from "@/lib/istTime";
+import { requireMobileUser } from "@/lib/mobileAuth";
+import { trackingTokenMatches } from "@/lib/trackingToken";
 
 // A ping streak only counts as "consecutive" if readings are this close
 // together — otherwise irregular/throttled background delivery (the app was
@@ -523,11 +525,26 @@ export async function POST(req: NextRequest) {
       pauseWarningAt: true,
       checkInMode: true,
       shiftReminderSentAt: true,
+      trackingTokenHash: true,
     },
   });
 
   if (!checkIn || checkIn.type !== "CHECK_IN") {
     return NextResponse.json({ tracking: false, error: "Session not found." }, { status: 404 });
+  }
+
+  // Whoever uploads location into this session has to prove it is theirs: either the secret given
+  // out at check-in, or (for the phone app) a valid sign-in belonging to this session's employee.
+  // The attendance id alone no longer works.
+  const presentedToken = req.headers.get("x-tracking-token");
+  let authorised = trackingTokenMatches(presentedToken, checkIn.trackingTokenHash);
+  if (!authorised) {
+    const mobile = await requireMobileUser(req);
+    authorised = Boolean(mobile && mobile.sub === checkIn.userId);
+  }
+  if (!authorised) {
+    // 403 (not 401): this is "not allowed for this session", never a signal to sign the user out.
+    return NextResponse.json({ tracking: false, error: "Not allowed to send location for this session." }, { status: 403 });
   }
 
   const user = await prisma.user.findUnique({

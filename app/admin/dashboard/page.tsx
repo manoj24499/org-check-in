@@ -23,7 +23,7 @@ export default async function AdminDashboard() {
   // previously pulling every active employee's full User row (pinHash
   // included) plus every one of today's Attendance rows in full (photo
   // bytes included) just to compute a few booleans and two numbers.
-  const employeesRaw = await prisma.user.findMany({
+  const employeesQ = prisma.user.findMany({
     where: { organizationId, role: "EMPLOYEE", active: true },
     // Join order (oldest first), matching /admin/employees and /admin/shifts.
     orderBy: { createdAt: "asc" },
@@ -43,7 +43,7 @@ export default async function AdminDashboard() {
   // because the face service could not be reached (fail-open, see
   // lib/faceVerify.ts). Kept here so the record stays visible after the
   // top banner clears itself.
-  const missedFaceChecksAll = await prisma.attendance.findMany({
+  const missedQ = prisma.attendance.findMany({
     where: {
       type: "CHECK_IN",
       faceVerifyStatus: "UNAVAILABLE",
@@ -55,9 +55,50 @@ export default async function AdminDashboard() {
     take: 50,
   });
   // Field workers who are checked in but whose phone has stopped sending location.
-  const silentWorkersAll = await findSilentFieldWorkers(organizationId);
+  const silentQ = findSilentFieldWorkers(organizationId);
   // Alerts the admin deleted from the Notifications page stay hidden here too.
-  const dismissedKeys = await getDismissedKeys(organizationId);
+  const dismissedQ = getDismissedKeys(organizationId);
+
+  // The rest of the page's queries, started right away so they all run at the same time
+  // (every one is an independent round trip to the database; one after another they added up
+  // to a noticeably slow page).
+  // Most recent location ping per employee (one query via `distinct`, rather
+  // than a per-employee lookup).
+  const latestQ = prisma.locationPing.findMany({
+    where: { user: { organizationId, role: "EMPLOYEE", active: true } },
+    orderBy: { timestamp: "desc" },
+    distinct: ["userId"],
+  });
+
+  const todayDateOnly = todayDateOnlyIST();
+  const leaveQ = prisma.timeOffRequest.findMany({
+    where: {
+      status: "APPROVED",
+      startDate: { lte: todayDateOnly },
+      endDate: { gte: todayDateOnly },
+      user: { organizationId },
+    },
+    select: { id: true, userId: true, type: true, markedByAdmin: true },
+  });
+
+  const pausesQ = prisma.attendancePause.findMany({
+    where: {
+      resumedAt: null,
+      timedPermissionId: null,
+      attendance: { user: { organizationId, active: true } },
+    },
+    select: { pausedAt: true, attendance: { select: { userId: true } } },
+    orderBy: { pausedAt: "asc" },
+  });
+
+  const permsQ = prisma.timedPermission.findMany({
+    where: { approvalStatus: "PENDING", attendance: { user: { organizationId } } },
+    orderBy: { createdAt: "asc" },
+    include: { attendance: { select: { user: { select: { id: true, employeeCode: true, name: true } } } } },
+  });
+
+  const [employeesRaw, missedFaceChecksAll, silentWorkersAll, dismissedKeys, latestPings, leaveTodayRaw, openPausesRaw, pendingPermissionsRaw] =
+    await Promise.all([employeesQ, missedQ, silentQ, dismissedQ, latestQ, leaveQ, pausesQ, permsQ]);
   const silentWorkers = silentWorkersAll.filter((w) => !dismissedKeys.has(trackingKey(w)));
   const missedFaceChecks = missedFaceChecksAll.filter((m) => !dismissedKeys.has(faceMissedKey(m.id)));
   const istWhen = new Intl.DateTimeFormat("en-IN", {
@@ -70,13 +111,6 @@ export default async function AdminDashboard() {
     hour12: true,
   });
 
-  // Most recent location ping per employee (one query via `distinct`, rather
-  // than a per-employee lookup).
-  const latestPings = await prisma.locationPing.findMany({
-    where: { userId: { in: employeesRaw.map((e) => e.id) } },
-    orderBy: { timestamp: "desc" },
-    distinct: ["userId"],
-  });
   const locationByUser = new Map(
     latestPings.map((p) => [
       p.userId,
@@ -94,30 +128,11 @@ export default async function AdminDashboard() {
   // — see DashboardWorkspace's leaveBadge/MarkLeaveControl for how this
   // renders. Unrelated to Attendance.leaveType (an auto-computed lateness
   // classification, despite the similar name — see its own schema comment).
-  const todayDateOnly = todayDateOnlyIST();
-  const leaveTodayRaw = await prisma.timeOffRequest.findMany({
-    where: {
-      status: "APPROVED",
-      startDate: { lte: todayDateOnly },
-      endDate: { gte: todayDateOnly },
-      user: { organizationId },
-    },
-    select: { id: true, userId: true, type: true, markedByAdmin: true },
-  });
   const leaveByUser = new Map(leaveTodayRaw.map((r) => [r.userId, r]));
 
   // Currently outside the working area: an open geofence pause (an approved
   // timed permission also opens a pause, but that one is expected, so it's
   // excluded via timedPermissionId: null).
-  const openPausesRaw = await prisma.attendancePause.findMany({
-    where: {
-      resumedAt: null,
-      timedPermissionId: null,
-      attendance: { user: { organizationId, active: true } },
-    },
-    select: { pausedAt: true, attendance: { select: { userId: true } } },
-    orderBy: { pausedAt: "asc" },
-  });
   const outsideSinceByUser = new Map<string, string>();
   for (const p of openPausesRaw) {
     if (!outsideSinceByUser.has(p.attendance.userId)) outsideSinceByUser.set(p.attendance.userId, p.pausedAt.toISOString());
@@ -153,11 +168,6 @@ export default async function AdminDashboard() {
   const currentlyIn = employees.filter((e) => e.checkInAt && !e.checkOutAt).length;
   const lateToday = employees.filter((e) => e.lateMinutes !== null && e.lateMinutes > 0).length;
 
-  const pendingPermissionsRaw = await prisma.timedPermission.findMany({
-    where: { approvalStatus: "PENDING", attendance: { user: { organizationId } } },
-    orderBy: { createdAt: "asc" },
-    include: { attendance: { select: { user: { select: { id: true, employeeCode: true, name: true } } } } },
-  });
   const pendingPermissions = pendingPermissionsRaw.map((p) => ({
     id: p.id,
     startTime: p.startTime.toISOString(),

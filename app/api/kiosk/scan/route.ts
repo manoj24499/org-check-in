@@ -9,6 +9,7 @@ import { resolveGeofenceTarget } from "@/lib/geofenceTarget";
 import { getSettings } from "@/lib/settings";
 import { resolveOrgBySlug } from "@/lib/organization";
 import { requireMobileUser } from "@/lib/mobileAuth";
+import { newTrackingToken } from "@/lib/trackingToken";
 import { OFFLINE_FUTURE_SLACK_MS, OFFLINE_MAX_AGE_MS } from "@/lib/offlineCheckIn";
 import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
 import { verifyFace } from "@/lib/faceVerify";
@@ -535,6 +536,8 @@ async function handlePost(req: NextRequest) {
   }
 
   const now = eventTime;
+  // A fresh secret per check-in, returned once in the response; only its hash is stored.
+  const trackingSecret = parsed.data.action === "CHECK_IN" ? newTrackingToken() : null;
   const lateness =
     parsed.data.action === "CHECK_IN"
       ? computeLateness(
@@ -585,6 +588,7 @@ async function handlePost(req: NextRequest) {
           ...(photoBuffer ? { photo: photoBuffer, hasPhoto: true } : {}),
           faceVerifyStatus,
           faceSimilarity,
+          ...(trackingSecret ? { trackingTokenHash: trackingSecret.hash } : {}),
           ...(offline
             ? {
                 recordedOffline: true,
@@ -706,5 +710,7 @@ async function handlePost(req: NextRequest) {
     checkInMode: record.checkInMode,
     workMode: user.workMode,
     ...(offline ? { recordedOffline: true, offlineOutsideArea } : {}),
+    // Shown only here: the caller must send it with every location upload for this session.
+    ...(trackingSecret ? { trackingToken: trackingSecret.token } : {}),
   });
 }

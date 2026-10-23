@@ -73,11 +73,12 @@ export default function ActivateForm({ token, email }: { token: string; email: s
     // tab_auth flag, which components/TabSecurity.tsx requires on every tab
     // that reaches an authenticated page or it force-signs-out immediately.
     const signInResult = await signIn("admin-login", { email, password, redirect: false });
-    setLoading(false);
     if (signInResult?.error) {
+      setLoading(false);
       router.push("/login/admin");
       return;
     }
+    // On success the button stays busy until the dashboard opens.
     sessionStorage.setItem("tab_auth", "true");
     router.push("/admin/dashboard");
     router.refresh();

@@ -90,8 +90,9 @@ export default function RegisterPage() {
     // app/login/admin/page.tsx — rather than sending them back to a login
     // form to re-enter what they just typed.
     const signInResult = await signIn("admin-login", { email: adminEmail, password: adminPassword, redirect: false });
-    setLoading(false);
+    // On success the button stays busy until the dashboard opens; only the failure path re-enables it.
     if (signInResult?.error) {
+      setLoading(false);
       // The account was created successfully — this would only happen from
       // an unrelated glitch (e.g. a dropped request), so send them to sign
       // in manually rather than claiming registration itself failed.

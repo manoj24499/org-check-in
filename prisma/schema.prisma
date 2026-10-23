@@ -654,6 +654,12 @@ model Attendance {
   offlineOutsideArea  Boolean   @default(false)
   clientId            String?   @unique
 
+  // SHA-256 of the secret handed back once, at check-in (see lib/trackingToken.ts). Every location
+  // upload for this session (/api/kiosk/location) has to prove it, so knowing an attendance id is
+  // no longer enough to write location data into someone's session. Null on sessions created
+  // before this existed: only their owner's signed-in app can keep tracking those.
+  trackingTokenHash   String?
+
   // When the tracking-stopped push was last sent for this session (see
   // /api/cron/tracking-watch), so a silent phone is nudged at most every 30 minutes.
   trackingAlertSentAt DateTime?

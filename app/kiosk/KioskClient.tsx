@@ -296,7 +296,13 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
 
         // A server error (e.g. a 500) may not come back as JSON at all — don't
         // let that masquerade as a "network" problem, which it isn't.
-        let data: { id?: string; error?: string; workMode?: "OFFICE" | "WFH" | "FIELD"; checkInMode?: "OFFICE" | "FIELD" | null } = {};
+        let data: {
+          id?: string;
+          error?: string;
+          workMode?: "OFFICE" | "WFH" | "FIELD";
+          checkInMode?: "OFFICE" | "FIELD" | null;
+          trackingToken?: string;
+        } = {};
         try {
           data = await res.json();
         } catch {
@@ -320,7 +326,7 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
             // source would fight the phone's readings. (A WFH employee who picked
             // "Office" for the day counts as Office here.)
             const trackedFromKiosk = data.workMode === "WFH" && data.checkInMode !== "OFFICE";
-            if (trackedFromKiosk) startTracking(data.id);
+            if (trackedFromKiosk) startTracking(data.id, data.trackingToken);
             setBusy(false);
             setPin("");
             setTrackingPopupId(data.id);

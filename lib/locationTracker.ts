@@ -10,6 +10,8 @@
 // out from another device), so stale entries don't accumulate.
 
 const STORAGE_KEY = "kiosk_tracking_attendance_id";
+// The per-session secret the server returned at check-in; sent with every location upload.
+const TOKEN_STORAGE_KEY = "kiosk_tracking_token";
 const PING_INTERVAL_MS = 60 * 1000; // 1 minute
 // Debounces the "immediate ping" triggers below — reopening the window and
 // getting a focus + visibilitychange event in near-quick succession
@@ -18,6 +20,7 @@ const MIN_IMMEDIATE_PING_GAP_MS = 15 * 1000;
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
 let currentAttendanceId: string | null = null;
+let currentTrackingToken: string | null = null;
 let lastPingAttemptAt = 0;
 
 function getPosition(highAccuracy: boolean): Promise<GeolocationPosition> {
@@ -51,7 +54,10 @@ async function sendPing(attendanceId: string) {
     const position = await getCurrentPositionWithFallback();
     const res = await fetch("/api/kiosk/location", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(currentTrackingToken ? { "X-Tracking-Token": currentTrackingToken } : {}),
+      },
       body: JSON.stringify({
         attendanceId,
         latitude: position.coords.latitude,
@@ -76,10 +82,12 @@ function scheduleInterval(attendanceId: string) {
 }
 
 /** Call right after a successful Check-In. */
-export function startTracking(attendanceId: string) {
+export function startTracking(attendanceId: string, trackingToken?: string | null) {
   stopTracking();
   currentAttendanceId = attendanceId;
+  currentTrackingToken = trackingToken ?? null;
   localStorage.setItem(STORAGE_KEY, attendanceId);
+  if (trackingToken) localStorage.setItem(TOKEN_STORAGE_KEY, trackingToken);
   sendPing(attendanceId);
   scheduleInterval(attendanceId);
 }
@@ -91,7 +99,9 @@ export function stopTracking() {
     intervalId = null;
   }
   currentAttendanceId = null;
+  currentTrackingToken = null;
   localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(TOKEN_STORAGE_KEY);
 }
 
 export function isTrackingActive(): boolean {
@@ -104,6 +114,7 @@ export function resumeTrackingIfActive() {
   const attendanceId = localStorage.getItem(STORAGE_KEY);
   if (!attendanceId) return;
   currentAttendanceId = attendanceId;
+  currentTrackingToken = localStorage.getItem(TOKEN_STORAGE_KEY);
   sendPing(attendanceId);
   scheduleInterval(attendanceId);
 }

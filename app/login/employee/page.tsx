@@ -10,6 +10,8 @@ import { ErrorNote, PasswordField, SubmitButton, TextField } from "@/components/
 
 export default function EmployeeLoginPage() {
   const [loading, setLoading] = useState(false);
+  // True once the credentials were accepted and we're waiting for the portal to open.
+  const [redirecting, setRedirecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
@@ -26,13 +28,19 @@ export default function EmployeeLoginPage() {
       redirect: false,
     });
 
-    setLoading(false);
     if (res?.error) {
+      setLoading(false);
       setError("Invalid organization code, employee ID, or PIN.");
     } else {
+      // Stay busy until the portal opens (see components/AdminSignInForm.tsx); the timeout is a safety net.
+      setRedirecting(true);
       sessionStorage.setItem("tab_auth", "true");
       router.push("/my-page");
       router.refresh();
+      setTimeout(() => {
+        setLoading(false);
+        setRedirecting(false);
+      }, 20_000);
     }
   }
 
@@ -74,7 +82,7 @@ export default function EmployeeLoginPage() {
 
         {error && <ErrorNote>{error}</ErrorNote>}
 
-        <SubmitButton loading={loading} idle="Access portal" busy="Signing in…" />
+        <SubmitButton loading={loading} idle="Access portal" busy={redirecting ? "Opening your portal…" : "Signing in…"} />
       </form>
     </AuthSplit>
   );

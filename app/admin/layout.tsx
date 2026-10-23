@@ -19,40 +19,39 @@ export default async function AdminLayout({
   const organizationId = session?.user?.organizationId;
   // Server-rendered once per navigation (no live polling) — same "refresh to
   // see new state" pattern the rest of the admin panel already uses.
-  const orgName =
-    isAdmin && organizationId
-      ? (await prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } }))?.name
-      : null;
-  const pending =
-    isAdmin && organizationId ? await getPendingCounts(organizationId) : { leave: 0, overtime: 0, support: 0 };
+  //
+  // Everything below is independent, so it all runs at once instead of one round trip after another
+  // (this layout wraps every admin page, so each extra step slowed every navigation).
+  // The banner follows the face service's *current* state: it shows while the service is
+  // down, and for a short while after check-ins slipped through without a face check,
+  // then clears by itself once the service has been healthy again for a while.
+  const ready = isAdmin && organizationId ? organizationId : null;
+  const [orgRow, pending, faceVerifyStatus, unavailableToday, notifications, dismissedKeys] = await Promise.all([
+    ready ? prisma.organization.findUnique({ where: { id: ready }, select: { name: true } }) : null,
+    ready ? getPendingCounts(ready) : { leave: 0, overtime: 0, support: 0 },
+    ready ? checkFaceVerifyHealth() : ("ok" as const),
+    ready
+      ? prisma.attendance.aggregate({
+          _count: true,
+          _max: { timestamp: true },
+          where: {
+            faceVerifyStatus: "UNAVAILABLE",
+            timestamp: { gte: startOfISTDay() },
+            user: { organizationId: ready },
+          },
+        })
+      : { _count: 0, _max: { timestamp: null as Date | null } },
+    // Notifications waiting for the admin (the badge on the sidebar item). It asks for the face
+    // service's state itself; that check is cached and shared, so it costs nothing extra here.
+    ready ? getAdminNotifications(ready) : [],
+    // Whether the admin already deleted today's face-service alert (then the top banner stays hidden too).
+    ready ? getDismissedKeys(ready) : new Set<string>(),
+  ]);
+  const orgName = orgRow?.name ?? null;
   const pendingLeaveCount = pending.leave;
   const pendingOvertimeCount = pending.overtime;
   const pendingSupportCount = pending.support;
-  // The banner follows the service's *current* state: it shows while the service is
-  // down, and for a short while after check-ins slipped through without a face check,
-  // then clears by itself once the service has been healthy again for a while.
-  const [faceVerifyStatus, unavailableToday] =
-    isAdmin && organizationId
-      ? await Promise.all([
-          checkFaceVerifyHealth(),
-          prisma.attendance.aggregate({
-            _count: true,
-            _max: { timestamp: true },
-            where: {
-              faceVerifyStatus: "UNAVAILABLE",
-              timestamp: { gte: startOfISTDay() },
-              user: { organizationId },
-            },
-          }),
-        ])
-      : (["ok", { _count: 0, _max: { timestamp: null } }] as const);
   const unavailableCheckInsToday = unavailableToday._count;
-  // Notifications waiting for the admin (the badge on the sidebar item), and whether the admin already
-  // deleted today's face-service alert (then the top banner stays hidden too).
-  const [notifications, dismissedKeys] =
-    isAdmin && organizationId
-      ? await Promise.all([getAdminNotifications(organizationId, { faceStatus: faceVerifyStatus }), getDismissedKeys(organizationId)])
-      : [[], new Set<string>()];
   const faceBannerDismissed = dismissedKeys.has(faceServiceKey());
   const lastUnavailableAt = unavailableToday._max.timestamp?.toISOString() ?? null;
 

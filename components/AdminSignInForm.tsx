@@ -31,6 +31,8 @@ export default function AdminSignInForm({
   showRegisterLink?: boolean;
 }) {
   const [loading, setLoading] = useState(false);
+  // True once the credentials were accepted and we're waiting for the dashboard to open.
+  const [redirecting, setRedirecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
@@ -46,13 +48,21 @@ export default function AdminSignInForm({
       redirect: false,
     });
 
-    setLoading(false);
     if (res?.error) {
+      setLoading(false);
       setError("Invalid email or password.");
     } else {
+      // Keep the button busy: the dashboard can take a few seconds to open, and re-enabling
+      // "Sign in" in the meantime looks like nothing happened. The timeout is only a safety net
+      // in case the navigation never completes.
+      setRedirecting(true);
       sessionStorage.setItem("tab_auth", "true");
       router.push(callbackUrl);
       router.refresh();
+      setTimeout(() => {
+        setLoading(false);
+        setRedirecting(false);
+      }, 20_000);
     }
   }
 
@@ -104,7 +114,7 @@ export default function AdminSignInForm({
 
         {error && <ErrorNote>{error}</ErrorNote>}
 
-        <SubmitButton loading={loading} idle="Sign in" busy="Signing in…" />
+        <SubmitButton loading={loading} idle="Sign in" busy={redirecting ? "Opening your dashboard…" : "Signing in…"} />
 
         {showRegisterLink && (
           <p className="text-center text-xs text-muted-2">
