@@ -6,6 +6,7 @@ import AppSettingsForm from "@/components/AppSettingsForm";
 import ReimbursementRateForm from "@/components/ReimbursementRateForm";
 import LeaveQuotaForm from "@/components/LeaveQuotaForm";
 import LatenessThresholdForm from "@/components/LatenessThresholdForm";
+import OutsideAlertForm from "@/components/OutsideAlertForm";
 import AdminsPanel from "@/components/AdminsPanel";
 import OrgCodePanel from "@/components/OrgCodePanel";
 import ApiKeysPanel from "@/components/ApiKeysPanel";
@@ -56,6 +57,7 @@ export default async function SettingsPage() {
           }}
         />
         <LatenessThresholdForm lateThresholdMinutes={settings.lateThresholdMinutes} />
+        <OutsideAlertForm outsideAlertMinutes={settings.outsideAlertMinutes} />
         <OrgCodePanel name={organization.name} slug={organization.slug} />
         <PlanPanel planId={organization.planTier} seatLimit={organization.seatLimit} />
         <AdminsPanel admins={admins} />

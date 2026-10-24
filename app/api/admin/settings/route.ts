@@ -14,6 +14,8 @@ const putSchema = z.object({
   // digit) from silently taking effect.
   lateThresholdMinutes: z.number().int().min(1).max(480).optional(),
   offlineCheckInEnabled: z.boolean().optional(),
+  // 0 turns the "outside the working area" alert off.
+  outsideAlertMinutes: z.number().int().min(0).max(480).optional(),
 });
 
 export async function GET() {

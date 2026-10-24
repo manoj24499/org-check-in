@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireMobileUser } from "@/lib/mobileAuth";
@@ -24,7 +25,35 @@ const createSchema = z.object({
   longitude: z.number().min(-180).max(180),
   // Set when this visit completes a place an admin assigned (see AssignedPlace).
   assignedPlaceId: z.string().min(1).max(40).optional(),
+  // Present when the phone saved this visit while offline and is sending it later. `clientId` makes a retry
+  // idempotent; `reachedAt` is when the worker actually got there (the phone's clock), used instead of "now".
+  clientId: z.string().regex(/^[A-Za-z0-9-]{16,64}$/).optional(),
+  reachedAt: z.string().datetime({ offset: true }).optional(),
 });
+
+/** A visit saved offline may reach the server hours later (or after the worker already checked out); it is
+ * attached to the Field check-in it happened during, if that was no more than this long before. */
+const MAX_VISIT_AGE_MS = 3 * 24 * 60 * 60 * 1000;
+const MAX_VISIT_SESSION_MS = 24 * 60 * 60 * 1000;
+const FUTURE_SLACK_MS = 2 * 60 * 1000;
+
+function visitResponse(visit: {
+  id: string; name: string; description: string | null; contactName: string | null; contactPhone: string | null;
+  contactEmail: string | null; remarks: string | null; reachedAt: Date; latitude: number; longitude: number;
+}) {
+  return {
+    id: visit.id,
+    name: visit.name,
+    description: visit.description,
+    contactName: visit.contactName,
+    contactPhone: visit.contactPhone,
+    contactEmail: visit.contactEmail,
+    remarks: visit.remarks,
+    reachedAt: visit.reachedAt.toISOString(),
+    latitude: visit.latitude,
+    longitude: visit.longitude,
+  };
+}
 
 /** The active FIELD check-in — the parent every FieldVisit hangs off. Built
  * on the shared findActiveCheckIn (see lib/activeSession.ts) so an overnight
@@ -86,6 +115,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
 
+  // The same visit sent again (a reply was lost): return what was already recorded.
+  if (parsed.data.clientId) {
+    const existing = await prisma.fieldVisit.findUnique({
+      where: { clientId: parsed.data.clientId },
+      select: {
+        id: true, name: true, description: true, contactName: true, contactPhone: true, contactEmail: true,
+        remarks: true, reachedAt: true, latitude: true, longitude: true, attendance: { select: { userId: true } },
+      },
+    });
+    if (existing) {
+      if (existing.attendance.userId !== auth.sub) return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+      return NextResponse.json({ ...visitResponse(existing), idempotentReplay: true });
+    }
+  }
+
   // Older app builds (the dashboard "Log a visit" card) sent the camera's bare
   // base64 instead of a data URL; accept both so those installs keep working.
   const photoInput = parsed.data.photo.startsWith("data:")
@@ -99,7 +143,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Photo is too large." }, { status: 413 });
   }
 
-  const checkIn = await findTodaysFieldCheckIn(auth.sub);
+  // A visit the phone saved earlier belongs to the Field check-in it happened during, which may be over by now.
+  let reachedAt: Date | null = null;
+  let checkIn: { id: string; checkInMode: string | null } | null;
+  if (parsed.data.reachedAt) {
+    reachedAt = new Date(parsed.data.reachedAt);
+    const now = Date.now();
+    if (reachedAt.getTime() > now + FUTURE_SLACK_MS || now - reachedAt.getTime() > MAX_VISIT_AGE_MS) {
+      return NextResponse.json({ error: "This visit is too old to record automatically." }, { status: 422 });
+    }
+    const during = await prisma.attendance.findFirst({
+      where: { userId: auth.sub, type: "CHECK_IN", timestamp: { lte: reachedAt } },
+      orderBy: { timestamp: "desc" },
+      select: { id: true, checkInMode: true, timestamp: true },
+    });
+    checkIn = during && reachedAt.getTime() - during.timestamp.getTime() <= MAX_VISIT_SESSION_MS ? during : null;
+  } else {
+    checkIn = await findTodaysFieldCheckIn(auth.sub);
+  }
   if (!checkIn || checkIn.checkInMode !== "FIELD") {
     return NextResponse.json(
       { error: "Check in with Field mode first to log a location." },
@@ -118,7 +179,9 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const visit = await prisma.fieldVisit.create({
+  let visit;
+  try {
+    visit = await prisma.fieldVisit.create({
     data: {
       attendanceId: checkIn.id,
       name: parsed.data.name,
@@ -131,25 +194,24 @@ export async function POST(req: NextRequest) {
       hasPhoto: true,
       latitude: parsed.data.latitude,
       longitude: parsed.data.longitude,
+      ...(reachedAt ? { reachedAt } : {}),
+      ...(parsed.data.clientId ? { clientId: parsed.data.clientId } : {}),
       ...(parsed.data.assignedPlaceId
         ? { assignedPlace: { connect: { id: parsed.data.assignedPlaceId } } }
         : {}),
     },
   });
+  } catch (err) {
+    // Two copies of the same offline visit arrived together: the other one won, so report it as recorded.
+    if (parsed.data.clientId && err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      const winner = await prisma.fieldVisit.findUnique({ where: { clientId: parsed.data.clientId } });
+      if (winner) return NextResponse.json({ ...visitResponse(winner), idempotentReplay: true });
+    }
+    throw err;
+  }
   if (parsed.data.assignedPlaceId) {
     await prisma.assignedPlace.update({ where: { id: parsed.data.assignedPlaceId }, data: { status: "VISITED" } });
   }
 
-  return NextResponse.json({
-    id: visit.id,
-    name: visit.name,
-    description: visit.description,
-    contactName: visit.contactName,
-    contactPhone: visit.contactPhone,
-    contactEmail: visit.contactEmail,
-    remarks: visit.remarks,
-    reachedAt: visit.reachedAt.toISOString(),
-    latitude: visit.latitude,
-    longitude: visit.longitude,
-  });
+  return NextResponse.json(visitResponse(visit));
 }

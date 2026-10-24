@@ -11,14 +11,8 @@ import { loadShiftAssignments, shiftForDate } from "@/lib/shiftAssignment";
 import { istDateKey } from "@/lib/istTime";
 import { requireMobileUser } from "@/lib/mobileAuth";
 import { trackingTokenMatches } from "@/lib/trackingToken";
+import { MAX_STREAK_GAP_MS, GRACE_PERIOD_MS, STREAK_LENGTH, computePauseIntervals } from "@/lib/pauseReplay";
 
-// A ping streak only counts as "consecutive" if readings are this close
-// together — otherwise irregular/throttled background delivery (the app was
-// backgrounded, the OS throttled it, a brief connectivity gap) could be
-// mistaken for a genuine run of readings.
-const MAX_STREAK_GAP_MS = 5 * 60 * 1000;
-const GRACE_PERIOD_MS = 10 * 60 * 1000;
-const STREAK_LENGTH = 3;
 
 /**
  * Checks whether the given ping represents a *confirmed* reading — the last
@@ -179,6 +173,63 @@ async function evaluatePauseState(
     }
   } catch (error) {
     console.error("[evaluatePauseState] failed:", error);
+  }
+}
+
+/**
+ * After a phone uploads readings it saved while offline, the live pause logic never saw them, so a
+ * departure during the gap would go unrecorded and its hours would count as worked. This replays the whole
+ * session's readings (the late ones included) through the same rules and brings the stored pauses in line:
+ *  - a pause the replay finds that overlaps no stored pause is added (with its end, if the employee came back);
+ *  - a stored geofence pause that is still open, but that the replay shows was already over, is closed.
+ * It never deletes or shortens anything, and skips a stretch already covered by any stored pause (including an
+ * approved timed permission), since overlapping pauses would be subtracted twice from the hours worked.
+ * Office and work-from-home only: a Field employee's geofence depends on their work segment, which isn't
+ * replayed. Best-effort: never throws.
+ */
+async function reconcilePausesAfterBackfill(
+  checkIn: { id: string; userId: string; timestamp: Date; checkInMode: CheckInMode | null },
+  user: Parameters<typeof resolveGeofenceTarget>[0],
+  endedAt: Date | null,
+) {
+  try {
+    if (user.workMode === "FIELD") return;
+    const target = await resolveSessionTarget(user, checkIn.checkInMode);
+    if (!target) return;
+
+    const [readings, stored] = await Promise.all([
+      prisma.locationPing.findMany({
+        where: { userId: checkIn.userId, timestamp: { gte: checkIn.timestamp, ...(endedAt ? { lte: endedAt } : {}) } },
+        orderBy: { timestamp: "asc" },
+        select: { latitude: true, longitude: true, timestamp: true },
+      }),
+      prisma.attendancePause.findMany({
+        where: { attendanceId: checkIn.id },
+        select: { id: true, pausedAt: true, resumedAt: true, timedPermissionId: true },
+      }),
+    ]);
+
+    const FOREVER = Number.POSITIVE_INFINITY;
+    let changed = false;
+    for (const d of computePauseIntervals(readings, target)) {
+      const end = d.end ?? endedAt; // a pause still open when the session already ended stops at check-out
+      const overlapping = stored.find(
+        (e) => e.pausedAt.getTime() <= (end?.getTime() ?? FOREVER) && (e.resumedAt?.getTime() ?? FOREVER) >= d.start.getTime(),
+      );
+      if (overlapping) {
+        if (overlapping.timedPermissionId === null && overlapping.resumedAt === null && end && end > overlapping.pausedAt) {
+          await prisma.attendancePause.update({ where: { id: overlapping.id }, data: { resumedAt: end } });
+          changed = true;
+        }
+        continue;
+      }
+      await prisma.attendancePause.create({ data: { attendanceId: checkIn.id, pausedAt: d.start, resumedAt: end } });
+      changed = true;
+    }
+    // A warning that led to a pause found above is used up.
+    if (changed) await prisma.attendance.updateMany({ where: { id: checkIn.id, pauseWarningAt: { not: null } }, data: { pauseWarningAt: null } });
+  } catch (error) {
+    console.error("[reconcilePausesAfterBackfill] failed:", error);
   }
 }
 
@@ -564,6 +615,8 @@ export async function POST(req: NextRequest) {
     });
     const upper = new Date((endedAt?.timestamp.getTime() ?? Date.now()) + 60_000);
     const stored = await storeTrailSamples(checkIn.userId, parsed.data.trail ?? [], checkIn.timestamp, upper);
+    // Late readings may show the employee was outside the area during the gap: bring the pauses up to date.
+    if (stored > 0) await reconcilePausesAfterBackfill(checkIn, user, endedAt?.timestamp ?? null);
     return NextResponse.json({ tracking: !endedAt, stored });
   }
 

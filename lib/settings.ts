@@ -28,6 +28,7 @@ export async function updateSettings(
     earnedLeaveQuota?: number;
     lateThresholdMinutes?: number;
     offlineCheckInEnabled?: boolean;
+    outsideAlertMinutes?: number;
   },
 ) {
   return prisma.appSettings.upsert({

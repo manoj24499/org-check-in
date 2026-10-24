@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getSettings } from "@/lib/settings";
 import { checkFaceVerifyHealth, happenedWithin } from "@/lib/faceVerify";
 import { istDateKey, startOfISTDay } from "@/lib/istTime";
 import { findSilentFieldWorkers, type SilentFieldWorker } from "@/lib/trackingWatch";
@@ -8,7 +9,7 @@ import { findSilentFieldWorkers, type SilentFieldWorker } from "@/lib/trackingWa
 // admin deleted (DismissedNotification), so the dashboard cards and the face-service banner can hide
 // the same ones.
 
-export type NotificationKind = "PERMISSION_REQUEST" | "TRACKING_STOPPED" | "FACE_SERVICE" | "FACE_MISSED";
+export type NotificationKind = "PERMISSION_REQUEST" | "OUTSIDE_AREA" | "TRACKING_STOPPED" | "FACE_SERVICE" | "FACE_MISSED";
 
 export interface AdminNotification {
   /** Identifies this occurrence. Deleting it hides exactly this one. */
@@ -24,7 +25,7 @@ export interface AdminNotification {
   permission?: { id: string; startTime: string; endTime: string };
 }
 
-const KEY_PATTERN = /^(tracking|face|facesvc):[A-Za-z0-9:_.\-]{1,100}$/;
+const KEY_PATTERN = /^(tracking|face|facesvc|outside):[A-Za-z0-9:_.\-]{1,100}$/;
 /** Only these keys can be dismissed through the API. */
 export function isDismissibleKey(key: string): boolean {
   return KEY_PATTERN.test(key);
@@ -35,6 +36,11 @@ const minute = (d: Date) => d.toISOString().slice(0, 16);
 /** One field worker whose phone went quiet. A fresh silence (a later last ping) gets a new key. */
 export function trackingKey(w: Pick<SilentFieldWorker, "attendanceId" | "lastPingAt" | "checkedInAt">): string {
   return `tracking:${w.attendanceId}:${minute(w.lastPingAt ?? w.checkedInAt)}`;
+}
+
+/** One departure from the working area: a new departure (a new pause) gets a new key and alerts again. */
+export function outsideKey(pauseId: string): string {
+  return `outside:${pauseId}`;
 }
 
 /** One check-in that went through without a face check. */
@@ -71,7 +77,10 @@ export async function getAdminNotifications(
   const now = new Date();
   const since7d = new Date(startOfISTDay(now).getTime() - 6 * 24 * 3600 * 1000);
 
-  const [dismissed, permissions, silent, missed, faceStatus, unavailableToday] = await Promise.all([
+  const settings = await getSettings(organizationId);
+  const outsideMs = settings.outsideAlertMinutes * 60_000;
+
+  const [dismissed, permissions, silent, missed, faceStatus, unavailableToday, outside] = await Promise.all([
     options.includeDismissed ? Promise.resolve(new Set<string>()) : getDismissedKeys(organizationId),
     prisma.timedPermission.findMany({
       where: { approvalStatus: "PENDING", attendance: { user: { organizationId } } },
@@ -91,6 +100,21 @@ export async function getAdminNotifications(
       _max: { timestamp: true },
       where: { faceVerifyStatus: "UNAVAILABLE", timestamp: { gte: startOfISTDay(now) }, user: { organizationId } },
     }),
+    // Still outside the area (an open pause from leaving the geofence, not an approved permission window) for
+    // at least the configured time. Pauses older than 16 hours are leftovers of a session that was never
+    // closed, not someone actually out.
+    outsideMs > 0
+      ? prisma.attendancePause.findMany({
+          where: {
+            resumedAt: null,
+            timedPermissionId: null,
+            pausedAt: { lte: new Date(now.getTime() - outsideMs), gte: new Date(now.getTime() - 16 * 3600 * 1000) },
+            attendance: { user: { organizationId, active: true } },
+          },
+          orderBy: { pausedAt: "asc" },
+          select: { id: true, pausedAt: true, attendance: { select: { user: { select: { id: true, name: true, employeeCode: true } } } } },
+        })
+      : Promise.resolve([]),
   ]);
 
   const out: AdminNotification[] = [];
@@ -105,6 +129,22 @@ export async function getAdminNotifications(
       employee: p.attendance.user,
       dismissible: false,
       permission: { id: p.id, startTime: p.startTime.toISOString(), endTime: p.endTime.toISOString() },
+    });
+  }
+
+  const timeIST = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", hour: "numeric", minute: "2-digit", hour12: true });
+  for (const p of outside) {
+    const key = outsideKey(p.id);
+    if (dismissed.has(key)) continue;
+    const mins = Math.round((now.getTime() - p.pausedAt.getTime()) / 60000);
+    out.push({
+      key,
+      kind: "OUTSIDE_AREA",
+      title: "Outside the working area",
+      message: `${p.attendance.user.name} has been outside their working area for ${mins} min (since ${timeIST.format(p.pausedAt)}). Their time isn't counting while they are out.`,
+      occurredAt: p.pausedAt.toISOString(),
+      employee: p.attendance.user,
+      dismissible: true,
     });
   }
 
@@ -154,6 +194,6 @@ export async function getAdminNotifications(
     });
   }
 
-  const rank: Record<NotificationKind, number> = { PERMISSION_REQUEST: 0, TRACKING_STOPPED: 1, FACE_SERVICE: 2, FACE_MISSED: 3 };
+  const rank: Record<NotificationKind, number> = { PERMISSION_REQUEST: 0, OUTSIDE_AREA: 1, TRACKING_STOPPED: 2, FACE_SERVICE: 3, FACE_MISSED: 4 };
   return out.sort((a, b) => rank[a.kind] - rank[b.kind] || b.occurredAt.localeCompare(a.occurredAt));
 }

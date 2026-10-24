@@ -869,6 +869,10 @@ model FieldVisit {
   longitude    Float
   createdAt    DateTime   @default(now())
 
+  // Made on the phone per visit, so a visit saved while offline and sent later (maybe twice, if a reply was
+  // lost) is only ever recorded once. Null for visits logged by older app builds.
+  clientId String? @unique
+
   // Set when this visit completed a place an admin had assigned (see AssignedPlace).
   assignedPlace AssignedPlace?
 
@@ -986,6 +990,11 @@ model AppSettings {
   // /api/kiosk/scan's `offline` block). Records older than OFFLINE_MAX_AGE_MINUTES
   // (lib/offlineCheckIn.ts) are refused. The shared kiosk is always online-only.
   offlineCheckInEnabled Boolean @default(true)
+
+  // Admin alert: someone has been outside their working area (an open geofence pause, not an approved
+  // timed permission) for at least this many minutes. 0 turns the alert off. Worked out live in
+  // lib/adminNotifications.ts; nothing is stored per alert.
+  outsideAlertMinutes Int @default(30)
 
   // Persistent counter backing allocateNextEmployeeCode() (lib/credentials.ts)
   // — deliberately separate from MAX(User.employeeCode), which silently

@@ -3,13 +3,14 @@
 import { useSyncedState } from "./useSyncedState";
 import { useState } from "react";
 import Link from "next/link";
-import { Bell, Hourglass, Loader2, MapPinOff, ScanEye, ShieldAlert, Trash2, TriangleAlert } from "lucide-react";
+import { Bell, Hourglass, Loader2, MapPin, MapPinOff, ScanEye, ShieldAlert, Trash2, TriangleAlert } from "lucide-react";
 import { Avatar, BTN_PRIMARY, BTN_SECONDARY, CARD, EmptyState, Pill, type Tone } from "./admin/ui";
 import { refreshAdminCounts } from "./adminCountsEvent";
 import type { AdminNotification, NotificationKind } from "@/lib/adminNotifications";
 
 const KIND: Record<NotificationKind, { icon: typeof Bell; chip: string; tone: Tone; label: string }> = {
   PERMISSION_REQUEST: { icon: Hourglass, chip: "bg-amber-500/15 text-amber-600", tone: "amber", label: "Needs your decision" },
+  OUTSIDE_AREA: { icon: MapPin, chip: "bg-amber-500/15 text-amber-600", tone: "amber", label: "Outside area" },
   TRACKING_STOPPED: { icon: MapPinOff, chip: "bg-red-500/10 text-red-600", tone: "red", label: "Tracking" },
   FACE_SERVICE: { icon: ShieldAlert, chip: "bg-amber-500/10 text-amber-600", tone: "amber", label: "Face service" },
   FACE_MISSED: { icon: ScanEye, chip: "bg-amber-500/10 text-amber-600", tone: "amber", label: "Face check" },
