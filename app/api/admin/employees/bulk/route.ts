@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
+import { checkTrialEmployeeLimit } from "@/lib/trial";
 import { generateUniquePin, hashPin, allocateNextEmployeeCode, pinLookupHash } from "@/lib/credentials";
 import { DEFAULT_GEOFENCE_RADIUS_METERS } from "@/lib/geofence";
 
@@ -54,6 +55,10 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
+
+  // The free trial allows a handful of employees (lib/trial.ts); other organizations are not limited.
+  const limit = await checkTrialEmployeeLimit(admin.organizationId, parsed.data.length);
+  if (!limit.ok) return NextResponse.json({ error: limit.error }, { status: 403 });
 
   // Duplicates *within* the submitted batch — the DB check just below only
   // catches an email already belonging to an existing user, so two rows in

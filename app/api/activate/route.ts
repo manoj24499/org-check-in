@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { getClientIp, isRateLimited } from "@/lib/rateLimit";
 import { consumeUserToken } from "@/lib/userToken";
+import { TRIAL_DAYS } from "@/lib/trial";
 
 const bodySchema = z.object({
   token: z.string().min(1),
@@ -45,7 +46,7 @@ async function handlePost(req: NextRequest) {
     const userId = await consumeUserToken(tx, parsed.data.token, "ACCOUNT_ACTIVATION");
     if (!userId) return null;
 
-    const user = await tx.user.findUnique({ where: { id: userId }, select: { id: true, email: true, passwordHash: true } });
+    const user = await tx.user.findUnique({ where: { id: userId }, select: { id: true, email: true, passwordHash: true, organizationId: true } });
     // An activation link can never overwrite an existing password — if this
     // admin already has one (e.g. the link was already used, or activated
     // some other way), the token is still consumed above (so it can't be
@@ -54,6 +55,13 @@ async function handlePost(req: NextRequest) {
 
     const passwordHash = await bcrypt.hash(parsed.data.password, 10);
     await tx.user.update({ where: { id: user.id }, data: { passwordHash } });
+    // A free-trial organization's clock starts now (only once: trialEndsAt must still be empty).
+    if (user.organizationId) {
+      await tx.organization.updateMany({
+        where: { id: user.organizationId, isTrial: true, trialEndsAt: null },
+        data: { trialEndsAt: new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000) },
+      });
+    }
     return { email: user.email };
   });
 

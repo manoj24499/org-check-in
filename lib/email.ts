@@ -60,4 +60,4 @@ export async function sendEmail(msg: EmailMessage): Promise<void> {
 }
 
 // Templates live in their own dependency-free module so they can be previewed standalone.
-export { activationEmail, passwordResetEmail } from "./emailTemplates";
+export { activationEmail, passwordResetEmail, trialActivationEmail, trialReminderEmail, trialEndedEmail } from "./emailTemplates";

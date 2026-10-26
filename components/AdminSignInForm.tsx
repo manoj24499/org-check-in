@@ -50,7 +50,7 @@ export default function AdminSignInForm({
 
     if (res?.error) {
       setLoading(false);
-      setError("Invalid email or password.");
+      setError("Invalid email or password. If your account was just created, activate it from the email we sent. If your free trial has ended, choose a plan to continue.");
     } else {
       // Keep the button busy: the dashboard can take a few seconds to open, and re-enabling
       // "Sign in" in the meantime looks like nothing happened. The timeout is only a safety net

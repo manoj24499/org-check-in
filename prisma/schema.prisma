@@ -136,6 +136,22 @@ model Organization {
   seatLimit         Int?
   billingCustomerId String?
 
+  // Free trial (self-serve /register). `isTrial` marks an organization created that way; organizations that
+  // existed before the trial flow (or were provisioned by a paid checkout) are not trials and are never
+  // limited or stopped by it. The trial clock starts when the admin activates the account (sets a password):
+  // `trialEndsAt` is that moment + TRIAL_DAYS (lib/trial.ts). Two days before it ends a reminder email goes
+  // out (`trialReminderSentAt`); when it passes without a plan the organization is suspended
+  // (`trialEndedAt`, status SUSPENDED) by runTrialWatch (lib/trialWatch.ts). Choosing a plan sets planTier,
+  // which ends the trial.
+  isTrial             Boolean   @default(false)
+  trialEndsAt         DateTime?
+  trialReminderSentAt DateTime?
+  trialEndedAt        DateTime?
+  // What the person told us at sign-up.
+  signupPhone    String?
+  signupTeamSize String?
+  signupIndustry String?
+
   users                   User[]
   shifts                  Shift[]
   officeLocation          OfficeLocation?

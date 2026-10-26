@@ -142,6 +142,8 @@ export async function applyPlanChange(
     data: {
       planTier: checkout.planId,
       seatLimit: checkout.seats,
+      // A plan ends the free trial: a trial that had already run out and been paused is switched back on.
+      status: "ACTIVE",
       ...(payment.providerCustomerId ? { billingCustomerId: payment.providerCustomerId } : {}),
     },
   });

@@ -7,6 +7,7 @@ import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
 import { embedFace } from "@/lib/faceVerify";
 import { PayloadTooLargeError, readJsonWithLimit } from "@/lib/readJsonBody";
 import { EMPLOYEES_PAGE_SIZE } from "@/lib/pagination";
+import { checkTrialEmployeeLimit } from "@/lib/trial";
 
 const createSchema = z.object({
   name: z.string().min(1),
@@ -107,6 +108,10 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid input." }, { status: 400 });
     }
+
+    // The free trial allows a handful of employees (lib/trial.ts); other organizations are not limited.
+    const limit = await checkTrialEmployeeLimit(admin.organizationId, 1);
+    if (!limit.ok) return NextResponse.json({ error: limit.error }, { status: 403 });
 
     let photoBuffer: Uint8Array<ArrayBuffer> | null = null;
     if (parsed.data.photo) {

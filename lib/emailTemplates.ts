@@ -288,6 +288,105 @@ export function activationEmail(opts: {
   });
 }
 
+const dateIST = (d: Date) =>
+  d.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric" });
+
+/** Sent right after /register: the activation link, plus what the free trial includes. */
+export function trialActivationEmail(opts: {
+  orgName?: string;
+  adminName?: string;
+  link: string;
+  hours: number;
+  trialDays: number;
+  employeeLimit: number;
+}): EmailContent {
+  const org = opts.orgName?.trim();
+  const name = firstName(opts.adminName);
+  return build({
+    subject: org ? `Activate your ${org} free trial` : "Activate your Inzivo free trial",
+    preheader: `Your ${opts.trialDays}-day free trial starts when you activate: choose a password to begin.`,
+    hero: "hero-activation",
+    eyebrow: "Free trial",
+    headline: { lead: org ? `${org} is` : "Your workspace is", accent: "ready." },
+    lede: `Activate your account to start your ${opts.trialDays}-day free trial.`,
+    greeting: name ? `Hi ${name},` : undefined,
+    paragraphs: [
+      `Thanks for registering with Inzivo. Your free trial lasts ${opts.trialDays} days and starts the moment you activate your account.`,
+      `During the trial you can add up to ${opts.employeeLimit} employees and try everything: check-ins, shifts, leave and the live dashboard. We'll email you 2 days before it ends. To keep going after that, choose a plan; if you don't, the account is paused when the ${opts.trialDays} days are over.`,
+    ],
+    cta: { label: "Activate my account", url: opts.link },
+    workspace: org
+      ? {
+          name: org,
+          subtitle: "Free trial · Admin account pending",
+          stats: [
+            { label: "Trial", value: `${opts.trialDays} days` },
+            { label: "Employees", value: `up to ${opts.employeeLimit}` },
+          ],
+        }
+      : undefined,
+    steps: [
+      { title: "Set a password", body: "Under a minute." },
+      { title: "Add your team", body: `Up to ${opts.employeeLimit} people.` },
+      { title: "Try a check-in", body: "From the app or kiosk." },
+    ],
+    callout: `This link expires in ${opts.hours} hours and can only be used once.`,
+    reason:
+      "You're receiving this because this email address was used to register an Inzivo organization. If that wasn't you, you can safely ignore this email.",
+  });
+}
+
+/** Two days before the trial ends. */
+export function trialReminderEmail(opts: {
+  orgName?: string;
+  adminName?: string;
+  daysLeft: number;
+  endsAt: Date;
+  plansUrl: string;
+}): EmailContent {
+  const org = opts.orgName?.trim();
+  const name = firstName(opts.adminName);
+  const days = `${opts.daysLeft} day${opts.daysLeft === 1 ? "" : "s"}`;
+  return build({
+    subject: `Your Inzivo trial ends in ${days}`,
+    preheader: `Choose a plan before ${dateIST(opts.endsAt)} to keep ${org ?? "your workspace"} running.`,
+    hero: "hero-activation",
+    eyebrow: "Trial ending soon",
+    headline: { lead: "Your trial ends in", accent: `${days}.` },
+    lede: "Choose a plan to keep your team checking in without a break.",
+    greeting: name ? `Hi ${name},` : undefined,
+    paragraphs: [
+      `Your free trial${org ? ` of ${org}` : ""} ends on ${dateIST(opts.endsAt)}. After that the account is paused: you and your employees won't be able to sign in or check in until a plan is chosen.`,
+      "Everything you've set up (employees, shifts, attendance) stays exactly as it is.",
+    ],
+    cta: { label: "Choose a plan", url: opts.plansUrl },
+    callout: `Trial ends ${dateIST(opts.endsAt)}.`,
+    reason: "You're receiving this because you are the admin of an Inzivo free trial.",
+  });
+}
+
+/** When the trial has run out and the account has been paused. */
+export function trialEndedEmail(opts: { orgName?: string; adminName?: string; plansUrl: string }): EmailContent {
+  const org = opts.orgName?.trim();
+  const name = firstName(opts.adminName);
+  return build({
+    subject: `Your Inzivo free trial has ended`,
+    preheader: "Your account is paused. Choose a plan to switch it back on.",
+    hero: "hero-activation",
+    eyebrow: "Trial ended",
+    headline: { lead: "Your trial has", accent: "ended." },
+    lede: "Your account is paused until you choose a plan.",
+    greeting: name ? `Hi ${name},` : undefined,
+    paragraphs: [
+      `The free trial${org ? ` of ${org}` : ""} has ended, so the account is paused: admins and employees can't sign in or check in right now.`,
+      "Your data hasn't been deleted. Choose a plan to continue, or reply to this email if you need a little more time.",
+    ],
+    cta: { label: "Choose a plan", url: opts.plansUrl },
+    callout: "Nothing is lost while the account is paused.",
+    reason: "You're receiving this because you are the admin of an Inzivo free trial.",
+  });
+}
+
 export function passwordResetEmail(opts: { link: string; minutes: number; name?: string }): EmailContent {
   const name = firstName(opts.name);
   return build({

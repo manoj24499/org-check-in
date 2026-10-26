@@ -13,6 +13,7 @@ import ApiKeysPanel from "@/components/ApiKeysPanel";
 import PlanPanel from "@/components/PlanPanel";
 import { listApiKeys } from "@/lib/partnerApi/apiKey";
 import { Page, PageHeader } from "@/components/admin/ui";
+import { trialState } from "@/lib/trial";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,7 @@ export default async function SettingsPage() {
     }),
     prisma.organization.findUniqueOrThrow({
       where: { id: session.user.organizationId },
-      select: { name: true, slug: true, planTier: true, seatLimit: true },
+      select: { name: true, slug: true, planTier: true, seatLimit: true, isTrial: true, trialEndsAt: true },
     }),
     listApiKeys(session.user.organizationId),
   ]);
@@ -59,7 +60,14 @@ export default async function SettingsPage() {
         <LatenessThresholdForm lateThresholdMinutes={settings.lateThresholdMinutes} />
         <OutsideAlertForm outsideAlertMinutes={settings.outsideAlertMinutes} />
         <OrgCodePanel name={organization.name} slug={organization.slug} />
-        <PlanPanel planId={organization.planTier} seatLimit={organization.seatLimit} />
+        <PlanPanel
+          planId={organization.planTier}
+          seatLimit={organization.seatLimit}
+          trial={(() => {
+            const t = trialState(organization);
+            return t.onTrial && t.endsAt && t.daysLeft !== null ? { daysLeft: t.daysLeft, endsAt: t.endsAt } : null;
+          })()}
+        />
         <AdminsPanel admins={admins} />
         <ApiKeysPanel
           keys={apiKeys.map((k) => ({

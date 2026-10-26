@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
+import { checkTrialEmployeeLimit } from "@/lib/trial";
 import { generateUniquePin, hashPin, pinLookupHash } from "@/lib/credentials";
 import { DEFAULT_GEOFENCE_RADIUS_METERS } from "@/lib/geofence";
 import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
@@ -105,6 +106,10 @@ export async function PATCH(
 
   if (parsed.data.action === "set-active") {
     const active = parsed.data.active ?? true;
+    if (active && !user.active) {
+      const limit = await checkTrialEmployeeLimit(admin.organizationId, 1);
+      if (!limit.ok) return NextResponse.json({ error: limit.error }, { status: 403 });
+    }
     await prisma.user.update({
       where: { id },
       // Stamping/clearing deactivatedAt here is what lib/employeeCleanup.ts's

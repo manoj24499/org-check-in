@@ -1,17 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { getClientIp, isRateLimited } from "@/lib/rateLimit";
 import { normalizeOrgSlug, isValidOrgSlug } from "@/lib/orgSlug";
 import { findActiveHold } from "@/lib/billing/holds";
+import { issueUserToken } from "@/lib/userToken";
+import { APP_BASE_URL } from "@/lib/appUrl";
+import { sendEmail, trialActivationEmail } from "@/lib/email";
+import { TRIAL_DAYS, TRIAL_EMPLOYEE_LIMIT } from "@/lib/trial";
+
+const ACTIVATION_TTL_MS = 72 * 60 * 60_000;
+const TEAM_SIZES = ["1-5", "6-20", "21-50", "51-200", "200+"] as const;
 
 const bodySchema = z.object({
   organizationName: z.string().trim().min(1).max(120),
   slug: z.string().min(1),
   adminName: z.string().trim().min(1).max(120),
-  adminEmail: z.string().trim().email(),
-  adminPassword: z.string().min(8).max(200),
+  adminEmail: z.string().trim().toLowerCase().email(),
+  // About the organization, so we know who is trying the product.
+  phone: z.string().trim().min(6).max(20).regex(/^[0-9+()\-\s]+$/),
+  teamSize: z.enum(TEAM_SIZES),
+  industry: z.string().trim().max(80).optional(),
 });
 
 /**
@@ -72,11 +81,18 @@ async function handlePost(req: NextRequest) {
     return NextResponse.json({ error: "That email is already in use." }, { status: 409 });
   }
 
-  const passwordHash = await bcrypt.hash(parsed.data.adminPassword, 10);
-
-  const { organization, admin } = await prisma.$transaction(async (tx) => {
+  // No password here: the admin sets one from the emailed activation link, which proves the address is theirs
+  // and is also when the trial clock starts.
+  const { organization, admin, rawToken } = await prisma.$transaction(async (tx) => {
     const organization = await tx.organization.create({
-      data: { name: parsed.data.organizationName, slug },
+      data: {
+        name: parsed.data.organizationName,
+        slug,
+        isTrial: true,
+        signupPhone: parsed.data.phone,
+        signupTeamSize: parsed.data.teamSize,
+        signupIndustry: parsed.data.industry || null,
+      },
     });
     // Created immediately, not lazily on first read — see the schema
     // comment on AppSettings and lib/settings.ts's getSettings().
@@ -88,17 +104,40 @@ async function handlePost(req: NextRequest) {
         email: parsed.data.adminEmail,
         role: "ADMIN",
         employeeCode: "ADM001",
-        passwordHash,
+        passwordHash: null,
         // The account this organization would have zero admins without —
         // see the schema comment on User.isOwner.
         isOwner: true,
       },
     });
-    return { organization, admin };
+    const rawToken = await issueUserToken(tx, admin.id, "ACCOUNT_ACTIVATION", ACTIVATION_TTL_MS);
+    return { organization, admin, rawToken };
   });
+
+  // The account exists either way; if the email can't be sent the person can ask for a new link from /activate.
+  let emailSent = true;
+  try {
+    await sendEmail({
+      to: admin.email,
+      ...trialActivationEmail({
+        orgName: organization.name,
+        adminName: parsed.data.adminName,
+        link: `${APP_BASE_URL}/activate?token=${rawToken}`,
+        hours: ACTIVATION_TTL_MS / 3_600_000,
+        trialDays: TRIAL_DAYS,
+        employeeLimit: TRIAL_EMPLOYEE_LIMIT,
+      }),
+    });
+  } catch (err) {
+    emailSent = false;
+    console.error("[POST /api/register] Failed to send the activation email:", err);
+  }
 
   return NextResponse.json({
     organization: { id: organization.id, name: organization.name, slug: organization.slug },
     admin: { id: admin.id, email: admin.email, employeeCode: admin.employeeCode },
+    emailSent,
+    trialDays: TRIAL_DAYS,
+    employeeLimit: TRIAL_EMPLOYEE_LIMIT,
   });
 }

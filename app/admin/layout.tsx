@@ -8,6 +8,8 @@ import { checkFaceVerifyHealth, happenedWithin } from "@/lib/faceVerify";
 import { startOfISTDay } from "@/lib/istTime";
 import { faceServiceKey, getAdminNotifications, getDismissedKeys } from "@/lib/adminNotifications";
 import { getPendingCounts } from "@/lib/adminCounts";
+import { trialState } from "@/lib/trial";
+import TrialBanner from "@/components/TrialBanner";
 
 export default async function AdminLayout({
   children,
@@ -27,7 +29,7 @@ export default async function AdminLayout({
   // then clears by itself once the service has been healthy again for a while.
   const ready = isAdmin && organizationId ? organizationId : null;
   const [orgRow, pending, faceVerifyStatus, unavailableToday, notifications, dismissedKeys] = await Promise.all([
-    ready ? prisma.organization.findUnique({ where: { id: ready }, select: { name: true } }) : null,
+    ready ? prisma.organization.findUnique({ where: { id: ready }, select: { name: true, isTrial: true, trialEndsAt: true, planTier: true } }) : null,
     ready ? getPendingCounts(ready) : { leave: 0, overtime: 0, support: 0 },
     ready ? checkFaceVerifyHealth() : ("ok" as const),
     ready
@@ -48,6 +50,7 @@ export default async function AdminLayout({
     ready ? getDismissedKeys(ready) : new Set<string>(),
   ]);
   const orgName = orgRow?.name ?? null;
+  const trial = orgRow ? trialState(orgRow) : null;
   const pendingLeaveCount = pending.leave;
   const pendingOvertimeCount = pending.overtime;
   const pendingSupportCount = pending.support;
@@ -69,13 +72,18 @@ export default async function AdminLayout({
         pendingSupportCount={pendingSupportCount}
         notificationCount={notifications.length}
         banner={
-          isAdmin && !faceBannerDismissed ? (
-            <FaceVerifyStatusBanner
-              status={faceVerifyStatus}
-              unavailableCheckInsToday={unavailableCheckInsToday}
-              recentlyMissed={happenedWithin(lastUnavailableAt, 30 * 60 * 1000)}
-            />
-          ) : null
+          <>
+            {isAdmin && trial?.onTrial && trial.endsAt && trial.daysLeft !== null ? (
+              <TrialBanner daysLeft={trial.daysLeft} endsAt={trial.endsAt} />
+            ) : null}
+            {isAdmin && !faceBannerDismissed ? (
+              <FaceVerifyStatusBanner
+                status={faceVerifyStatus}
+                unavailableCheckInsToday={unavailableCheckInsToday}
+                recentlyMissed={happenedWithin(lastUnavailableAt, 30 * 60 * 1000)}
+              />
+            ) : null}
+          </>
         }
       >
         {children}

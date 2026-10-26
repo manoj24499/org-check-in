@@ -4,7 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { getClientIp, isRateLimited } from "@/lib/rateLimit";
 import { issueUserToken } from "@/lib/userToken";
 import { APP_BASE_URL } from "@/lib/appUrl";
-import { sendEmail, activationEmail } from "@/lib/email";
+import { sendEmail, activationEmail, trialActivationEmail } from "@/lib/email";
+import { TRIAL_DAYS, TRIAL_EMPLOYEE_LIMIT } from "@/lib/trial";
 import { withCors, corsPreflight } from "@/lib/cors";
 
 export function OPTIONS() {
@@ -49,17 +50,27 @@ async function handlePost(req: NextRequest) {
   // elsewhere, not something this endpoint should ever act on.
   const user = await prisma.user.findFirst({
     where: { email, role: "ADMIN", isOwner: true, active: true, passwordHash: null },
-    select: { id: true, name: true, organization: { select: { name: true } } },
+    select: { id: true, name: true, organization: { select: { name: true, isTrial: true } } },
   });
   if (!user) return;
 
   const raw = await prisma.$transaction((tx) => issueUserToken(tx, user.id, "ACCOUNT_ACTIVATION", ACTIVATION_TTL_MS));
 
   const link = `${APP_BASE_URL}/activate?token=${raw}`;
-  await sendEmail({ to: email, ...activationEmail({
-      orgName: user.organization?.name,
-      adminName: user.name,
-      link,
-      hours: ACTIVATION_TTL_MS / 3_600_000,
-    }) });
+  const content = user.organization?.isTrial
+    ? trialActivationEmail({
+        orgName: user.organization.name,
+        adminName: user.name,
+        link,
+        hours: ACTIVATION_TTL_MS / 3_600_000,
+        trialDays: TRIAL_DAYS,
+        employeeLimit: TRIAL_EMPLOYEE_LIMIT,
+      })
+    : activationEmail({
+        orgName: user.organization?.name,
+        adminName: user.name,
+        link,
+        hours: ACTIVATION_TTL_MS / 3_600_000,
+      });
+  await sendEmail({ to: email, ...content });
 }

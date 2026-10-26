@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { sendPushNotification } from "@/lib/pushNotifications";
 import { runAutoCheckout } from "@/lib/autoCheckout";
 import { runShiftStartReminders } from "@/lib/shiftReminders";
+import { runTrialWatch } from "@/lib/trialWatch";
 import { findSilentFieldWorkers, GIVE_UP_AFTER_MS, REALERT_AFTER_MS } from "@/lib/trackingWatch";
 
 export const dynamic = "force-dynamic";
@@ -44,7 +45,12 @@ async function handle(req: NextRequest) {
   // second scheduler entry is needed.
   const autoCheckout = await runAutoCheckout(now);
   const shiftReminders = await runShiftStartReminders(now);
-  return NextResponse.json({ silent: silent.length, alerted, autoCheckout, shiftReminders });
+  // Free-trial reminders and stopping expired trials: also on this run.
+  const trials = await runTrialWatch(now).catch((err) => {
+    console.error("[trial-watch] failed:", err);
+    return null;
+  });
+  return NextResponse.json({ silent: silent.length, alerted, autoCheckout, shiftReminders, trials });
 }
 
 export const GET = handle;
