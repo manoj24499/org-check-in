@@ -151,6 +151,8 @@ model Organization {
   signupPhone    String?
   signupTeamSize String?
   signupIndustry String?
+  // Extra address (besides the owner admin) that also gets trial reminder / trial-ended emails.
+  billingEmail   String?
 
   users                   User[]
   shifts                  Shift[]

@@ -1,8 +1,12 @@
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, LogIn, Building2 } from "lucide-react";
+import { ArrowRight, LogIn, Building2, ShieldAlert, Check } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Logo } from "@/components/Logo";
+import { trialState, TRIAL_DAYS, TRIAL_EMPLOYEE_LIMIT } from "@/lib/trial";
+import { computeQuote, isQuoteError } from "@/lib/billing/quote";
+import { CURRENCY_SYMBOL } from "@/lib/billing/plans";
+import PlansShell from "./PlansShell";
 import { PAID_PLANS } from "@/lib/billing/plans";
 import { MARKETING_SITE_URL } from "@/lib/marketingSiteUrl";
 import PlanChangeForm from "./PlanChangeForm";
@@ -71,7 +75,7 @@ export default async function PlansPage({
     // to surface plainly, not a 500.
     const organization = await prisma.organization.findUnique({
       where: { id: session!.user.organizationId! },
-      select: { name: true, planTier: true, seatLimit: true },
+      select: { name: true, planTier: true, seatLimit: true, isTrial: true, trialEndsAt: true },
     });
     if (!organization) {
       return (
@@ -90,6 +94,7 @@ export default async function PlansPage({
         </main>
       );
     }
+    const t = trialState(organization);
     return (
       <PlanChangeForm
         initialPlan={plan}
@@ -98,6 +103,8 @@ export default async function PlansPage({
         organizationName={organization.name}
         currentPlanId={organization.planTier}
         currentSeats={organization.seatLimit}
+        trial={t.onTrial ? { daysLeft: t.daysLeft ?? TRIAL_DAYS, employeeLimit: TRIAL_EMPLOYEE_LIMIT } : null}
+        salesUrl={`${MARKETING_SITE_URL}/#demo`}
       />
     );
   }
@@ -107,71 +114,110 @@ export default async function PlansPage({
     // browser) — plan changes are admin-only, and there's nothing useful
     // this page can do for them.
     return (
-      <main className="min-h-screen flex items-center justify-center bg-background p-6">
-        <div className="w-full max-w-[420px] rounded-lg border border-border bg-surface flex flex-col p-7 sm:p-8 text-center">
-          <Logo variant="static" size={20} className="text-foreground mb-5 self-center" />
-          <h1 className="text-[22px] font-medium tracking-[-0.025em] text-foreground">Admin access needed</h1>
-          <p className="mt-2 text-sm text-muted">
+      <PlansShell narrow>
+        <div className="mx-auto mt-16 flex max-w-[440px] flex-col items-center rounded-3xl border border-border bg-surface p-8 text-center">
+          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#1d1f26] text-primary">
+            <ShieldAlert className="h-6 w-6" />
+          </span>
+          <h1 className="mt-4 text-[24px] font-bold tracking-[-0.025em] text-foreground">Admin access needed</h1>
+          <p className="mt-2 text-sm leading-relaxed text-muted">
             Changing a plan is an admin-only action. Ask your organization&apos;s admin to sign in here instead.
           </p>
         </div>
-      </main>
+      </PlansShell>
     );
   }
 
   const callbackUrl = encodeURIComponent(currentUrl(params));
+  const chosen = PAID_PLANS.find((p) => p.id === plan) ?? PAID_PLANS[1];
+  const quote = computeQuote(plan, cycle, seats);
+  const quoteOk = isQuoteError(quote) ? null : quote;
+  const fmt = (paise: number) => `${CURRENCY_SYMBOL}${(paise / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+  const annual = cycle === "annual";
+  const cardBase =
+    "flex flex-col gap-3 rounded-3xl border-[1.5px] p-6 transition-all duration-200 hover:-translate-y-[3px] hover:shadow-[0_22px_38px_-28px_rgba(29,31,38,0.5)]";
+  const btnBase =
+    "mt-auto flex h-12 items-center justify-center gap-2 rounded-3xl text-sm font-bold transition-all hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-background p-6">
-      <div className="w-full max-w-[420px] rounded-lg border border-border bg-surface flex flex-col p-7 sm:p-8">
-        <Logo variant="static" size={20} className="text-foreground mb-5" />
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-foreground transition-colors self-start"
-        >
-          <ArrowLeft className="w-[15px] h-[15px]" />
-          Back to start
-        </Link>
+    <PlansShell back={{ href: "/", label: "Back to start" }}>
+      <div className="mt-8 max-w-[640px]">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary-dark">
+          {chosen.name} · {seats} employees · {annual ? "yearly" : "monthly"}
+        </span>
+        <h1 className="mt-2 text-[32px] font-bold leading-[1.1] tracking-[-0.035em] text-foreground sm:text-[38px]">
+          Let&apos;s get your team set up
+        </h1>
+        <p className="mt-2.5 text-[15px] text-muted">Have you used Inzivo before? Pick what fits you best.</p>
+      </div>
 
-        <div className="mt-7 flex flex-col gap-1">
-          <span className="text-[11px] font-medium tracking-[0.16em] uppercase text-primary-dark">
-            {PAID_PLANS.find((p) => p.id === plan)?.name ?? "Growth"} · {seats} seats
+      <div className="mt-7 grid grid-cols-1 gap-[18px] md:grid-cols-2">
+        <div className={`${cardBase} border-border bg-surface`}>
+          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#1d1f26] text-primary">
+            <LogIn className="h-6 w-6" />
           </span>
-          <h1 className="text-[26px] sm:text-[28px] font-medium tracking-[-0.025em] text-foreground">
-            One quick question
-          </h1>
-          <p className="text-sm text-muted">Have you used Inzivo here before?</p>
+          <h2 className="text-[22px] font-bold tracking-[-0.02em] text-foreground">I already have a workspace</h2>
+          <p className="text-[13.5px] leading-relaxed text-muted">
+            Sign in to change the plan for your existing organization.
+          </p>
+          <ul className="flex flex-col gap-2 text-[13px] text-foreground">
+            {["Keep your employees, shifts and history", "Pick up exactly where you left off"].map((t) => (
+              <li key={t} className="flex gap-2">
+                <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" strokeWidth={2.6} />
+                {t}
+              </li>
+            ))}
+          </ul>
+          <Link href={`/signin?callbackUrl=${callbackUrl}`} className={`${btnBase} bg-[#1d1f26] text-white`}>
+            Sign in <ArrowRight className="h-4 w-4" />
+          </Link>
         </div>
 
-        <div className="mt-6 flex flex-col gap-2.5">
+        <div className={`${cardBase} border-primary bg-gradient-to-br from-surface to-primary/10`}>
+          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#1d1f26] text-primary">
+            <Building2 className="h-6 w-6" />
+          </span>
+          <h2 className="text-[22px] font-bold tracking-[-0.02em] text-foreground">I&apos;m new here</h2>
+          <p className="text-[13.5px] leading-relaxed text-muted">Try it free first, or set up and pay straight away.</p>
+          <ul className="flex flex-col gap-2 text-[13px] text-foreground">
+            <li className="flex gap-2">
+              <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" strokeWidth={2.6} />
+              Free trial: {TRIAL_DAYS} days, up to {TRIAL_EMPLOYEE_LIMIT} employees, no card
+            </li>
+            <li className="flex gap-2">
+              <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" strokeWidth={2.6} />
+              Or buy the plan you chose{quoteOk ? `: ${fmt(quoteOk.amountPaise)} ${annual ? "for a year" : "a month"}` : ""}
+            </li>
+          </ul>
           <Link
-            href={`/signin?callbackUrl=${callbackUrl}`}
-            className="group flex items-center gap-3.5 rounded-lg border border-border bg-surface-2 px-4 py-3.5 shadow-[0_1px_2px_rgba(41,43,49,0.05)] hover:border-primary/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            href="/register"
+            className={`${btnBase} bg-primary text-white shadow-[0_16px_26px_-16px_#f06400]`}
           >
-            <LogIn className="w-[22px] h-[22px] text-primary shrink-0" />
-            <span className="flex flex-col">
-              <span className="text-[15px] sm:text-base font-medium text-foreground">
-                Yes, sign me in
-              </span>
-              <span className="text-[13px] text-muted">Change your existing workspace&apos;s plan</span>
-            </span>
-            <ArrowRight className="w-[17px] h-[17px] ml-auto text-muted shrink-0 transition-transform group-hover:translate-x-0.5" />
+            Start my free trial <ArrowRight className="h-4 w-4" />
           </Link>
           <a
             href={`${MARKETING_SITE_URL}/signup?plan=${plan}&cycle=${cycle}&seats=${seats}`}
-            className="group flex items-center gap-3.5 rounded-lg border border-border bg-surface-2 px-4 py-3.5 shadow-[0_1px_2px_rgba(41,43,49,0.05)] hover:border-primary/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className={`${btnBase} mt-0 border-[1.5px] border-foreground text-foreground`}
           >
-            <Building2 className="w-[22px] h-[22px] text-primary shrink-0" />
-            <span className="flex flex-col">
-              <span className="text-[15px] sm:text-base font-medium text-foreground">
-                No, I&apos;m new here
-              </span>
-              <span className="text-[13px] text-muted">Set up a new workspace and pay</span>
-            </span>
-            <ArrowRight className="w-[17px] h-[17px] ml-auto text-muted shrink-0 transition-transform group-hover:translate-x-0.5" />
+            Set up and pay now
           </a>
         </div>
       </div>
-    </main>
+
+      {quoteOk && (
+        <div className="mt-5 flex flex-wrap gap-2.5">
+          {[
+            [chosen.name, `${fmt(quoteOk.pricePerSeatPaise)} / employee / mo, ${annual ? "yearly" : "monthly"}`],
+            [`${quoteOk.seats} employees`, `Minimum ${chosen.minSeats} for this plan`],
+            [fmt(quoteOk.amountPaise), `${annual ? "Total today" : "Per month"}, GST included`],
+          ].map(([a, b]) => (
+            <div key={a} className="rounded-2xl border border-border bg-surface px-4 py-3 text-[13px]">
+              <b className="block text-[15px] text-foreground">{a}</b>
+              <span className="text-xs text-muted">{b}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </PlansShell>
   );
 }

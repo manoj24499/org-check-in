@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import VisitDatePicker from "./VisitDatePicker";
 import { Avatar, BTN_PRIMARY, CARD, IconChip, type Tone } from "./admin/ui";
+import FullscreenMapFrame from "./FullscreenMapFrame";
 import type { TrailPoint, VisitedPlace } from "./VisitedPlacesMap";
 
 const VisitedPlacesMap = dynamic(() => import("./VisitedPlacesMap"), {
@@ -474,7 +475,7 @@ export default function VisitedPlacesPanel({
           {/* Row 1: map | journey (same height). Row 2: reimbursement | visit details. */}
           <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
               <div className={`${CARD} overflow-hidden p-1.5`}>
-                <div className="h-[380px] overflow-hidden rounded-xl sm:h-[480px]">
+                <FullscreenMapFrame className="h-[380px] sm:h-[480px]">
                   <VisitedPlacesMap
                     pings={data.pings}
                     places={places}
@@ -483,7 +484,7 @@ export default function VisitedPlacesPanel({
                     focusOrder={focusOrder}
                     onSelectPlace={setFocusOrder}
                   />
-                </div>
+                </FullscreenMapFrame>
               </div>
 
               {/* Journey timeline — clicking a stop flies the map to it */}

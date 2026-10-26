@@ -81,6 +81,7 @@ export default function RegisterPage() {
         phone: form.get("phone"),
         teamSize: form.get("teamSize"),
         industry: String(form.get("industry") ?? "").trim() || undefined,
+        extraEmail: String(form.get("extraEmail") ?? "").trim() || undefined,
       }),
     });
     const data = await res.json().catch(() => ({ error: "Unexpected server response." }));
@@ -260,6 +261,11 @@ export default function RegisterPage() {
             <label className="text-xs text-muted">Work email</label>
             <input name="adminEmail" type="email" required autoComplete="email" className={INPUT} placeholder="jane@acme.com" />
             <p className="text-xs text-muted">We&apos;ll send your activation link here.</p>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs text-muted">Additional email (optional)</label>
+            <input name="extraEmail" type="email" className={INPUT} placeholder="accounts@acme.com" />
+            <p className="text-xs text-muted">Also gets trial reminders and billing emails, e.g. a finance or team inbox.</p>
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-xs text-muted">Phone number</label>

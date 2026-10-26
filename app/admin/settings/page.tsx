@@ -29,7 +29,7 @@ export default async function SettingsPage() {
     }),
     prisma.organization.findUniqueOrThrow({
       where: { id: session.user.organizationId },
-      select: { name: true, slug: true, planTier: true, seatLimit: true, isTrial: true, trialEndsAt: true },
+      select: { name: true, slug: true, planTier: true, seatLimit: true, isTrial: true, trialEndsAt: true, billingEmail: true },
     }),
     listApiKeys(session.user.organizationId),
   ]);
@@ -61,6 +61,7 @@ export default async function SettingsPage() {
         <OutsideAlertForm outsideAlertMinutes={settings.outsideAlertMinutes} />
         <OrgCodePanel name={organization.name} slug={organization.slug} />
         <PlanPanel
+          billingEmail={organization.billingEmail}
           planId={organization.planTier}
           seatLimit={organization.seatLimit}
           trial={(() => {

@@ -21,6 +21,8 @@ const bodySchema = z.object({
   phone: z.string().trim().min(6).max(20).regex(/^[0-9+()\-\s]+$/),
   teamSize: z.enum(TEAM_SIZES),
   industry: z.string().trim().max(80).optional(),
+  // An extra address that also gets trial and billing emails.
+  extraEmail: z.string().trim().toLowerCase().email().optional().or(z.literal("")),
 });
 
 /**
@@ -92,6 +94,7 @@ async function handlePost(req: NextRequest) {
         signupPhone: parsed.data.phone,
         signupTeamSize: parsed.data.teamSize,
         signupIndustry: parsed.data.industry || null,
+        billingEmail: parsed.data.extraEmail && parsed.data.extraEmail !== parsed.data.adminEmail ? parsed.data.extraEmail : null,
       },
     });
     // Created immediately, not lazily on first read — see the schema

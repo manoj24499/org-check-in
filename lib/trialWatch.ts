@@ -7,10 +7,19 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** The organization's owner admin(s): who a trial email goes to. */
 async function ownerAdmins(organizationId: string) {
-  return prisma.user.findMany({
-    where: { organizationId, role: "ADMIN", isOwner: true, active: true, passwordHash: { not: null } },
-    select: { email: true, name: true },
-  });
+  const [admins, org] = await Promise.all([
+    prisma.user.findMany({
+      where: { organizationId, role: "ADMIN", isOwner: true, active: true, passwordHash: { not: null } },
+      select: { email: true, name: true },
+    }),
+    prisma.organization.findUnique({ where: { id: organizationId }, select: { billingEmail: true } }),
+  ]);
+  // The organization's extra billing address gets the same email (once, even if it matches an admin).
+  const extra = org?.billingEmail;
+  if (admins.length > 0 && extra && !admins.some((a) => a.email.toLowerCase() === extra.toLowerCase())) {
+    admins.push({ email: extra, name: admins[0].name });
+  }
+  return admins;
 }
 
 /**

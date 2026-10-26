@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CreditCard, ArrowRight } from "lucide-react";
 import { PAID_PLANS } from "@/lib/billing/plans";
+import BillingEmailForm from "./BillingEmailForm";
 import { BTN_PRIMARY, CARD, IconChip } from "./admin/ui";
 
 /** Entry point into the self-serve plan-change flow (app/plans/) for an
@@ -11,7 +12,9 @@ export default function PlanPanel({
   planId,
   seatLimit,
   trial,
+  billingEmail,
 }: {
+  billingEmail?: string | null;
   planId: string | null;
   seatLimit: number | null;
   /** Set only for an organization on the free trial: days left and the end date. */
@@ -42,6 +45,8 @@ export default function PlanPanel({
         Change plan
         <ArrowRight className="w-3.5 h-3.5" />
       </Link>
+
+      <BillingEmailForm initial={billingEmail ?? null} />
     </div>
   );
 }
