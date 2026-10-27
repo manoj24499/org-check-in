@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
   Bell,
+  CalendarCheck,
   CalendarClock,
   CalendarOff,
   Clock,
@@ -47,6 +48,7 @@ const GROUPS: Group[] = [
       { href: "/admin/employees", label: "Employees", icon: Users },
       { href: "/admin/field-workers", label: "Field workers", icon: MapPinned },
       { href: "/admin/shifts", label: "Shifts", icon: CalendarClock },
+      { href: "/admin/leave-balances", label: "Leave balances", icon: CalendarCheck },
     ],
   },
   {
@@ -205,7 +207,7 @@ export default function AdminShell({
               </p>
             )}
             {group.items.map(({ href, label, icon: Icon, badge }) => {
-              const active = pathname?.startsWith(href);
+              const active = pathname === href || pathname?.startsWith(`${href}/`);
               const count = badge ? badges[badge] : 0;
               return (
                 <Link
