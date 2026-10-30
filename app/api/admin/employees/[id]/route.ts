@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
 import { checkTrialEmployeeLimit } from "@/lib/trial";
 import { generateUniquePin, hashPin, pinLookupHash } from "@/lib/credentials";
+import { generateResetCode, RESET_CODE_TTL_MS } from "@/lib/pinReset";
 import { DEFAULT_GEOFENCE_RADIUS_METERS } from "@/lib/geofence";
 import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
 import { embedFace } from "@/lib/faceVerify";
@@ -12,6 +13,7 @@ import { PayloadTooLargeError, readJsonWithLimit } from "@/lib/readJsonBody";
 const actionSchema = z.object({
   action: z.enum([
     "regenerate-pin",
+    "generate-reset-code",
     "set-active",
     "update-wfh-location",
     "clear-wfh-location",
@@ -102,6 +104,19 @@ export async function PATCH(
       data: { pinHash, pinLookupHash: pinLookupHash(admin.organizationId, pin) },
     });
     return NextResponse.json({ pin });
+  }
+
+  // A one-time code the employee types into the app to choose a new PIN themselves (see
+  // /api/mobile/pin-reset/*). Their current PIN keeps working until they finish the reset.
+  if (parsed.data.action === "generate-reset-code") {
+    if (!user.active) return NextResponse.json({ error: "This employee is deactivated." }, { status: 400 });
+    const resetCode = generateResetCode();
+    const expiresAt = new Date(Date.now() + RESET_CODE_TTL_MS);
+    await prisma.user.update({
+      where: { id },
+      data: { pinResetHash: await hashPin(resetCode), pinResetExpiresAt: expiresAt, pinResetAttempts: 0 },
+    });
+    return NextResponse.json({ resetCode, expiresAt });
   }
 
   if (parsed.data.action === "set-active") {

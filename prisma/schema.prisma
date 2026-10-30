@@ -419,6 +419,12 @@ model User {
   // for PINs set before this existed; filled in on that employee's next login.
   pinLookupHash String?
 
+  // One-time reset code an admin hands to an employee who forgot their PIN (see lib/pinReset.ts).
+  // Only a bcrypt hash is stored; cleared when the code is used, expires, or is guessed wrong too often.
+  pinResetHash      String?
+  pinResetExpiresAt DateTime?
+  pinResetAttempts  Int       @default(0)
+
   // Embedded in every mobile access/refresh JWT at sign time (see
   // lib/mobileAuth.ts) and checked against this column on every use —
   // bumping it invalidates every previously issued mobile token at once.

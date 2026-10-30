@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { KeyRound, Power, Copy, Check, ScanFace, Camera, ShieldOff } from "lucide-react";
+import { KeyRound, Power, Copy, Check, ScanFace, Camera, ShieldOff, ShieldCheck } from "lucide-react";
 
 /** Reads a File as a `data:image/...;base64,...` URL — same format lib/photoUpload.ts's decodePhoto expects. */
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -28,6 +28,8 @@ export default function EmployeeActions({
   const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
   const [newPin, setNewPin] = useState<string | null>(null);
+  const [resetCode, setResetCode] = useState<{ code: string; expiresAt: string } | null>(null);
+  const [copiedReset, setCopiedReset] = useState(false);
   const [copied, setCopied] = useState(false);
   const [faceEnrollment, setFaceEnrollment] = useState<{
     status: "enrolled" | "failed" | "unavailable";
@@ -48,6 +50,12 @@ export default function EmployeeActions({
     if (action === "regenerate-pin" && data.pin) {
       setNewPin(data.pin);
       setCopied(false);
+      setResetCode(null);
+    }
+    if (action === "generate-reset-code" && data.resetCode) {
+      setResetCode({ code: data.resetCode, expiresAt: data.expiresAt });
+      setCopiedReset(false);
+      setNewPin(null);
     }
     if (action === "set-face-verification") {
       // Present only when a photo was submitted (see the route) — a plain
@@ -63,6 +71,13 @@ export default function EmployeeActions({
     if (!file) return;
     const photo = await readFileAsDataUrl(file);
     await call("set-face-verification", { enabled: true, photo });
+  }
+
+  async function copyResetCode() {
+    if (!resetCode) return;
+    await navigator.clipboard.writeText(resetCode.code);
+    setCopiedReset(true);
+    setTimeout(() => setCopiedReset(false), 2000);
   }
 
   async function copyPin() {
@@ -82,6 +97,15 @@ export default function EmployeeActions({
         >
           <KeyRound className="w-4 h-4" />
           {loading === "regenerate-pin" ? "Generating…" : "Regenerate PIN"}
+        </button>
+        <button
+          onClick={() => call("generate-reset-code")}
+          disabled={loading !== null || !active}
+          title="Gives the employee a one-time code to choose their own new PIN in the app"
+          className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-medium hover:bg-surface transition disabled:opacity-50"
+        >
+          <ShieldCheck className="w-4 h-4" />
+          {loading === "generate-reset-code" ? "Generating…" : "Generate reset code"}
         </button>
         <button
           onClick={() => call("set-active", { active: !active })}
@@ -181,6 +205,25 @@ export default function EmployeeActions({
  }`}
           >
             {loading === "set-face-verification-exempt" ? "…" : faceVerificationExempt ? "Exempt" : "Not exempt"}
+          </button>
+        </div>
+      )}
+
+      {resetCode && (
+        <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 text-center">
+          <p className="text-xs text-secondary font-medium">One-time reset code (shown once)</p>
+          <p className="text-3xl font-medium tracking-widest mt-1 text-foreground">{resetCode.code}</p>
+          <p className="mt-2 text-xs text-secondary">
+            Give this to the employee. In the app they tap &ldquo;Forgot PIN?&rdquo; on the sign-in screen, enter their
+            organization code, employee ID and this code, then choose a new PIN. Works once and expires{" "}
+            {new Date(resetCode.expiresAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}.
+          </p>
+          <button
+            onClick={copyResetCode}
+            className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-primary/30 text-primary px-3 py-1.5 text-xs font-semibold hover:bg-primary/10 transition"
+          >
+            {copiedReset ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+            {copiedReset ? "Copied" : "Copy code"}
           </button>
         </div>
       )}
