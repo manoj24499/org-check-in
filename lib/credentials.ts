@@ -91,6 +91,48 @@ export async function generateUniquePin(
 }
 
 /**
+ * `count` distinct generated PINs for a bulk create, checked against the
+ * organization's stored lookup hashes in ONE query for the whole batch.
+ *
+ * Deliberately skips the legacy bcrypt scan that generateUniquePin() does:
+ * that scan costs one bcrypt compare (~250ms at cost 12 with bcryptjs) per
+ * legacy employee *per row*, so a 30-row import against 40 legacy employees
+ * is ~1,200 compares — minutes of CPU, well past the gateway timeout (it
+ * surfaced as a 504 on /api/admin/employees/bulk). The scan guards against
+ * two employees *knowingly* sharing a PIN; a randomly assigned 6-digit PIN
+ * colliding with a legacy one is ~1-in-25,000 per row at that size, and the
+ * employee can change it afterwards (change-pin still runs the full check).
+ */
+export async function generateUniquePins(organizationId: string, count: number, length = 6): Promise<string[]> {
+  const pins = new Set<string>();
+  for (let attempt = 0; attempt < MAX_GENERATE_ATTEMPTS && pins.size < count; attempt++) {
+    const candidates: string[] = [];
+    while (pins.size + candidates.length < count) {
+      const pin = generatePin(length);
+      if (!pins.has(pin) && !candidates.includes(pin)) candidates.push(pin);
+    }
+
+    const byHash = new Map<string, string>();
+    for (const pin of candidates) {
+      const hash = pinLookupHash(organizationId, pin);
+      if (hash) byHash.set(hash, pin);
+    }
+    const taken = byHash.size
+      ? await prisma.user.findMany({
+          where: { organizationId, role: "EMPLOYEE", active: true, pinLookupHash: { in: [...byHash.keys()] } },
+          select: { pinLookupHash: true },
+        })
+      : [];
+    const takenPins = new Set(taken.map((u) => byHash.get(u.pinLookupHash!)));
+    if (takenPins.size) console.warn(`[generateUniquePins] ${takenPins.size} collision(s), regenerating.`);
+    for (const pin of candidates) if (!takenPins.has(pin)) pins.add(pin);
+  }
+  // Same fallback as generateUniquePin: never loop forever in the pathological case.
+  while (pins.size < count) pins.add(generatePin(length));
+  return [...pins];
+}
+
+/**
  * True if the given plaintext PIN matches any OTHER active employee's
  * currently-stored PIN, *within the same organization* — employeeCode is
  * only unique per-organization now, so a PIN shared with an unrelated

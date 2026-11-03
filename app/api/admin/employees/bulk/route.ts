@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
 import { checkTrialEmployeeLimit } from "@/lib/trial";
-import { generateUniquePin, hashPin, allocateNextEmployeeCode, pinLookupHash } from "@/lib/credentials";
+import { generateUniquePins, hashPin, allocateNextEmployeeCode, pinLookupHash } from "@/lib/credentials";
 import { DEFAULT_GEOFENCE_RADIUS_METERS } from "@/lib/geofence";
 
 // Postgres' default transaction timeout comfortably covers a normal admin
@@ -88,26 +88,14 @@ export async function POST(req: NextRequest) {
   }
 
   // PIN generation + hashing happens BEFORE the transaction, not inside it —
-  // generateUniquePin() does a full linear bcrypt-compare scan against every
-  // active employee (see lib/credentials.ts) and hashPin() is bcrypt cost 12
-  // (~100ms each); doing both per-row inside the transaction would eat
-  // straight into BULK_CREATE_TRANSACTION_TIMEOUT_MS for no reason, since
-  // none of this needs the transaction's atomicity. generateUniquePin()
-  // only ever checks already-persisted rows, so it can't see PINs picked
-  // earlier in this same batch — tracked separately here via
-  // `pinsUsedInBatch` so two rows in one submission can't collide with each
-  // other either.
-  const pinsUsedInBatch = new Set<string>();
-  const rowsWithPins: Array<(typeof parsed.data)[number] & { pin: string; pinHash: string }> = [];
-  for (const empData of parsed.data) {
-    let pin = await generateUniquePin(admin.organizationId);
-    while (pinsUsedInBatch.has(pin)) {
-      pin = await generateUniquePin(admin.organizationId);
-    }
-    pinsUsedInBatch.add(pin);
-    const pinHash = await hashPin(pin);
-    rowsWithPins.push({ ...empData, pin, pinHash });
-  }
+  // hashPin() is bcrypt cost 12, and none of this needs the transaction's
+  // atomicity. generateUniquePins() checks the whole batch in one query and
+  // guarantees the PINs are distinct from each other; it does NOT run the
+  // per-row legacy bcrypt scan generateUniquePin() does, which made a
+  // 30-row import take minutes and 504 at the gateway (see its comment).
+  const pins = await generateUniquePins(admin.organizationId, parsed.data.length);
+  const pinHashes = await Promise.all(pins.map((pin) => hashPin(pin)));
+  const rowsWithPins = parsed.data.map((empData, i) => ({ ...empData, pin: pins[i], pinHash: pinHashes[i] }));
 
   // Whole batch succeeds or none of it does — previously each row was
   // created one at a time with no transaction, so a failure partway through
