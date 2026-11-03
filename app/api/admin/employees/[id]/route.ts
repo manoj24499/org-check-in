@@ -101,7 +101,7 @@ export async function PATCH(
     const pinHash = await hashPin(pin);
     await prisma.user.update({
       where: { id },
-      data: { pinHash, pinLookupHash: pinLookupHash(admin.organizationId, pin) },
+      data: { pinHash, pinLookupHash: pinLookupHash(admin.organizationId, pin), pinMustChange: true },
     });
     return NextResponse.json({ pin });
   }

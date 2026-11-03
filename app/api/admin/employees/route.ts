@@ -157,6 +157,7 @@ export async function POST(req: NextRequest) {
         employeeCode,
         pinHash,
         pinLookupHash: pinLookupHash(admin.organizationId, pin),
+        pinMustChange: true,
       },
     });
 

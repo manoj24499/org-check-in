@@ -129,6 +129,7 @@ export async function POST(req: NextRequest) {
               employeeCode,
               pinHash,
               pinLookupHash: lookupHash,
+              pinMustChange: true,
               workMode: empData.workMode,
               homeLatitude: empData.workMode === "WFH" ? empData.homeLatitude : null,
               homeLongitude: empData.workMode === "WFH" ? empData.homeLongitude : null,

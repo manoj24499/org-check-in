@@ -231,7 +231,7 @@ export default function EmployeeActions({
       {newPin && (
         <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 text-center">
           <p className="text-xs text-secondary font-medium">
-            New PIN (shown once)
+            New temporary PIN (shown once). The employee sets their own at next sign-in in the app.
           </p>
           <p className="text-3xl font-medium tracking-widest mt-1 text-foreground">
             {newPin}

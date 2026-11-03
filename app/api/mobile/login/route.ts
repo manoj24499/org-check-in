@@ -78,6 +78,15 @@ async function handlePost(req: NextRequest) {
 
   if (!user.pinLookupHash) backfillPinLookupHash(user.id, org.id, parsed.data.pin);
 
+  // A PIN the admin generated is only good for choosing one's own: no tokens until that's done. 403, not
+  // 401 (which the app reads as an expired session); the code lets the app open the set-your-PIN screen.
+  if (user.pinMustChange) {
+    return NextResponse.json(
+      { error: "Set your own PIN to continue.", code: "PIN_CHANGE_REQUIRED" },
+      { status: 403 },
+    );
+  }
+
   const [accessToken, refreshToken] = await Promise.all([
     signAccessToken(user),
     issueRefreshToken(user),

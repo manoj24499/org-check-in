@@ -118,9 +118,10 @@ export default function AddEmployeeForm({ shifts }: { shifts: ShiftOption[] }) {
                   Employee created!
                 </h2>
                 <p className="text-sm text-muted">
-                  Share this PIN with {created.name} now — it won&apos;t be
-                  shown again. You can always issue a new one from their
-                  profile.
+                  Share this temporary PIN with {created.name} now — it won&apos;t be
+                  shown again. On first sign-in in the app they enter it and
+                  choose their own PIN. You can always issue a new one from
+                  their profile.
                 </p>
                 {created.shift && (
                   <p className="text-xs text-secondary -mt-2">

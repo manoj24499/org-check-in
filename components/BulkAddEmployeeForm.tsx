@@ -214,7 +214,7 @@ export default function BulkAddEmployeeForm() {
                     <div>
                       <h2 className="text-lg font-semibold tracking-[-0.01em] text-slate-900">Employees created</h2>
                       <p className="mt-0.5 text-sm text-slate-500">
-                        Copy, screenshot or download the PINs below. They will not be shown again.
+                        Copy, screenshot or download the temporary PINs below. Each employee sets their own PIN on first sign-in in the app. They will not be shown again.
                       </p>
                     </div>
                   </div>
