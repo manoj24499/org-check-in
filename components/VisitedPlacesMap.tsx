@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Circle,
   CircleMarker,
   LayersControl,
   LayerGroup,
@@ -103,6 +104,17 @@ const endIcon = L.divIcon({
   iconSize: [24, 24],
   iconAnchor: [12, 12],
   popupAnchor: [0, -12],
+});
+
+// Live position: a blue dot with a pulsing halo (the employee's latest ping).
+const liveIcon = L.divIcon({
+  className: "",
+  html: `<div style="position:relative;width:34px;height:34px">
+    <span class="vp-pulse" style="position:absolute;inset:0;border-radius:50%;background:#2563eb55"></span>
+    <div style="position:absolute;inset:8px;border-radius:50%;background:#2563eb;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.45)"></div></div>`,
+  iconSize: [34, 34],
+  iconAnchor: [17, 17],
+  popupAnchor: [0, -16],
 });
 
 // Small chevron laid along the route to show which way the worker travelled.
@@ -291,10 +303,15 @@ export function NearbyPlaces({ onPick }: { onPick?: (place: NearbyPlace) => void
   );
 }
 
-function FitBounds({ points }: { points: [number, number][] }) {
+function FitBounds({ points, once = false }: { points: [number, number][]; once?: boolean }) {
   const map = useMap();
+  const fitted = useRef(false);
   useEffect(() => {
     if (points.length === 0) return;
+    // Live views refresh their data; only frame the route the first time so a refresh never undoes the
+    // admin's own panning and zooming.
+    if (once && fitted.current) return;
+    fitted.current = true;
     if (points.length === 1) {
       map.setView(points[0], 15);
       return;
@@ -326,6 +343,8 @@ export default function VisitedPlacesMap({
   end,
   focusOrder = null,
   onSelectPlace,
+  live = null,
+  fitOnce = false,
 }: {
   pings: VisitedPlacesPing[];
   places: VisitedPlace[];
@@ -333,6 +352,10 @@ export default function VisitedPlacesMap({
   end: TrailPoint | null;
   focusOrder?: number | null;
   onSelectPlace?: (order: number) => void;
+  /** The employee's latest known position, drawn as a pulsing blue dot with its accuracy circle. */
+  live?: { latitude: number; longitude: number; accuracy: number; timestamp: string; label?: string } | null;
+  /** Frame the route only on the first render (for auto-refreshing views). */
+  fitOnce?: boolean;
 }) {
   const markers = useRef(new Map<number, L.Marker>());
   const path = useMemo<[number, number][]>(() => pings.map((p) => [p.latitude, p.longitude]), [pings]);
@@ -366,8 +389,12 @@ export default function VisitedPlacesMap({
     return { segments: segs, gapLines: gaps };
   }, [pings]);
   const bounds = useMemo<[number, number][]>(
-    () => [...path, ...places.map((p) => [p.latitude, p.longitude] as [number, number])],
-    [path, places],
+    () => [
+      ...path,
+      ...places.map((p) => [p.latitude, p.longitude] as [number, number]),
+      ...(live ? [[live.latitude, live.longitude] as [number, number]] : []),
+    ],
+    [path, places, live],
   );
 
   const [zoom, setZoom] = useState(13);
@@ -474,7 +501,7 @@ export default function VisitedPlacesMap({
         </LayersControl>
         <ScaleControl position="bottomright" imperial={false} />
         <ZoomWatcher onZoom={setZoom} />
-        <FitBounds points={bounds} />
+        <FitBounds points={bounds} once={fitOnce} />
         <Focus order={focusOrder} places={places} markers={markers} />
 
         {/* White casing under the route keeps it readable on busy map tiles. */}
@@ -609,6 +636,22 @@ export default function VisitedPlacesMap({
               {timeLabel(end.timestamp)}
             </Popup>
           </Marker>
+        )}
+        {live && (
+          <>
+            <Circle
+              center={[live.latitude, live.longitude]}
+              radius={Math.max(live.accuracy, 5)}
+              pathOptions={{ color: "#2563eb", weight: 1, fillOpacity: 0.12 }}
+            />
+            <Marker position={[live.latitude, live.longitude]} icon={liveIcon} zIndexOffset={1200}>
+              <Popup>
+                <strong>{live.label ?? "Current location"}</strong>
+                <br />
+                {timeLabel(live.timestamp)} · ±{Math.round(live.accuracy)} m
+              </Popup>
+            </Marker>
+          </>
         )}
         {start && (
           <Marker position={[start.latitude, start.longitude]} icon={startIcon} zIndexOffset={1000}>

@@ -23,6 +23,10 @@ export default async function AdminDashboard() {
   // previously pulling every active employee's full User row (pinHash
   // included) plus every one of today's Attendance rows in full (photo
   // bytes included) just to compute a few booleans and two numbers.
+  const officeQ = prisma.officeLocation.findUnique({
+    where: { organizationId },
+    select: { name: true, latitude: true, longitude: true, radiusMeters: true },
+  });
   const employeesQ = prisma.user.findMany({
     where: { organizationId, role: "EMPLOYEE", active: true },
     // Join order (oldest first), matching /admin/employees and /admin/shifts.
@@ -31,6 +35,7 @@ export default async function AdminDashboard() {
       id: true,
       employeeCode: true,
       name: true,
+      workMode: true,
       attendances: {
         where: { timestamp: { gte: startOfISTDay() } },
         orderBy: { timestamp: "asc" },
@@ -146,6 +151,7 @@ export default async function AdminDashboard() {
       id: e.id,
       employeeCode: e.employeeCode,
       name: e.name,
+      workMode: e.workMode,
       checkInAt: checkIn ? checkIn.timestamp.toISOString() : null,
       checkOutAt: checkOut ? checkOut.timestamp.toISOString() : null,
       lateMinutes: checkIn?.lateMinutes ?? null,
@@ -345,7 +351,7 @@ export default async function AdminDashboard() {
       </Card>
 
 
-      <DashboardWorkspace employees={employees} />
+      <DashboardWorkspace employees={employees} office={await officeQ} />
     </Page>
   );
 }

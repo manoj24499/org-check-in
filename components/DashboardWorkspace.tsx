@@ -5,7 +5,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Search, X, Loader2, Download, MapPin, Users } from "lucide-react";
 import { Avatar, BTN_SECONDARY, CARD, EmptyState, Pill, SectionTitle, Segmented, TABLE } from "./admin/ui";
 import AttendanceCalendar, { type CalendarSpecialDay } from "./AttendanceCalendar";
-import LocationMapModal from "./LocationMapModal";
+import dynamic from "next/dynamic";
+import LiveLocationModal from "./LiveLocationModal";
+import type { MapOffice } from "./AllEmployeesMap";
 import MarkLeaveControl, { type OnLeaveToday } from "./MarkLeaveControl";
 
 type EmployeeLocation = {
@@ -21,6 +23,7 @@ type EmployeeSummary = {
   id: string;
   employeeCode: string;
   name: string;
+  workMode: string;
   checkInAt: string | null;
   checkOutAt: string | null;
   lateMinutes: number | null;
@@ -54,8 +57,16 @@ type AttendanceRecord = {
 // without flickering to Offline.
 const LIVE_THRESHOLD_MS = 3 * 60 * 1000;
 
+const AllEmployeesMap = dynamic(() => import("./AllEmployeesMap"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-[460px] items-center justify-center rounded-2xl bg-white text-sm text-slate-500">Loading map…</div>
+  ),
+});
+
 const TABS = [
   { key: "status", label: "Current status" },
+  { key: "map", label: "Live map" },
   { key: "calendar", label: "Calendar" },
 ] as const;
 
@@ -63,11 +74,15 @@ type TabKey = (typeof TABS)[number]["key"];
 
 export default function DashboardWorkspace({
   employees: initialEmployees,
+  office = null,
 }: {
   employees: EmployeeSummary[];
+  office?: MapOffice;
 }) {
   const [tab, setTab] = useState<TabKey>("status");
   const [employees, setEmployees] = useSyncedState(initialEmployees);
+  const [routeFor, setRouteFor] = useState<string | null>(null);
+  const routeEmployee = routeFor ? employees.find((e) => e.id === routeFor) ?? null : null;
 
   const applyUpdate = useCallback(
     (update: { userId: string; outsideSince?: string | null } & EmployeeLocation) => {
@@ -149,7 +164,18 @@ export default function DashboardWorkspace({
       </div>
 
       {tab === "status" && <CurrentStatusPanel employees={employees} />}
+      {tab === "map" && <AllEmployeesMap employees={employees} office={office} onOpenRoute={setRouteFor} />}
       {tab === "calendar" && <CalendarPanel employees={employees} />}
+
+      {routeEmployee?.location && (
+        <LiveLocationModal
+          employeeId={routeEmployee.id}
+          employeeName={routeEmployee.name}
+          employeeCode={routeEmployee.employeeCode}
+          location={routeEmployee.location}
+          onClose={() => setRouteFor(null)}
+        />
+      )}
     </div>
   );
 }
@@ -194,6 +220,8 @@ const isOutside = (e: EmployeeSummary) => Boolean(e.checkInAt) && !e.checkOutAt 
 
 function CurrentStatusPanel({ employees }: { employees: EmployeeSummary[] }) {
   const [viewing, setViewing] = useState<EmployeeSummary | null>(null);
+  // `viewing` is a snapshot from the click; the live feed keeps `employees` current, so read the position from there.
+  const liveViewing = viewing ? (employees.find((e) => e.id === viewing.id) ?? viewing) : null;
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
 
@@ -416,13 +444,12 @@ function CurrentStatusPanel({ employees }: { employees: EmployeeSummary[] }) {
         )}
       </div>
 
-      {viewing && viewing.location && (
-        <LocationMapModal
+      {viewing && liveViewing?.location && (
+        <LiveLocationModal
+          employeeId={viewing.id}
           employeeName={viewing.name}
-          latitude={viewing.location.latitude}
-          longitude={viewing.location.longitude}
-          accuracy={viewing.location.accuracy}
-          timestamp={viewing.location.timestamp}
+          employeeCode={viewing.employeeCode}
+          location={liveViewing.location}
           onClose={() => setViewing(null)}
         />
       )}

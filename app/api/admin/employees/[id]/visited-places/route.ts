@@ -29,7 +29,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const employee = await prisma.user.findUnique({
     where: { id, organizationId: admin.organizationId },
-    select: { id: true },
+    select: { id: true, workMode: true },
   });
   if (!employee) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
@@ -166,6 +166,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       ? { fieldHours: hoursSplit.fieldMs / 3_600_000, officeHours: hoursSplit.officeMs / 3_600_000 }
       : null,
     currentMode,
+    workMode: employee.workMode,
     officeMinutes,
     pings: drawnPings.map((p) => ({ latitude: p.latitude, longitude: p.longitude, timestamp: p.timestamp })),
     places,
