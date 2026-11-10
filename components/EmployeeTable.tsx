@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Search, Loader2, ChevronRight, Users, Building2, Home, MapPinned, type LucideIcon } from "lucide-react";
+import { Search, Loader2, ChevronRight, Users, Building2, Home, MapPinned, ArrowLeftRight, type LucideIcon } from "lucide-react";
 import { Avatar, BTN_SECONDARY, CARD, EmptyState, Pill, TABLE } from "./admin/ui";
 
 type Employee = {
@@ -11,15 +11,16 @@ type Employee = {
   name: string;
   email: string;
   active: boolean;
-  workMode: "OFFICE" | "WFH" | "FIELD";
+  workMode: "OFFICE" | "WFH" | "FIELD" | "HYBRID";
 };
 
 type ModeFilter = "ALL" | Employee["workMode"];
 
-const WORK_MODE: Record<Employee["workMode"], { label: string; icon: LucideIcon; tone: "indigo" | "green" | "amber" }> = {
+const WORK_MODE: Record<Employee["workMode"], { label: string; icon: LucideIcon; tone: "indigo" | "green" | "amber" | "orange" }> = {
   OFFICE: { label: "Office", icon: Building2, tone: "indigo" },
   WFH: { label: "Work from home", icon: Home, tone: "green" },
   FIELD: { label: "Field", icon: MapPinned, tone: "amber" },
+  HYBRID: { label: "Hybrid", icon: ArrowLeftRight, tone: "orange" },
 };
 
 const MODE_FILTERS: { key: ModeFilter; label: string }[] = [
@@ -27,6 +28,7 @@ const MODE_FILTERS: { key: ModeFilter; label: string }[] = [
   { key: "OFFICE", label: "Office" },
   { key: "WFH", label: "Work from home" },
   { key: "FIELD", label: "Field" },
+  { key: "HYBRID", label: "Hybrid" },
 ];
 
 type EmployeesResponse = {

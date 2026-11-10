@@ -6,7 +6,7 @@
  * row-by-row feedback *before* they submit.
  */
 
-export type WorkMode = "OFFICE" | "WFH" | "FIELD";
+export type WorkMode = "OFFICE" | "WFH" | "FIELD" | "HYBRID";
 
 export type ParsedEmployeeRow = {
   /** 1-based line number in the source, for error messages. */
@@ -29,6 +29,7 @@ export const TEMPLATE_ROWS: string[][] = [
   ["Priya Sharma", "priya@acme.com", "OFFICE", "", "", ""],
   ["Arun Kumar", "arun@acme.com", "WFH", "12.9716", "77.5946", "75"],
   ["Neha Gupta", "neha@acme.com", "FIELD", "", "", ""],
+  ["Rahul Menon", "rahul@acme.com", "HYBRID", "12.9352", "77.6245", "100"],
 ];
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -129,7 +130,7 @@ export function parseEmployeeCsv(text: string): { rows: ParsedEmployeeRow[]; too
     if (!name) problems.push("Name is missing");
     if (!email) problems.push("Email is missing");
     else if (!EMAIL_RE.test(email)) problems.push("Email looks invalid");
-    if (!["OFFICE", "WFH", "FIELD"].includes(workMode)) problems.push("WorkMode must be OFFICE, WFH or FIELD");
+    if (!["OFFICE", "WFH", "FIELD", "HYBRID"].includes(workMode)) problems.push("WorkMode must be OFFICE, WFH, FIELD or HYBRID");
 
     const lat = toNumber(cells[3]);
     const lng = toNumber(cells[4]);
@@ -137,7 +138,9 @@ export function parseEmployeeCsv(text: string): { rows: ParsedEmployeeRow[]; too
     if (lat === "invalid" || (typeof lat === "number" && (lat < -90 || lat > 90))) problems.push("Latitude must be between -90 and 90");
     if (lng === "invalid" || (typeof lng === "number" && (lng < -180 || lng > 180))) problems.push("Longitude must be between -180 and 180");
     if (radius === "invalid" || (typeof radius === "number" && (radius < 1 || radius > 100_000))) problems.push("Radius must be a number of meters (1-100000)");
-    if (workMode === "WFH" && (lat === undefined || lng === undefined)) problems.push("WFH needs HomeLatitude and HomeLongitude");
+    if ((workMode === "WFH" || workMode === "HYBRID") && (lat === undefined || lng === undefined)) {
+      problems.push(`${workMode} needs HomeLatitude and HomeLongitude`);
+    }
 
     if (email && EMAIL_RE.test(email)) {
       const firstLine = seen.get(email);

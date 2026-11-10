@@ -10,13 +10,20 @@ const expo = new Expo();
  * unregistration that only shows up later via Expo's receipt API isn't
  * checked here (would need a scheduled job, which this app doesn't have).
  */
-export async function sendPushNotification(userId: string, title: string, body: string): Promise<void> {
+export async function sendPushNotification(
+  userId: string,
+  title: string,
+  body: string,
+  // Optional payload the app receives with the notification (e.g. which screen to open) — see the
+  // hybrid work-mode prompts in /api/kiosk/location. Omitted, the message is exactly as before.
+  data?: Record<string, string>,
+): Promise<void> {
   try {
     const tokens = await prisma.pushToken.findMany({ where: { userId } });
     const validTokens = tokens.filter((t) => Expo.isExpoPushToken(t.token));
     if (validTokens.length === 0) return;
 
-    const messages = validTokens.map((t) => ({ to: t.token, title, body }));
+    const messages = validTokens.map((t) => ({ to: t.token, title, body, ...(data ? { data } : {}) }));
     const tickets = await expo.sendPushNotificationsAsync(messages);
 
     const staleTokens = validTokens.filter(

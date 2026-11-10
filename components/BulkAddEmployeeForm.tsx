@@ -23,7 +23,7 @@ import {
 interface SubmittedRow {
   name: string;
   email: string;
-  workMode: "OFFICE" | "WFH" | "FIELD";
+  workMode: "OFFICE" | "WFH" | "FIELD" | "HYBRID";
   homeLatitude?: number;
   homeLongitude?: number;
   homeRadiusMeters?: number;
@@ -90,10 +90,10 @@ function downloadCredentialsCsv(rows: SubmittedRow[], created: CreatedEmployee[]
 const FORMAT_COLUMNS: { column: string; required: string; example: string; notes: string }[] = [
   { column: "Name", required: "Required", example: "Priya Sharma", notes: "Full name" },
   { column: "Email", required: "Required", example: "priya@acme.com", notes: "Must be unique" },
-  { column: "WorkMode", required: "Optional", example: "OFFICE", notes: "OFFICE, WFH or FIELD (default OFFICE)" },
-  { column: "HomeLatitude", required: "WFH only", example: "12.9716", notes: "Between -90 and 90" },
-  { column: "HomeLongitude", required: "WFH only", example: "77.5946", notes: "Between -180 and 180" },
-  { column: "HomeRadius", required: "Optional", example: "75", notes: "Meters (default 50)" },
+  { column: "WorkMode", required: "Optional", example: "OFFICE", notes: "OFFICE, WFH, FIELD or HYBRID (default OFFICE)" },
+  { column: "HomeLatitude", required: "WFH / HYBRID", example: "12.9716", notes: "Between -90 and 90" },
+  { column: "HomeLongitude", required: "WFH / HYBRID", example: "77.5946", notes: "Between -180 and 180" },
+  { column: "HomeRadius", required: "Optional", example: "75", notes: "Meters (default 50; 100 for HYBRID)" },
 ];
 
 const MAX_FILE_BYTES = 1_000_000;
@@ -449,7 +449,7 @@ export default function BulkAddEmployeeForm() {
                               <td className="px-4 py-2 text-slate-400">{i + 1}</td>
                               <td className="px-4 py-2 font-mono font-medium text-slate-800">{c.column}</td>
                               <td className="px-4 py-2">
-                                <Pill tone={c.required === "Required" ? "orange" : c.required === "WFH only" ? "indigo" : "slate"}>
+                                <Pill tone={c.required === "Required" ? "orange" : c.required === "WFH / HYBRID" ? "indigo" : "slate"}>
                                   {c.required}
                                 </Pill>
                               </td>
@@ -462,7 +462,8 @@ export default function BulkAddEmployeeForm() {
                     </div>
                     <p className="border-t border-slate-100 px-4 py-2.5 text-xs text-slate-500">
                       Save from Excel or Google Sheets as <strong className="text-slate-700">CSV</strong>. Leave the location
-                      columns blank for OFFICE and FIELD employees. FIELD employees are never geofenced.
+                      columns blank for OFFICE and FIELD employees. FIELD employees are never geofenced. HYBRID employees
+                      check in at the office or at home, so the office location must be set first.
                     </p>
                     </>
                     )}

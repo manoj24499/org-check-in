@@ -24,17 +24,30 @@ export async function resolveGeofenceTarget(
 ): Promise<GeofenceTarget | null> {
   if (user.workMode === "FIELD") return null;
 
-  if (user.workMode === "WFH") {
-    if (user.homeLatitude == null || user.homeLongitude == null) return null;
-    return {
-      latitude: user.homeLatitude,
-      longitude: user.homeLongitude,
-      radiusMeters: user.homeRadiusMeters,
-    };
-  }
+  if (user.workMode === "WFH") return resolveHomeTarget(user);
 
+  // HYBRID: the office is the profile's default place (e.g. the shared office
+  // kiosk's anonymous status lookup). Everything segment-aware — the check-in
+  // gate (office OR home) and per-ping geofencing (depends on the current
+  // OFFICE/HOME/TRANSIT segment) — resolves HYBRID itself instead of calling
+  // this; see /api/kiosk/scan and /api/kiosk/location.
   if (!user.organizationId) return null;
   return resolveOfficeLocationTarget(user.organizationId);
+}
+
+/**
+ * The employee's admin-set home location (WFH and HYBRID), or null when none
+ * is saved. Pure — no database access.
+ */
+export function resolveHomeTarget(
+  user: Pick<User, "homeLatitude" | "homeLongitude" | "homeRadiusMeters">,
+): GeofenceTarget | null {
+  if (user.homeLatitude == null || user.homeLongitude == null) return null;
+  return {
+    latitude: user.homeLatitude,
+    longitude: user.homeLongitude,
+    radiusMeters: user.homeRadiusMeters,
+  };
 }
 
 /**

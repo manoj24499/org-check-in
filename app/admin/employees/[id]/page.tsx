@@ -22,6 +22,7 @@ const WORK_MODE_LABEL: Record<string, string> = {
   OFFICE: "Office",
   WFH: "Work from home",
   FIELD: "Field",
+  HYBRID: "Hybrid",
 };
 
 export default async function EmployeeDetailPage({
@@ -57,6 +58,12 @@ export default async function EmployeeDetailPage({
           offlineOutsideArea: true,
           offlineTimeVerified: true,
           pauses: { select: { pausedAt: true, resumedAt: true, timedPermissionId: true } },
+          // Office / Home / Transit (HYBRID) or Office / Field (FIELD) timeline —
+          // empty for everyone else. Transit is excluded from worked hours.
+          workSegments: {
+            orderBy: { startedAt: "asc" },
+            select: { mode: true, heading: true, startedAt: true, endedAt: true },
+          },
         },
       },
     },
@@ -93,6 +100,12 @@ export default async function EmployeeDetailPage({
       pausedAt: p.pausedAt.toISOString(),
       resumedAt: p.resumedAt?.toISOString() ?? null,
       reason: p.timedPermissionId ? ("permission" as const) : ("geofence" as const),
+    })),
+    segments: r.workSegments.map((s) => ({
+      mode: s.mode,
+      heading: s.heading,
+      startedAt: s.startedAt.toISOString(),
+      endedAt: s.endedAt?.toISOString() ?? null,
     })),
   }));
 

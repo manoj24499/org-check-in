@@ -8,6 +8,7 @@ import { embedFace } from "@/lib/faceVerify";
 import { PayloadTooLargeError, readJsonWithLimit } from "@/lib/readJsonBody";
 import { EMPLOYEES_PAGE_SIZE } from "@/lib/pagination";
 import { checkTrialEmployeeLimit } from "@/lib/trial";
+import { DEFAULT_GEOFENCE_RADIUS_METERS, HYBRID_DEFAULT_HOME_RADIUS_METERS } from "@/lib/geofence";
 
 const createSchema = z.object({
   name: z.string().min(1),
@@ -25,6 +26,13 @@ const createSchema = z.object({
   // Never stored here: this app only relays it, the service is the sole
   // owner of enrolled reference photos.
   photo: z.string().optional(),
+  // Optional work mode at creation (default OFFICE, unchanged). WFH and
+  // HYBRID need the home location; HYBRID also needs the organization's
+  // office location to exist — a hybrid employee checks in at either.
+  workMode: z.enum(["OFFICE", "WFH", "FIELD", "HYBRID"]).optional(),
+  homeLatitude: z.number().min(-90).max(90).optional(),
+  homeLongitude: z.number().min(-180).max(180).optional(),
+  homeRadiusMeters: z.number().min(1).max(100_000).optional(),
 });
 
 // Same cap as /api/kiosk/scan's request-body limit, for the same reason: a
@@ -47,10 +55,12 @@ export async function GET(req: NextRequest) {
   const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10) || 1);
   const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get("pageSize") ?? "", 10) || EMPLOYEES_PAGE_SIZE));
   const q = searchParams.get("q")?.trim();
-  // Optional work-location filter for the admin list (OFFICE / WFH / FIELD).
+  // Optional work-location filter for the admin list (OFFICE / WFH / FIELD / HYBRID).
   const modeParam = searchParams.get("mode");
   const workMode =
-    modeParam === "OFFICE" || modeParam === "WFH" || modeParam === "FIELD" ? (modeParam as "OFFICE" | "WFH" | "FIELD") : undefined;
+    modeParam === "OFFICE" || modeParam === "WFH" || modeParam === "FIELD" || modeParam === "HYBRID"
+      ? (modeParam as "OFFICE" | "WFH" | "FIELD" | "HYBRID")
+      : undefined;
 
   const where = {
     organizationId: admin.organizationId,
@@ -109,6 +119,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid input." }, { status: 400 });
     }
 
+    const workMode = parsed.data.workMode ?? "OFFICE";
+    const needsHome = workMode === "WFH" || workMode === "HYBRID";
+    if (needsHome && (parsed.data.homeLatitude === undefined || parsed.data.homeLongitude === undefined)) {
+      return NextResponse.json(
+        { error: "Home latitude and longitude are required for Work from home and Hybrid employees." },
+        { status: 400 },
+      );
+    }
+    if (workMode === "HYBRID") {
+      const office = await prisma.officeLocation.findUnique({
+        where: { organizationId: admin.organizationId },
+        select: { id: true },
+      });
+      if (!office) {
+        return NextResponse.json(
+          { error: "Set the office location first — hybrid employees check in at the office or at home." },
+          { status: 400 },
+        );
+      }
+    }
+
     // The free trial allows a handful of employees (lib/trial.ts); other organizations are not limited.
     const limit = await checkTrialEmployeeLimit(admin.organizationId, 1);
     if (!limit.ok) return NextResponse.json({ error: limit.error }, { status: 403 });
@@ -158,6 +189,16 @@ export async function POST(req: NextRequest) {
         pinHash,
         pinLookupHash: pinLookupHash(admin.organizationId, pin),
         pinMustChange: true,
+        workMode,
+        ...(needsHome
+          ? {
+              homeLatitude: parsed.data.homeLatitude,
+              homeLongitude: parsed.data.homeLongitude,
+              homeRadiusMeters:
+                parsed.data.homeRadiusMeters ??
+                (workMode === "HYBRID" ? HYBRID_DEFAULT_HOME_RADIUS_METERS : DEFAULT_GEOFENCE_RADIUS_METERS),
+            }
+          : {}),
       },
     });
 

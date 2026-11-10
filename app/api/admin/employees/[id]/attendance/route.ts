@@ -36,6 +36,10 @@ export async function GET(
         offlineOutsideArea: true,
         offlineTimeVerified: true,
         pauses: { select: { pausedAt: true, resumedAt: true, timedPermissionId: true } },
+        workSegments: {
+          orderBy: { startedAt: "asc" },
+          select: { mode: true, heading: true, startedAt: true, endedAt: true },
+        },
       },
     }),
     getCalendarSpecialDays(id, admin.organizationId),
@@ -56,6 +60,12 @@ export async function GET(
         pausedAt: p.pausedAt.toISOString(),
         resumedAt: p.resumedAt?.toISOString() ?? null,
         reason: p.timedPermissionId ? ("permission" as const) : ("geofence" as const),
+      })),
+      segments: r.workSegments.map((s) => ({
+        mode: s.mode,
+        heading: s.heading,
+        startedAt: s.startedAt.toISOString(),
+        endedAt: s.endedAt?.toISOString() ?? null,
       })),
     })),
     specialDays,

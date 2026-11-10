@@ -20,7 +20,7 @@ import {
   WifiOff,
   MapPinOff,
 } from "lucide-react";
-import { computeWorkedMs } from "@/lib/attendanceHours";
+import { computeSegmentSplit, computeWorkedMs } from "@/lib/attendanceHours";
 
 type AttendanceRecord = {
   id: string;
@@ -40,6 +40,15 @@ type AttendanceRecord = {
   // timedPermissionId. Falls back to "geofence" for older serialized data
   // that predates this field.
   pauses?: { pausedAt: string; resumedAt: string | null; reason?: "geofence" | "permission" }[];
+  // The CHECK_IN's work-segment timeline (FIELD: Office/Field; HYBRID:
+  // Office/Transit/Home) — absent/empty for everyone else. TRANSIT time is
+  // not work, so it's left out of the hours below.
+  segments?: {
+    mode: "OFFICE" | "FIELD" | "HOME" | "TRANSIT";
+    heading?: "OFFICE" | "FIELD" | "HOME" | "TRANSIT" | null;
+    startedAt: string;
+    endedAt: string | null;
+  }[];
 };
 
 type Event = AttendanceRecord & { date: Date };
@@ -50,6 +59,27 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function dateKey(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function toSegmentIntervals(segments: AttendanceRecord["segments"]) {
+  return (segments ?? []).map((s) => ({
+    mode: s.mode,
+    startedAt: new Date(s.startedAt),
+    endedAt: s.endedAt ? new Date(s.endedAt) : null,
+  }));
+}
+
+const SEGMENT_LABEL = { OFFICE: "Office", HOME: "Home", TRANSIT: "Transit", FIELD: "Field" } as const;
+const SEGMENT_BADGE = {
+  OFFICE: "bg-indigo-50 text-indigo-700 border-indigo-200",
+  HOME: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  TRANSIT: "bg-surface text-muted-2 border-border",
+  FIELD: "bg-amber-50 text-amber-700 border-amber-200",
+} as const;
+
+function formatMinutes(ms: number) {
+  const mins = Math.max(0, Math.round(ms / 60_000));
+  return `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, "0")}m`;
 }
 
 function hoursForDay(list: Event[] | undefined) {
@@ -64,7 +94,7 @@ function hoursForDay(list: Event[] | undefined) {
         pausedAt: new Date(p.pausedAt),
         resumedAt: p.resumedAt ? new Date(p.resumedAt) : null,
       }));
-      total += computeWorkedMs(openIn.date, e.date, pauses) / (1000 * 60 * 60);
+      total += computeWorkedMs(openIn.date, e.date, pauses, toSegmentIntervals(openIn.segments)) / (1000 * 60 * 60);
       openIn = null;
     }
   }
@@ -520,6 +550,70 @@ export default function AttendanceCalendar({
             ))}
           </div>
           {editable && editError && <p className="text-xs text-red-600">{editError}</p>}
+
+          {(() => {
+            const checkIn = (selectedList ?? []).find((e) => e.type === "CHECK_IN");
+            const segments = checkIn?.segments ?? [];
+            if (!checkIn || segments.length === 0) return null;
+            const checkOut = (selectedList ?? []).find((e) => e.type === "CHECK_OUT" && e.date > checkIn.date);
+            const end = checkOut?.date ?? new Date();
+            const split = computeSegmentSplit(
+              checkIn.date,
+              end,
+              toSegmentIntervals(segments),
+              (checkIn.pauses ?? []).map((p) => ({
+                pausedAt: new Date(p.pausedAt),
+                resumedAt: p.resumedAt ? new Date(p.resumedAt) : null,
+              })),
+            );
+            const isHybrid = segments.some((s) => s.mode === "HOME" || s.mode === "TRANSIT");
+            const totals = isHybrid
+              ? [
+                  { label: "Office", ms: split.officeMs },
+                  { label: "Home", ms: split.homeMs },
+                  { label: "Transit (not counted)", ms: split.transitMs },
+                ]
+              : [
+                  { label: "Office", ms: split.officeMs },
+                  { label: "Field", ms: split.fieldMs },
+                ];
+            return (
+              <div className="flex flex-col gap-1.5">
+                <p className="text-xs font-medium text-secondary uppercase tracking-wide">
+                  Work timeline{checkOut ? "" : " (so far)"}
+                </p>
+                <div className="flex flex-wrap gap-2 text-xs text-muted-2">
+                  {totals.map((t) => (
+                    <span key={t.label} className="rounded-lg bg-white border border-border px-2.5 py-1">
+                      {t.label}: <span className="font-semibold text-foreground">{formatMinutes(t.ms)}</span>
+                    </span>
+                  ))}
+                </div>
+                {segments.map((s, i) => {
+                  const startedAt = new Date(s.startedAt);
+                  const endedAt = s.endedAt ? new Date(s.endedAt) : null;
+                  return (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between gap-3 rounded-lg bg-white border border-border px-3 py-2"
+                    >
+                      <span className="text-sm text-muted-2">
+                        {formatTimeOfDay(startedAt)} – {endedAt ? formatTimeOfDay(endedAt) : "now"}
+                      </span>
+                      <span
+                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border ${SEGMENT_BADGE[s.mode]}`}
+                      >
+                        {SEGMENT_LABEL[s.mode]}
+                        {s.mode === "TRANSIT" && (s.heading === "HOME" || s.heading === "OFFICE")
+                          ? ` → ${SEGMENT_LABEL[s.heading]}`
+                          : ""}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           {(() => {
             const checkIn = (selectedList ?? []).find((e) => e.type === "CHECK_IN");

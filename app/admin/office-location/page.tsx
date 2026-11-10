@@ -13,7 +13,7 @@ export default async function OfficeLocationPage() {
   if (!session?.user.organizationId) notFound();
   const organizationId = session.user.organizationId;
 
-  const [officeLocation, wfhEmployees, fieldEmployees, allEmployees] =
+  const [officeLocation, wfhEmployees, hybridEmployees, fieldEmployees, allEmployees] =
     await Promise.all([
       prisma.officeLocation.findUnique({
         where: { organizationId },
@@ -26,6 +26,19 @@ export default async function OfficeLocationPage() {
       }),
       prisma.user.findMany({
         where: { organizationId, role: "EMPLOYEE", workMode: "WFH" },
+        orderBy: { name: "asc" },
+        select: {
+          id: true,
+          employeeCode: true,
+          name: true,
+          active: true,
+          homeLatitude: true,
+          homeLongitude: true,
+          homeRadiusMeters: true,
+        },
+      }),
+      prisma.user.findMany({
+        where: { organizationId, role: "EMPLOYEE", workMode: "HYBRID" },
         orderBy: { name: "asc" },
         select: {
           id: true,
@@ -69,6 +82,8 @@ export default async function OfficeLocationPage() {
       </div>
 
       <WfhLocationTable employees={wfhEmployees} allEmployees={allEmployees} />
+
+      <WfhLocationTable mode="HYBRID" employees={hybridEmployees} allEmployees={allEmployees} />
 
       <FieldLocationTable
         employees={fieldEmployees}

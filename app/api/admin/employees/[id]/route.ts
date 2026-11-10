@@ -5,7 +5,7 @@ import { requireAdmin } from "@/lib/requireAdmin";
 import { checkTrialEmployeeLimit } from "@/lib/trial";
 import { generateUniquePin, hashPin, pinLookupHash } from "@/lib/credentials";
 import { generateResetCode, RESET_CODE_TTL_MS } from "@/lib/pinReset";
-import { DEFAULT_GEOFENCE_RADIUS_METERS } from "@/lib/geofence";
+import { DEFAULT_GEOFENCE_RADIUS_METERS, HYBRID_DEFAULT_HOME_RADIUS_METERS } from "@/lib/geofence";
 import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
 import { embedFace } from "@/lib/faceVerify";
 import { PayloadTooLargeError, readJsonWithLimit } from "@/lib/readJsonBody";
@@ -16,6 +16,7 @@ const actionSchema = z.object({
     "generate-reset-code",
     "set-active",
     "update-wfh-location",
+    "update-hybrid-location",
     "clear-wfh-location",
     "set-field-mode",
     "set-face-verification",
@@ -159,8 +160,42 @@ export async function PATCH(
     });
   }
 
+  // HYBRID: office part of the day, home part of the day (see WorkMode.HYBRID).
+  // The home location is set by an admin only, and the organization must
+  // already have an office location — a hybrid employee checks in at either.
+  if (parsed.data.action === "update-hybrid-location") {
+    if (parsed.data.latitude === undefined || parsed.data.longitude === undefined) {
+      return NextResponse.json({ error: "Home latitude and longitude are required." }, { status: 400 });
+    }
+    const office = await prisma.officeLocation.findUnique({
+      where: { organizationId: admin.organizationId },
+      select: { id: true },
+    });
+    if (!office) {
+      return NextResponse.json(
+        { error: "Set the office location first — hybrid employees check in at the office or at home." },
+        { status: 400 },
+      );
+    }
+    const updated = await prisma.user.update({
+      where: { id },
+      data: {
+        workMode: "HYBRID",
+        homeLatitude: parsed.data.latitude,
+        homeLongitude: parsed.data.longitude,
+        homeRadiusMeters: parsed.data.radiusMeters ?? HYBRID_DEFAULT_HOME_RADIUS_METERS,
+      },
+    });
+    return NextResponse.json({
+      workMode: updated.workMode,
+      homeLatitude: updated.homeLatitude,
+      homeLongitude: updated.homeLongitude,
+      homeRadiusMeters: updated.homeRadiusMeters,
+    });
+  }
+
   if (parsed.data.action === "clear-wfh-location") {
-    // Also doubles as "remove from Anywhere/FIELD" — resetting to OFFICE +
+    // Also doubles as "remove from Anywhere/FIELD/HYBRID" — resetting to OFFICE +
     // null coords is the correct revert regardless of which mode the
     // employee is leaving.
     await prisma.user.update({

@@ -24,14 +24,16 @@ export interface SilentFieldWorker {
 /**
  * Field workers who are checked in on a Field-mode day but whose phone has stopped
  * sending location: the cause of the missing routes and distance (battery saver,
- * permission, app closed). Optionally limited to one organization.
+ * permission, app closed). Hybrid employees are included for their whole check-in:
+ * their pings are what detect leaving and arriving (Office / Transit / Home). Optionally
+ * limited to one organization.
  */
 export async function findSilentFieldWorkers(organizationId?: string, now = new Date()): Promise<SilentFieldWorker[]> {
   const since = new Date(now.getTime() - 20 * 3600 * 1000);
   const checkIns = await prisma.attendance.findMany({
     where: {
       type: "CHECK_IN",
-      checkInMode: "FIELD",
+      OR: [{ checkInMode: "FIELD" }, { user: { workMode: "HYBRID" } }],
       timestamp: { gte: since },
       user: { active: true, role: "EMPLOYEE", ...(organizationId ? { organizationId } : {}) },
     },

@@ -34,6 +34,9 @@ export default function AddEmployeeForm({ shifts }: { shifts: ShiftOption[] }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  // WFH and HYBRID need a home location (an admin sets it; employees can't).
+  const [workMode, setWorkMode] = useState<"OFFICE" | "WFH" | "FIELD" | "HYBRID">("OFFICE");
+  const needsHome = workMode === "WFH" || workMode === "HYBRID";
   const [created, setCreated] = useState<{
     name: string;
     employeeCode: string;
@@ -69,6 +72,14 @@ export default function AddEmployeeForm({ shifts }: { shifts: ShiftOption[] }) {
         email: form.get("email"),
         shiftId: shiftId ? shiftId : undefined,
         photo,
+        workMode,
+        ...(needsHome
+          ? {
+              homeLatitude: Number(form.get("homeLatitude")),
+              homeLongitude: Number(form.get("homeLongitude")),
+              homeRadiusMeters: Number(form.get("homeRadiusMeters")) || undefined,
+            }
+          : {}),
       }),
     });
     const data = await res
@@ -90,6 +101,7 @@ export default function AddEmployeeForm({ shifts }: { shifts: ShiftOption[] }) {
     setCreated(null);
     setError(null);
     setCopied(false);
+    setWorkMode("OFFICE");
   }
 
   async function copyPin() {
@@ -111,7 +123,7 @@ export default function AddEmployeeForm({ shifts }: { shifts: ShiftOption[] }) {
 
       {open && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 border border-white/50">
+          <div className="w-full max-w-sm max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-2xl p-6 border border-white/50">
             {created ? (
               <div className="flex flex-col gap-4">
                 <h2 className="text-xl font-medium text-foreground">
@@ -238,6 +250,70 @@ export default function AddEmployeeForm({ shifts }: { shifts: ShiftOption[] }) {
                       : "Applies to every day of the week — adjust individual days later from their profile."}
                   </p>
                 </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-2">
+                    Work mode
+                  </label>
+                  <select
+                    value={workMode}
+                    onChange={(e) => setWorkMode(e.target.value as typeof workMode)}
+                    className="mt-1 w-full rounded-xl border border-black/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 focus:bg-white transition-all"
+                  >
+                    <option value="OFFICE">Office</option>
+                    <option value="WFH">Work from home</option>
+                    <option value="FIELD">Field</option>
+                    <option value="HYBRID">Hybrid (office + home)</option>
+                  </select>
+                  {workMode === "HYBRID" && (
+                    <p className="text-xs text-secondary mt-1">
+                      Checks in at the office or at home and switches between them during the day. Needs the office
+                      location to be set.
+                    </p>
+                  )}
+                </div>
+                {needsHome && (
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-xs font-medium text-muted-2">Home latitude</label>
+                      <input
+                        name="homeLatitude"
+                        type="number"
+                        step="any"
+                        min={-90}
+                        max={90}
+                        required
+                        className="mt-1 w-full rounded-xl border border-black/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 focus:bg-white transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-muted-2">Home longitude</label>
+                      <input
+                        name="homeLongitude"
+                        type="number"
+                        step="any"
+                        min={-180}
+                        max={180}
+                        required
+                        className="mt-1 w-full rounded-xl border border-black/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 focus:bg-white transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-muted-2">Radius (m)</label>
+                      <input
+                        key={workMode}
+                        name="homeRadiusMeters"
+                        type="number"
+                        min={1}
+                        step="1"
+                        defaultValue={workMode === "HYBRID" ? 100 : 50}
+                        className="mt-1 w-full rounded-xl border border-black/10 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 focus:bg-white transition-all"
+                      />
+                    </div>
+                    <p className="col-span-3 text-xs text-secondary -mt-1">
+                      You can pick the spot on a map later from Office location.
+                    </p>
+                  </div>
+                )}
                 {error && (
                   <div className="rounded-xl bg-red-50 text-red-600 p-3 text-sm border border-red-100">
                     {error}

@@ -50,8 +50,9 @@ export class ManualEntryConflictError extends Error {}
  * atomically. Throws ManualEntryConflictError if that day already has either —
  * the (userId, type, dayKey) unique constraint is the real guard, so this is
  * race-safe. Lateness is computed against that day's shift, exactly as a real
- * punch would be. A FIELD employee also gets a closed OFFICE WorkSegment so
- * their Field/Office timeline isn't left empty.
+ * punch would be. A FIELD or HYBRID employee also gets a closed OFFICE
+ * WorkSegment so their segment timeline isn't left empty (for HYBRID the whole
+ * manual day then counts as office time, none of it as transit).
  */
 export async function createManualAttendance(params: {
   userId: string;
@@ -85,13 +86,13 @@ export async function createManualAttendance(params: {
           timestamp: times.checkInAt,
           lateMinutes: lateness.lateMinutes,
           leaveType: lateness.leaveType,
-          ...(user.workMode === "FIELD" ? { checkInMode: "OFFICE" as const } : {}),
+          ...(user.workMode === "FIELD" || user.workMode === "HYBRID" ? { checkInMode: "OFFICE" as const } : {}),
         },
       });
       const checkOut = await tx.attendance.create({
         data: { ...base, type: "CHECK_OUT", timestamp: times.checkOutAt },
       });
-      if (user.workMode === "FIELD") {
+      if (user.workMode === "FIELD" || user.workMode === "HYBRID") {
         await tx.workSegment.create({
           data: {
             attendanceId: checkIn.id,

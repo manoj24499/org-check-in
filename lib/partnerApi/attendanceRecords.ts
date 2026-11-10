@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { computeSegmentSplit, type WorkSegmentInterval } from "@/lib/attendanceHours";
 
 const IST_TIMEZONE = "Asia/Kolkata";
 
@@ -59,6 +60,9 @@ interface AttendanceCell {
   checkIn?: { timestamp: Date; leaveType: string };
   checkOut?: { timestamp: Date };
   pauses: PauseInterval[];
+  // HYBRID only (FIELD/others never have TRANSIT): travel between office and
+  // home, which isn't counted in workedMinutes.
+  segments: WorkSegmentInterval[];
 }
 
 interface Ctx {
@@ -102,6 +106,7 @@ async function loadContext(
         timestamp: true,
         leaveType: true,
         pauses: { select: { pausedAt: true, resumedAt: true } },
+        workSegments: { where: { mode: "TRANSIT" }, select: { mode: true, startedAt: true, endedAt: true } },
       },
     }),
     prisma.publicHoliday.findMany({
@@ -121,10 +126,11 @@ async function loadContext(
   const attendanceByUserDay = new Map<string, AttendanceCell>();
   for (const row of attendanceRows) {
     const key = `${row.userId}:${row.dayKey}`;
-    const cell = attendanceByUserDay.get(key) ?? { pauses: [] };
+    const cell = attendanceByUserDay.get(key) ?? { pauses: [], segments: [] };
     if (row.type === "CHECK_IN") cell.checkIn = { timestamp: row.timestamp, leaveType: row.leaveType };
     if (row.type === "CHECK_OUT") cell.checkOut = { timestamp: row.timestamp };
     cell.pauses.push(...row.pauses);
+    cell.segments.push(...row.workSegments);
     attendanceByUserDay.set(key, cell);
   }
 
@@ -163,8 +169,15 @@ function buildRecord(
   if (cell?.checkIn) {
     const checkInAt = cell.checkIn.timestamp;
     const checkOutAt = cell.checkOut?.timestamp ?? null;
+    const transitMinutes =
+      checkOutAt && cell.segments.length > 0
+        ? Math.round(computeSegmentSplit(checkInAt, checkOutAt, cell.segments, cell.pauses).transitMs / 60_000)
+        : 0;
     const workedMinutes = checkOutAt
-      ? Math.max(0, Math.round((checkOutAt.getTime() - checkInAt.getTime()) / 60_000) - pauseMinutes(cell.pauses))
+      ? Math.max(
+          0,
+          Math.round((checkOutAt.getTime() - checkInAt.getTime()) / 60_000) - pauseMinutes(cell.pauses) - transitMinutes,
+        )
       : 0;
     const isHalfDay = cell.checkIn.leaveType === "HALF_DAY";
     const secondHalf = isHalfDay && leaveTypeCode ? { status: "ON_LEAVE" as const, leaveTypeCode } : null;

@@ -9,39 +9,59 @@ export interface PauseInterval {
  * ending at checkOut — the scan route also explicitly closes any open pause
  * at checkout, so this only matters for the (should-be-rare) case of
  * computing hours for a session that's still in progress.
+ *
+ * `segments` (optional): the session's WorkSegment timeline. Only matters for
+ * HYBRID employees — TRANSIT time (travelling between office and home) is not
+ * work, so it is subtracted too (net of any pause overlapping it, so nothing
+ * is subtracted twice). Sessions with no TRANSIT segment (every OFFICE / WFH /
+ * FIELD session) get exactly the same result as without it.
  */
-export function computeWorkedMs(checkIn: Date, checkOut: Date, pauses: PauseInterval[]): number {
+export function computeWorkedMs(
+  checkIn: Date,
+  checkOut: Date,
+  pauses: PauseInterval[],
+  segments?: WorkSegmentInterval[],
+): number {
   const totalMs = checkOut.getTime() - checkIn.getTime();
   const pausedMs = pauses.reduce((sum, p) => {
     const end = p.resumedAt ?? checkOut;
     return sum + Math.max(0, end.getTime() - p.pausedAt.getTime());
   }, 0);
-  return Math.max(0, totalMs - pausedMs);
+  const transitMs =
+    segments && segments.some((s) => s.mode === "TRANSIT")
+      ? computeSegmentSplit(checkIn, checkOut, segments, pauses).transitMs
+      : 0;
+  return Math.max(0, totalMs - pausedMs - transitMs);
 }
 
 export interface WorkSegmentInterval {
-  mode: "OFFICE" | "FIELD";
+  mode: "OFFICE" | "FIELD" | "HOME" | "TRANSIT";
   startedAt: Date;
   endedAt: Date | null;
 }
 
+export interface SegmentSplit {
+  officeMs: number;
+  fieldMs: number;
+  homeMs: number;
+  transitMs: number;
+}
+
 /**
- * Splits a FIELD-workMode employee's worked time (see computeWorkedMs) into
- * field vs. office milliseconds, from their WorkSegment timeline (see
- * /api/kiosk/location's evaluateWorkSegment). fieldMs + officeMs always
- * equals computeWorkedMs's result for the same day — each segment's pause
- * overlap is subtracted the same way computeWorkedMs subtracts it from the
- * whole day. A still-open segment (endedAt null) is treated as ending at
- * checkOut, same precedent as a still-open pause.
+ * Time per segment type (see WorkSegment), each net of any pause overlapping
+ * it — each segment's pause overlap is subtracted the same way computeWorkedMs
+ * subtracts pauses from the whole day. A still-open segment (endedAt null) is
+ * treated as ending at checkOut, same precedent as a still-open pause. For a
+ * FIELD employee officeMs + fieldMs equals computeWorkedMs; for a HYBRID one
+ * officeMs + homeMs equals computeWorkedMs(…, segments) (transit excluded).
  */
-export function computeFieldOfficeSplit(
+export function computeSegmentSplit(
   checkIn: Date,
   checkOut: Date,
   segments: WorkSegmentInterval[],
   pauses: PauseInterval[],
-): { fieldMs: number; officeMs: number } {
-  let fieldMs = 0;
-  let officeMs = 0;
+): SegmentSplit {
+  const split: SegmentSplit = { officeMs: 0, fieldMs: 0, homeMs: 0, transitMs: 0 };
 
   for (const segment of segments) {
     const start = segment.startedAt < checkIn ? checkIn : segment.startedAt;
@@ -61,9 +81,28 @@ export function computeFieldOfficeSplit(
     }
     segmentMs = Math.max(0, segmentMs);
 
-    if (segment.mode === "OFFICE") officeMs += segmentMs;
-    else fieldMs += segmentMs;
+    if (segment.mode === "OFFICE") split.officeMs += segmentMs;
+    else if (segment.mode === "HOME") split.homeMs += segmentMs;
+    else if (segment.mode === "TRANSIT") split.transitMs += segmentMs;
+    else split.fieldMs += segmentMs;
   }
 
+  return split;
+}
+
+/**
+ * Splits a FIELD-workMode employee's worked time (see computeWorkedMs) into
+ * field vs. office milliseconds, from their WorkSegment timeline (see
+ * /api/kiosk/location's evaluateWorkSegment). fieldMs + officeMs always
+ * equals computeWorkedMs's result for the same day. Kept as the FIELD-facing
+ * view of computeSegmentSplit.
+ */
+export function computeFieldOfficeSplit(
+  checkIn: Date,
+  checkOut: Date,
+  segments: WorkSegmentInterval[],
+  pauses: PauseInterval[],
+): { fieldMs: number; officeMs: number } {
+  const { fieldMs, officeMs } = computeSegmentSplit(checkIn, checkOut, segments, pauses);
   return { fieldMs, officeMs };
 }

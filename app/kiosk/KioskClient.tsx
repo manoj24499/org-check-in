@@ -49,7 +49,7 @@ type GeofenceStatus = { distanceMeters: number; withinRadius: boolean } | null;
 type EmployeeStatus = {
   exists: boolean;
   name?: string;
-  workMode?: "OFFICE" | "WFH" | "FIELD";
+  workMode?: "OFFICE" | "WFH" | "FIELD" | "HYBRID";
   checkedIn: boolean;
   checkedOut: boolean;
   checkInAt?: string | null;
@@ -73,6 +73,7 @@ const WORK_MODE_LABEL: Record<NonNullable<EmployeeStatus["workMode"]>, string> =
   OFFICE: "Office",
   WFH: "Work from home",
   FIELD: "Field",
+  HYBRID: "Hybrid",
 };
 
 // A plain function of its arguments (not a hook/closure) so both call sites
@@ -299,8 +300,8 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
         let data: {
           id?: string;
           error?: string;
-          workMode?: "OFFICE" | "WFH" | "FIELD";
-          checkInMode?: "OFFICE" | "FIELD" | null;
+          workMode?: "OFFICE" | "WFH" | "FIELD" | "HYBRID";
+          checkInMode?: "OFFICE" | "FIELD" | "HOME" | "TRANSIT" | null;
           trackingToken?: string;
         } = {};
         try {
@@ -444,10 +445,13 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
     // them — unless they picked "Office" for today (the toggle below), in
     // which case they're geofenced against the office same as anyone else
     // and the distance pill is just as useful. FIELD employees aren't
-    // geofenced at all. The server-side check-in gate still applies
-    // regardless of what this pill shows.
+    // geofenced at all. HYBRID employees at the shared office kiosk are
+    // checking in at the office, so they get the office pill too. The
+    // server-side check-in gate still applies regardless of what this pill shows.
     const checkingAgainstOffice =
-      empStatus?.workMode === "OFFICE" || (empStatus?.workMode === "WFH" && wfhCheckInMode === "OFFICE");
+      empStatus?.workMode === "OFFICE" ||
+      empStatus?.workMode === "HYBRID" ||
+      (empStatus?.workMode === "WFH" && wfhCheckInMode === "OFFICE");
     if (officeLocation && checkingAgainstOffice) {
       const distanceMeters = haversineDistanceMeters(
         coords.latitude,

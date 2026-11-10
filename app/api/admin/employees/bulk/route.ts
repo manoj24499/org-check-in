@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
 import { checkTrialEmployeeLimit } from "@/lib/trial";
 import { generateUniquePins, hashPin, allocateNextEmployeeCode, pinLookupHash } from "@/lib/credentials";
-import { DEFAULT_GEOFENCE_RADIUS_METERS } from "@/lib/geofence";
+import { DEFAULT_GEOFENCE_RADIUS_METERS, HYBRID_DEFAULT_HOME_RADIUS_METERS } from "@/lib/geofence";
 
 // Postgres' default transaction timeout comfortably covers a normal admin
 // batch, but this loop's per-row work (a PIN hash at bcrypt cost 12, ~100ms
@@ -22,14 +22,16 @@ const bulkCreateSchema = z.array(
     .object({
       name: z.string().min(1),
       email: z.string().email(),
-      workMode: z.enum(["OFFICE", "WFH", "FIELD"]).default("OFFICE"),
+      workMode: z.enum(["OFFICE", "WFH", "FIELD", "HYBRID"]).default("OFFICE"),
       homeLatitude: z.coerce.number().min(-90).max(90).optional(),
       homeLongitude: z.coerce.number().min(-180).max(180).optional(),
       homeRadiusMeters: z.coerce.number().min(1).max(100_000).optional(),
     })
     .refine(
-      (row) => row.workMode !== "WFH" || (row.homeLatitude !== undefined && row.homeLongitude !== undefined),
-      { message: "WFH employees require Home Latitude and Home Longitude." },
+      (row) =>
+        (row.workMode !== "WFH" && row.workMode !== "HYBRID") ||
+        (row.homeLatitude !== undefined && row.homeLongitude !== undefined),
+      { message: "WFH and HYBRID employees require Home Latitude and Home Longitude." },
     ),
 ).max(MAX_BULK_ROWS, `Add at most ${MAX_BULK_ROWS} employees at a time.`);
 
@@ -50,7 +52,7 @@ export async function POST(req: NextRequest) {
       {
         error: rowLabel
           ? `Invalid data for ${rowLabel}: ${issue?.message ?? "check the row and try again."}`
-          : "Invalid input. Ensure rows have valid name, email, and (for WFH) home coordinates.",
+          : "Invalid input. Ensure rows have valid name, email, and (for WFH/HYBRID) home coordinates.",
       },
       { status: 400 },
     );
@@ -59,6 +61,20 @@ export async function POST(req: NextRequest) {
   // The free trial allows a handful of employees (lib/trial.ts); other organizations are not limited.
   const limit = await checkTrialEmployeeLimit(admin.organizationId, parsed.data.length);
   if (!limit.ok) return NextResponse.json({ error: limit.error }, { status: 403 });
+
+  // HYBRID employees check in at the office or at home, so the office location has to exist.
+  if (parsed.data.some((row) => row.workMode === "HYBRID")) {
+    const office = await prisma.officeLocation.findUnique({
+      where: { organizationId: admin.organizationId },
+      select: { id: true },
+    });
+    if (!office) {
+      return NextResponse.json(
+        { error: "Set the office location first — HYBRID employees check in at the office or at home." },
+        { status: 400 },
+      );
+    }
+  }
 
   // Duplicates *within* the submitted batch — the DB check just below only
   // catches an email already belonging to an existing user, so two rows in
@@ -131,9 +147,11 @@ export async function POST(req: NextRequest) {
               pinLookupHash: lookupHash,
               pinMustChange: true,
               workMode: empData.workMode,
-              homeLatitude: empData.workMode === "WFH" ? empData.homeLatitude : null,
-              homeLongitude: empData.workMode === "WFH" ? empData.homeLongitude : null,
-              homeRadiusMeters: empData.homeRadiusMeters ?? DEFAULT_GEOFENCE_RADIUS_METERS,
+              homeLatitude: empData.workMode === "WFH" || empData.workMode === "HYBRID" ? empData.homeLatitude : null,
+              homeLongitude: empData.workMode === "WFH" || empData.workMode === "HYBRID" ? empData.homeLongitude : null,
+              homeRadiusMeters:
+                empData.homeRadiusMeters ??
+                (empData.workMode === "HYBRID" ? HYBRID_DEFAULT_HOME_RADIUS_METERS : DEFAULT_GEOFENCE_RADIUS_METERS),
             },
           });
 

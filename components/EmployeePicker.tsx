@@ -8,7 +8,7 @@ export type PickableEmployee = {
   employeeCode: string;
   name: string;
   active: boolean;
-  workMode: "OFFICE" | "WFH" | "FIELD";
+  workMode: "OFFICE" | "WFH" | "FIELD" | "HYBRID";
 };
 
 interface EmployeePickerProps {

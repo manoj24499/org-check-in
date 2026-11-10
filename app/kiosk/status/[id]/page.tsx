@@ -59,12 +59,22 @@ export default async function KioskStatusPage({
 
     if (checkInRecord) {
       checkInTime = checkInRecord.timestamp;
-      const workedMs = computeWorkedMs(checkInRecord.timestamp, record.timestamp, checkInRecord.pauses);
+      // Segments matter only for HYBRID: their transit time isn't work.
+      const workedMs = computeWorkedMs(
+        checkInRecord.timestamp,
+        record.timestamp,
+        checkInRecord.pauses,
+        checkInRecord.workSegments,
+      );
       workHours = workedMs / (1000 * 60 * 60);
 
-      // Only ever non-empty for FIELD-workMode employees (see
-      // /api/kiosk/scan) — everyone else simply has no segments.
-      if (checkInRecord.workSegments.length > 0) {
+      // Only ever non-empty for FIELD- and HYBRID-workMode employees (see
+      // /api/kiosk/scan) — everyone else simply has no segments. The
+      // Field/Office split is a FIELD view; a HYBRID day just shows its total.
+      if (
+        checkInRecord.workSegments.length > 0 &&
+        !checkInRecord.workSegments.some((s) => s.mode === "HOME" || s.mode === "TRANSIT")
+      ) {
         const split = computeFieldOfficeSplit(
           checkInRecord.timestamp,
           record.timestamp,

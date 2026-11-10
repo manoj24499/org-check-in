@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/requireAdmin";
 import { buildCsv, csvField, CSV_EXPORT_ROW_CAP } from "@/lib/csv";
 import { parseDateOnlyKey, endOfISTDay } from "@/lib/istTime";
+import { computeSegmentSplit, computeWorkedMs } from "@/lib/attendanceHours";
 
 export async function GET(req: NextRequest) {
   const admin = await requireAdmin();
@@ -39,13 +40,47 @@ export async function GET(req: NextRequest) {
       timestamp: true,
       lateMinutes: true,
       leaveType: true,
+      userId: true,
+      // For the worked/office/home/transit minutes on each CHECK_OUT row.
+      pauses: { select: { pausedAt: true, resumedAt: true } },
+      workSegments: { select: { mode: true, startedAt: true, endedAt: true } },
       user: { select: { employeeCode: true, name: true, email: true } },
     },
     take: CSV_EXPORT_ROW_CAP,
   });
 
-  const header = "Employee ID,Name,Email,Event,Method,Timestamp,Late (min),Leave Type";
-  const rows = records.map((r) =>
+  // Worked minutes go on each CHECK_OUT row, paired with that employee's
+  // check-in just before it (rows are newest first, so it's the next older
+  // CHECK_IN row of the same user). Transit time (HYBRID) isn't counted as
+  // work; Office/Home/Transit minutes are filled for HYBRID days only.
+  const minutesByCheckOut = new Map<number, string[]>();
+  // Oldest to newest, remembering each employee's latest row so far.
+  const previousByUser = new Map<string, (typeof records)[number]>();
+  for (let i = records.length - 1; i >= 0; i--) {
+    const r = records[i];
+    const checkIn = previousByUser.get(r.userId);
+    previousByUser.set(r.userId, r);
+    if (r.type !== "CHECK_OUT" || !checkIn || checkIn.type !== "CHECK_IN") continue;
+    const worked = Math.round(
+      computeWorkedMs(checkIn.timestamp, r.timestamp, checkIn.pauses, checkIn.workSegments) / 60_000,
+    );
+    const hybrid = checkIn.workSegments.some((s) => s.mode === "HOME" || s.mode === "TRANSIT");
+    if (!hybrid) {
+      minutesByCheckOut.set(i, [String(worked), "", "", ""]);
+      continue;
+    }
+    const split = computeSegmentSplit(checkIn.timestamp, r.timestamp, checkIn.workSegments, checkIn.pauses);
+    minutesByCheckOut.set(i, [
+      String(worked),
+      String(Math.round(split.officeMs / 60_000)),
+      String(Math.round(split.homeMs / 60_000)),
+      String(Math.round(split.transitMs / 60_000)),
+    ]);
+  }
+
+  const header =
+    "Employee ID,Name,Email,Event,Method,Timestamp,Late (min),Leave Type,Worked (min),Office (min),Home (min),Transit (min)";
+  const rows = records.map((r, i) =>
     [
       r.user.employeeCode,
       csvField(r.user.name),
@@ -55,6 +90,7 @@ export async function GET(req: NextRequest) {
       r.timestamp.toISOString(),
       r.lateMinutes ?? "",
       r.leaveType,
+      ...(minutesByCheckOut.get(i) ?? ["", "", "", ""]),
     ].join(","),
   );
   const csv = buildCsv(header, rows);

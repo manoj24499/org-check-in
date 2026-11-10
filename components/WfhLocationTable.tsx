@@ -29,19 +29,49 @@ type WfhEmployee = {
 interface WfhLocationTableProps {
   employees: WfhEmployee[];
   allEmployees: PickableEmployee[];
+  // Which home-location list this is: WFH (geofenced at home all day) or
+  // HYBRID (checks in at the office or at home, switching during the day).
+  // Both store the same User.homeLatitude/homeLongitude/homeRadiusMeters.
+  mode?: "WFH" | "HYBRID";
 }
+
+const COPY = {
+  WFH: {
+    title: "Work From Home Locations",
+    subtitle: "WFH employees are geofenced against their own home location instead of the office.",
+    action: "update-wfh-location",
+    defaultRadius: 50,
+    removeConfirm: (name: string) => `Remove the WFH location for ${name}? They will be reverted to Office mode.`,
+    empty: "No WFH employees yet. Click Add to assign one.",
+    pickerTitle: "Add a WFH employee",
+    pickerEmpty: "No eligible employees — everyone active is already set to WFH.",
+  },
+  HYBRID: {
+    title: "Hybrid Employees",
+    subtitle:
+      "Hybrid employees check in at the office or at home and switch between the two during the day. Travel time between them is not counted as work. Requires the office location above.",
+    action: "update-hybrid-location",
+    defaultRadius: 100,
+    removeConfirm: (name: string) => `Remove Hybrid mode for ${name}? They will be reverted to Office mode.`,
+    empty: "No hybrid employees yet. Click Add to assign one.",
+    pickerTitle: "Add a hybrid employee",
+    pickerEmpty: "No eligible employees — everyone active is already set to Hybrid.",
+  },
+} as const;
 
 export default function WfhLocationTable({
   employees,
   allEmployees,
+  mode = "WFH",
 }: WfhLocationTableProps) {
+  const copy = COPY[mode];
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [editing, setEditing] = useState<WfhEmployee | null>(null);
   const [latitude, setLatitude] = useState(0);
   const [longitude, setLongitude] = useState(0);
-  const [radiusMeters, setRadiusMeters] = useState(50);
+  const [radiusMeters, setRadiusMeters] = useState<number>(copy.defaultRadius);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -56,18 +86,18 @@ export default function WfhLocationTable({
     );
   }, [employees, query]);
 
-  // Anyone not already WFH is a valid candidate — converting from OFFICE or
-  // FIELD into WFH is a legitimate reassignment.
+  // Anyone not already in this mode is a valid candidate — converting from
+  // any other mode is a legitimate reassignment.
   const candidates = useMemo(
-    () => allEmployees.filter((e) => e.active && e.workMode !== "WFH"),
-    [allEmployees],
+    () => allEmployees.filter((e) => e.active && e.workMode !== mode),
+    [allEmployees, mode],
   );
 
   function openEdit(emp: WfhEmployee) {
     setEditing(emp);
     setLatitude(emp.homeLatitude ?? 0);
     setLongitude(emp.homeLongitude ?? 0);
-    setRadiusMeters(emp.homeRadiusMeters ?? 50);
+    setRadiusMeters(emp.homeRadiusMeters ?? copy.defaultRadius);
     setError(null);
   }
 
@@ -80,7 +110,7 @@ export default function WfhLocationTable({
       active: emp.active,
       homeLatitude: null,
       homeLongitude: null,
-      homeRadiusMeters: 50,
+      homeRadiusMeters: copy.defaultRadius,
     });
   }
 
@@ -93,7 +123,7 @@ export default function WfhLocationTable({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        action: "update-wfh-location",
+        action: copy.action,
         latitude,
         longitude,
         radiusMeters,
@@ -114,11 +144,7 @@ export default function WfhLocationTable({
   }
 
   async function handleDelete(emp: WfhEmployee) {
-    if (
-      !confirm(
-        `Remove the WFH location for ${emp.name}? They will be reverted to Office mode.`,
-      )
-    ) {
+    if (!confirm(copy.removeConfirm(emp.name))) {
       return;
     }
     setDeletingId(emp.id);
@@ -136,11 +162,10 @@ export default function WfhLocationTable({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-[20px] font-semibold tracking-[-0.02em] text-slate-900">
-            Work From Home Locations
+            {copy.title}
           </h2>
           <p className="text-secondary mt-1 text-sm font-medium">
-            WFH employees are geofenced against their own home location instead
-            of the office.
+            {copy.subtitle}
           </p>
         </div>
         <button
@@ -243,7 +268,7 @@ export default function WfhLocationTable({
                     className="px-6 py-12 text-center text-secondary"
                   >
                     {employees.length === 0
-                      ? "No WFH employees yet. Click Add to assign one."
+                      ? copy.empty
                       : "No employees match your search."}
                   </td>
                 </tr>
@@ -368,7 +393,7 @@ export default function WfhLocationTable({
           >
             <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
               <h2 className="text-[16px] font-semibold tracking-[-0.01em] text-slate-900">
-                Add a WFH employee
+                {copy.pickerTitle}
               </h2>
               <button
                 onClick={() => setPickerOpen(false)}
@@ -382,7 +407,7 @@ export default function WfhLocationTable({
               <EmployeePicker
                 employees={candidates}
                 onSelect={openAdd}
-                emptyLabel="No eligible employees — everyone active is already set to WFH."
+                emptyLabel={copy.pickerEmpty}
               />
             </div>
           </div>

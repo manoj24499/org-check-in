@@ -4,7 +4,9 @@ import { getClientIp, isRateLimited } from "@/lib/rateLimit";
 import { getSettings } from "@/lib/settings";
 import { resolveActiveOrgBySlug } from "@/lib/organization";
 import { requireMobileUser } from "@/lib/mobileAuth";
-import { resolveGeofenceTarget } from "@/lib/geofenceTarget";
+import { resolveGeofenceTarget, resolveHomeTarget, resolveOfficeLocationTarget } from "@/lib/geofenceTarget";
+import { findOpenSegment, HYBRID_TRANSIT_WINDOW_MINUTES, serializeSegment } from "@/lib/hybridSegments";
+import { computeSegmentSplit } from "@/lib/attendanceHours";
 import { haversineDistanceMeters } from "@/lib/geofence";
 import { startOfISTDay, todayDateOnlyIST } from "@/lib/istTime";
 import { loadShiftAssignments, shiftForDate } from "@/lib/shiftAssignment";
@@ -198,6 +200,40 @@ export async function GET(req: NextRequest) {
   const shiftMap = await loadShiftAssignments(user.id);
   const shiftThatDay = shiftForDate(shiftMap, checkIn?.timestamp ?? new Date());
 
+  // The open work segment of the current session (FIELD and HYBRID only —
+  // everyone else has none), same shape as GET /api/mobile/me/work-segment.
+  const sessionOpen = Boolean(checkIn) && !checkOut;
+  const openSegment = sessionOpen && checkIn ? await findOpenSegment(checkIn.id) : null;
+
+  // HYBRID: both places plus whether the phone must keep sending location —
+  // always while checked in, since the pings are what detect departures and
+  // arrivals. Null for every other workMode.
+  // segmentMinutes: today's session so far (up to check-out, or now) — lets
+  // the app show live hours without counting transit.
+  let segmentMinutes: { officeMinutes: number; homeMinutes: number; transitMinutes: number } | null = null;
+  if (user.workMode === "HYBRID" && checkIn) {
+    const segments = await prisma.workSegment.findMany({
+      where: { attendanceId: checkIn.id },
+      select: { mode: true, startedAt: true, endedAt: true },
+    });
+    const split = computeSegmentSplit(checkIn.timestamp, checkOut?.timestamp ?? new Date(), segments, pauses);
+    segmentMinutes = {
+      officeMinutes: Math.round(split.officeMs / 60_000),
+      homeMinutes: Math.round(split.homeMs / 60_000),
+      transitMinutes: Math.round(split.transitMs / 60_000),
+    };
+  }
+  const hybrid =
+    user.workMode === "HYBRID"
+      ? {
+          officeTarget: user.organizationId ? await resolveOfficeLocationTarget(user.organizationId) : null,
+          homeTarget: resolveHomeTarget(user),
+          trackingRequired: sessionOpen,
+          transitWindowMinutes: HYBRID_TRANSIT_WINDOW_MINUTES,
+          segmentMinutes,
+        }
+      : null;
+
   return NextResponse.json({
     exists: true,
     name: user.name,
@@ -215,5 +251,7 @@ export async function GET(req: NextRequest) {
     checkInMode: checkIn?.checkInMode ?? null,
     shiftStartTime: shiftThatDay?.startTime ?? null,
     shiftEndTime: shiftThatDay?.endTime ?? null,
+    segment: openSegment ? serializeSegment(openSegment) : null,
+    hybrid,
   });
 }

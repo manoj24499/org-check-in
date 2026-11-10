@@ -12,6 +12,13 @@ import { istDateKey } from "@/lib/istTime";
 import { requireMobileUser } from "@/lib/mobileAuth";
 import { trackingTokenMatches } from "@/lib/trackingToken";
 import { MAX_STREAK_GAP_MS, GRACE_PERIOD_MS, STREAK_LENGTH, computePauseIntervals } from "@/lib/pauseReplay";
+import {
+  findOpenSegment,
+  isTransitExpired,
+  resolveHybridPlaceTarget,
+  switchHybridSegment,
+  type HybridPlace,
+} from "@/lib/hybridSegments";
 
 
 /**
@@ -98,6 +105,10 @@ async function evaluatePauseState(
   checkIn: { id: string; userId: string; timestamp: Date; pauseWarningAt: Date | null },
   target: GeofenceTarget | null,
   ping: { latitude: number; longitude: number; timestamp: Date },
+  // HYBRID: their own departure prompt ("Heading home?") already went out for
+  // the same departure (see evaluateHybridSegment), so the generic warning
+  // push is skipped; the warning/pause itself is unchanged.
+  options: { skipWarningPush?: boolean } = {},
 ) {
   try {
     if (!target) return;
@@ -135,11 +146,13 @@ async function evaluatePauseState(
           where: { id: checkIn.id },
           data: { pauseWarningAt: ping.timestamp },
         });
-        await sendPushNotification(
-          checkIn.userId,
-          "You've left your work area",
-          "Return within 10 minutes or your working time will be paused.",
-        );
+        if (!options.skipWarningPush) {
+          await sendPushNotification(
+            checkIn.userId,
+            "You've left your work area",
+            "Return within 10 minutes or your working time will be paused.",
+          );
+        }
       }
       return;
     }
@@ -184,8 +197,8 @@ async function evaluatePauseState(
  *  - a stored geofence pause that is still open, but that the replay shows was already over, is closed.
  * It never deletes or shortens anything, and skips a stretch already covered by any stored pause (including an
  * approved timed permission), since overlapping pauses would be subtracted twice from the hours worked.
- * Office and work-from-home only: a Field employee's geofence depends on their work segment, which isn't
- * replayed. Best-effort: never throws.
+ * Office and work-from-home only: a Field or Hybrid employee's geofence depends on their work segment,
+ * which isn't replayed. Best-effort: never throws.
  */
 async function reconcilePausesAfterBackfill(
   checkIn: { id: string; userId: string; timestamp: Date; checkInMode: CheckInMode | null },
@@ -193,7 +206,7 @@ async function reconcilePausesAfterBackfill(
   endedAt: Date | null,
 ) {
   try {
-    if (user.workMode === "FIELD") return;
+    if (user.workMode === "FIELD" || user.workMode === "HYBRID") return;
     const target = await resolveSessionTarget(user, checkIn.checkInMode);
     if (!target) return;
 
@@ -266,6 +279,8 @@ async function evaluateWorkSegment(
       orderBy: { startedAt: "desc" },
     });
     if (!current) return null;
+    // HOME/TRANSIT are HYBRID-only and never appear on a FIELD timeline.
+    if (current.mode !== "OFFICE" && current.mode !== "FIELD") return null;
 
     const officeTarget = organizationId ? await resolveOfficeLocationTarget(organizationId) : null;
     if (!officeTarget) return { mode: current.mode, officeTarget: null };
@@ -295,6 +310,142 @@ async function evaluateWorkSegment(
   }
 }
 
+
+/**
+ * The geofence a HYBRID employee is held to right now: their current
+ * segment's place (OFFICE -> office, HOME -> home), none while in TRANSIT or
+ * with no open segment. Used where the timeline isn't being advanced, e.g.
+ * the timed-permission resume check.
+ */
+async function resolveHybridCurrentTarget(
+  checkInId: string,
+  user: Parameters<typeof resolveGeofenceTarget>[0],
+): Promise<GeofenceTarget | null> {
+  const current = await findOpenSegment(checkInId);
+  if (!current || (current.mode !== "OFFICE" && current.mode !== "HOME")) return null;
+  return resolveHybridPlaceTarget(current.mode, user);
+}
+
+const OTHER_PLACE: Record<HybridPlace, HybridPlace> = { OFFICE: "HOME", HOME: "OFFICE" };
+
+/**
+ * OFFICE / TRANSIT / HOME timeline for HYBRID-workMode employees — the HYBRID
+ * counterpart of evaluateWorkSegment above, with the same 3-consecutive-ping
+ * confirmed streak (evaluateRangeStreak), so a single stray reading never
+ * changes anything. Runs on every ping regardless of pause state.
+ *
+ *  - TRANSIT heading X: confirmed inside X's geofence -> TRANSIT ends, an X
+ *    segment opens (AUTO). Otherwise, once the transit window
+ *    (HYBRID_TRANSIT_WINDOW_MS, measured from extendedAt ?? startedAt) has run
+ *    out, one "have you arrived?" push is sent and promptedAt is set. The day
+ *    is never ended and pings keep being accepted; the app answers via
+ *    /api/mobile/me/work-segment (arrived, or {extend: true}).
+ *  - OFFICE / HOME: confirmed outside the current place -> never switches on
+ *    its own; sends one "Heading home? / Heading to the office?" push per
+ *    departure (departurePromptedAt, cleared once confirmed back inside). The
+ *    normal grace-period auto-pause (evaluatePauseState) keeps running against
+ *    this place as the fallback.
+ *
+ * Returns the geofence evaluatePauseState should use for this ping: the
+ * current OFFICE/HOME place, or null in TRANSIT (no pause, no warning). Null
+ * when there's no open segment, same fail-open precedent as everywhere else.
+ * Best-effort: never throws.
+ */
+async function evaluateHybridSegment(
+  checkIn: { id: string; userId: string },
+  user: Parameters<typeof resolveGeofenceTarget>[0],
+  ping: { latitude: number; longitude: number; timestamp: Date },
+  // While an approved timed permission is running they're expected to be away — no departure prompt.
+  permissionActive: boolean,
+): Promise<GeofenceTarget | null> {
+  try {
+    const current = await findOpenSegment(checkIn.id);
+    if (!current) return null;
+
+    if (current.mode === "TRANSIT") {
+      const heading: HybridPlace | null =
+        current.heading === "OFFICE" || current.heading === "HOME" ? current.heading : null;
+      const destination = heading ? await resolveHybridPlaceTarget(heading, user) : null;
+      if (heading && destination) {
+        // Only readings since the transit began count — the ones from the
+        // place they just left say nothing about arriving.
+        const { inRange, confirmed } = await evaluateRangeStreak(checkIn.userId, current.startedAt, destination, ping);
+        if (inRange && confirmed) {
+          // A racing ping that already switched makes this a no-op (see switchHybridSegment).
+          await switchHybridSegment({
+            attendanceId: checkIn.id,
+            current,
+            mode: heading,
+            startMethod: "AUTO",
+            at: ping.timestamp,
+          });
+          return destination;
+        }
+      }
+
+      if (current.promptedAt === null && isTransitExpired(current, ping.timestamp)) {
+        const claimed = await prisma.workSegment.updateMany({
+          where: { id: current.id, endedAt: null, promptedAt: null },
+          data: { promptedAt: ping.timestamp },
+        });
+        if (claimed.count > 0) {
+          await sendPushNotification(
+            checkIn.userId,
+            heading === "OFFICE" ? "Have you reached the office?" : "Are you home yet?",
+            "Open the app to confirm you've arrived, or tell us you're still travelling.",
+            {
+              type: "HYBRID_TRANSIT_EXPIRED",
+              attendanceId: checkIn.id,
+              segmentId: current.id,
+              heading: heading ?? "",
+            },
+          );
+        }
+      }
+      return null;
+    }
+
+    if (current.mode !== "OFFICE" && current.mode !== "HOME") return null;
+    const place: HybridPlace = current.mode;
+    const target = await resolveHybridPlaceTarget(place, user);
+    if (!target) return null;
+
+    const { inRange, confirmed } = await evaluateRangeStreak(checkIn.userId, current.startedAt, target, ping);
+    if (confirmed && !inRange && current.departurePromptedAt === null && !permissionActive) {
+      const claimed = await prisma.workSegment.updateMany({
+        where: { id: current.id, endedAt: null, departurePromptedAt: null },
+        data: { departurePromptedAt: ping.timestamp },
+      });
+      if (claimed.count > 0) {
+        const next = OTHER_PLACE[place];
+        await sendPushNotification(
+          checkIn.userId,
+          next === "HOME" ? "Heading home?" : "Heading to the office?",
+          next === "HOME"
+            ? "Tap Switch to Home in the app. If you're not travelling, return within 10 minutes or your working time will be paused."
+            : "Tap Switch to Office in the app. If you're not travelling, return within 10 minutes or your working time will be paused.",
+          {
+            type: "HYBRID_DEPARTURE",
+            attendanceId: checkIn.id,
+            segmentId: current.id,
+            from: place,
+            suggestedHeading: next,
+          },
+        );
+      }
+    } else if (confirmed && inRange && current.departurePromptedAt !== null) {
+      // Back inside — the next departure gets its own prompt.
+      await prisma.workSegment.updateMany({
+        where: { id: current.id, endedAt: null },
+        data: { departurePromptedAt: null },
+      });
+    }
+    return target;
+  } catch (error) {
+    console.error("[evaluateHybridSegment] failed:", error);
+    return null;
+  }
+}
 
 /**
  * Timed-permission evaluation, run on every ping *before* the geofence
@@ -377,8 +528,14 @@ async function evaluateTimedPermission(
 
     // FIELD employees have no fixed geofence to return to (same precedent
     // as the geofence auto-pause skipping them entirely) — resume on the
-    // clock alone, no presence check.
-    const target = user.workMode === "FIELD" ? null : await resolveSessionTarget(user, checkIn.checkInMode);
+    // clock alone, no presence check. HYBRID: their current segment's place,
+    // or none (resume on the clock) while in TRANSIT.
+    const target =
+      user.workMode === "FIELD"
+        ? null
+        : user.workMode === "HYBRID"
+          ? await resolveHybridCurrentTarget(checkIn.id, user)
+          : await resolveSessionTarget(user, checkIn.checkInMode);
     if (!target) {
       await prisma.attendancePause.update({
         where: { id: permission.pause.id },
@@ -654,6 +811,9 @@ export async function POST(req: NextRequest) {
   // Not applicable at all outside FIELD-workMode profiles.
   const segmentResult =
     user.workMode === "FIELD" ? await evaluateWorkSegment(checkIn, ping, user.organizationId) : null;
+  // HYBRID: same idea for the OFFICE / TRANSIT / HOME timeline; gives back
+  // the geofence for this ping (none while in TRANSIT).
+  const hybridTarget = user.workMode === "HYBRID" ? await evaluateHybridSegment(checkIn, user, ping, permissionResult.active) : null;
 
   // A timed permission's pause is managed on its own timeline — skip the
   // geofence auto-pause entirely while one is open, so the two never both
@@ -668,8 +828,10 @@ export async function POST(req: NextRequest) {
         ? segmentResult?.mode === "OFFICE"
           ? segmentResult.officeTarget
           : null
-        : await resolveSessionTarget(user, checkIn.checkInMode);
-    await evaluatePauseState(checkIn, target, ping);
+        : user.workMode === "HYBRID"
+          ? hybridTarget
+          : await resolveSessionTarget(user, checkIn.checkInMode);
+    await evaluatePauseState(checkIn, target, ping, { skipWarningPush: user.workMode === "HYBRID" });
   }
 
   await prisma.locationPing.create({

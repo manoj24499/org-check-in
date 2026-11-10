@@ -11,6 +11,7 @@ const WORK_MODE_LABEL: Record<string, string> = {
   OFFICE: "Office",
   WFH: "Home",
   FIELD: "Anywhere",
+  HYBRID: "Hybrid",
 };
 
 function formatDate(d: Date) {

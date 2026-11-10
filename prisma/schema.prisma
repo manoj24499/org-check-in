@@ -352,6 +352,12 @@ enum WorkMode {
   // Field workers: no geofence is enforced at check-in at all (see
   // /api/kiosk/scan) — home/office coordinates are irrelevant for this mode.
   FIELD
+  // Part of the day at the office, part at home (the admin-set
+  // homeLatitude/homeLongitude). Checks in inside either geofence and gets a
+  // WorkSegment timeline of OFFICE / TRANSIT / HOME (see /api/kiosk/scan,
+  // /api/kiosk/location's evaluateHybridSegment and
+  // /api/mobile/me/work-segment). TRANSIT time is not counted as work.
+  HYBRID
 }
 
 // Auto-computed at check-in (see /api/kiosk/scan) by comparing the check-in
@@ -367,9 +373,16 @@ enum LeaveType {
 // (geofenced against the shared OfficeLocation, same as regular OFFICE
 // employees) or Field (no geofence, distance/visit tracking active). See
 // /api/kiosk/scan.
+//
+// HOME and TRANSIT are HYBRID-only: a HYBRID employee checks in as OFFICE or
+// HOME (whichever geofence they are inside), and their WorkSegments move
+// between OFFICE, TRANSIT (travelling between the two; not work time) and
+// HOME. FIELD employees only ever get OFFICE/FIELD.
 enum CheckInMode {
   OFFICE
   FIELD
+  HOME
+  TRANSIT
 }
 
 // Outcome of calling the external face-verification service at check-in
@@ -659,7 +672,8 @@ model Attendance {
 
   // Set only on CHECK_IN records for FIELD-workMode employees — the choice
   // they made that day (see /api/kiosk/scan). Null for OFFICE/WFH employees,
-  // whose mode is already fixed on their profile.
+  // whose mode is already fixed on their profile. HYBRID employees get OFFICE
+  // or HOME: whichever geofence they checked in from.
   checkInMode CheckInMode?
 
   // Vehicle odometer reading (km) the field worker entered: the start reading on
@@ -845,7 +859,9 @@ enum WorkSegmentStartMethod {
 
 // One entry in a FIELD-workMode employee's within-day timeline of Office vs
 // Field time — replaces treating Attendance.checkInMode as fixed for the
-// whole day. Only ever created for FIELD-profile employees; OFFICE/WFH
+// whole day. HYBRID employees get the same kind of timeline with OFFICE /
+// TRANSIT / HOME rows instead (see heading/promptedAt below). Only ever
+// created for FIELD- and HYBRID-profile employees; OFFICE/WFH
 // employees have no concept of switching and never get one of these. Exactly
 // one row per attendanceId has endedAt: null (the current, still-open
 // segment) until checkout closes it. See /api/kiosk/location and
@@ -858,6 +874,24 @@ model WorkSegment {
   startedAt    DateTime
   endedAt      DateTime?
   startMethod  WorkSegmentStartMethod
+
+  // HYBRID only. On a TRANSIT segment: where they are heading (OFFICE or
+  // HOME, never anything else — enforced in code). Confirmed arrival inside
+  // that geofence ends the TRANSIT segment and opens this one (AUTO).
+  heading      CheckInMode?
+  // HYBRID TRANSIT only: when the "have you arrived?" push was sent because
+  // the transit window (HYBRID_TRANSIT_WINDOW_MS in lib/hybridSegments.ts)
+  // ran out. Null = not prompted for the current window.
+  promptedAt   DateTime?
+  // HYBRID TRANSIT only: set when the employee answered "Still travelling",
+  // starting a fresh window from this moment. The window is measured from
+  // extendedAt ?? startedAt.
+  extendedAt   DateTime?
+  // HYBRID OFFICE/HOME only: when the "Heading home? / Heading to the
+  // office?" push was sent after a confirmed departure from this segment's
+  // place. Cleared again once they are confirmed back inside, so each
+  // separate departure prompts at most once.
+  departurePromptedAt DateTime?
 
   // Replaces a plain attendanceId-only index — every ping/mode-switch/
   // checkout for a FIELD employee looks up "the currently open segment"

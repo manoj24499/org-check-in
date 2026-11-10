@@ -5,6 +5,9 @@
 // lib/geofenceTarget.ts instead.
 
 export const DEFAULT_GEOFENCE_RADIUS_METERS = 50;
+// Suggested home radius for a HYBRID employee (admin can change it) — a bit
+// wider than the default so arriving home is detected at the door, not the desk.
+export const HYBRID_DEFAULT_HOME_RADIUS_METERS = 100;
 
 const EARTH_RADIUS_METERS = 6_371_000;
 

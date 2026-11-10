@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyPin, backfillPinLookupHash } from "@/lib/credentials";
 import { getClientIp, isRateLimited, isPinGuessLimited } from "@/lib/rateLimit";
 import { haversineDistanceMeters } from "@/lib/geofence";
-import { resolveGeofenceTarget } from "@/lib/geofenceTarget";
+import { resolveGeofenceTarget, resolveHomeTarget, resolveOfficeLocationTarget } from "@/lib/geofenceTarget";
 import { getSettings } from "@/lib/settings";
 import { resolveOrgBySlug } from "@/lib/organization";
 import { requireMobileUser } from "@/lib/mobileAuth";
@@ -39,7 +39,10 @@ const scanSchema = z.object({
   // shared office location instead of the employee's usual target (no fixed
   // location for FIELD, home for WFH). Omitted preserves each profile's
   // default (FIELD stays ungeofenced, WFH stays geofenced against home).
-  checkInMode: z.enum(["OFFICE", "FIELD"]).optional(),
+  // HYBRID employees: optional — "OFFICE" or "HOME" checks only that place;
+  // omitted, they're accepted inside either one (office tried first) and the
+  // day starts with whichever they are in. "HOME" is HYBRID-only.
+  checkInMode: z.enum(["OFFICE", "FIELD", "HOME"]).optional(),
   // Only meaningful on CHECK_OUT, and only when the employee has an active
   // OvertimeRequest for today (see /api/mobile/me/overtime) — optional even
   // then, never required to actually check out (see the schema comment on
@@ -447,9 +450,70 @@ async function handlePost(req: NextRequest) {
   // flagged for the admin to review (the employee already left the signal-free spot long ago).
   let offlineOutsideArea = false;
 
+  // HYBRID: where the day starts (OFFICE or HOME) — becomes checkInMode and
+  // the first WorkSegment. Decided by the geofence gate below.
+  let hybridPlace: "OFFICE" | "HOME" | null = null;
+
+  if (parsed.data.action === "CHECK_IN" && user.workMode === "HYBRID") {
+    if (parsed.data.checkInMode === "FIELD") {
+      return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+    }
+    if (parsed.data.mocked) {
+      return NextResponse.json(
+        { error: "Mock location detected. Please disable mock/fake GPS apps and try again." },
+        { status: 409 },
+      );
+    }
+    const requested = parsed.data.checkInMode as "OFFICE" | "HOME" | undefined;
+    const [officeTarget, homeTarget] = await Promise.all([
+      requested === "HOME" || !user.organizationId ? null : resolveOfficeLocationTarget(user.organizationId),
+      requested === "OFFICE" ? null : resolveHomeTarget(user),
+    ]);
+    // Office first, so someone whose home is near the office starts as OFFICE.
+    const places = [
+      ...(officeTarget ? [{ place: "OFFICE" as const, target: officeTarget }] : []),
+      ...(homeTarget ? [{ place: "HOME" as const, target: homeTarget }] : []),
+    ];
+    if (places.length === 0) {
+      // Nothing configured (same "not enforced" precedent as every other mode).
+      hybridPlace = requested ?? "OFFICE";
+    } else {
+      if (parsed.data.latitude === undefined || parsed.data.longitude === undefined) {
+        return NextResponse.json({ error: "Location permission is required to check in." }, { status: 400 });
+      }
+      const lat = parsed.data.latitude;
+      const lng = parsed.data.longitude;
+      // How far outside each radius (negative = inside).
+      const measured = places.map((p) => ({
+        ...p,
+        overshoot: haversineDistanceMeters(lat, lng, p.target.latitude, p.target.longitude) - p.target.radiusMeters,
+      }));
+      const inside = measured.find((m) => m.overshoot <= 0);
+      if (inside) {
+        hybridPlace = inside.place;
+      } else if (offline) {
+        // Accepted and flagged, like every other offline upload outside its area; the day starts at
+        // whichever place they were nearest to.
+        offlineOutsideArea = true;
+        hybridPlace = measured.reduce((a, b) => (b.overshoot < a.overshoot ? b : a)).place;
+      } else {
+        const message =
+          requested === "HOME"
+            ? "You are outside your home work location."
+            : requested === "OFFICE"
+              ? `You are outside the permitted office area. Please move within ${Math.round(
+                  officeTarget?.radiusMeters ?? 0,
+                )} meters of the office to check in.`
+              : "You are outside both the office and your home work location. Please check in from the office or from home.";
+        return NextResponse.json({ error: message }, { status: 409 });
+      }
+    }
+  }
+
   // Geofence the check-in against whichever location applies to this
   // employee. No location configured yet (office or home) == not enforced.
-  if (parsed.data.action === "CHECK_IN" && effectiveWorkMode !== "FIELD") {
+  // (HYBRID was handled just above.)
+  if (parsed.data.action === "CHECK_IN" && effectiveWorkMode !== "FIELD" && user.workMode !== "HYBRID") {
     if (parsed.data.mocked) {
       return NextResponse.json(
         { error: "Mock location detected. Please disable mock/fake GPS apps and try again." },
@@ -574,8 +638,10 @@ async function handlePost(req: NextRequest) {
           leaveType: lateness.leaveType,
           ...(parsed.data.action === "CHECK_IN" && user.workMode === "FIELD"
             ? { checkInMode: effectiveWorkMode === "OFFICE" ? "OFFICE" : "FIELD" }
-            : // For WFH, only record a value when they actually chose Office
-              // that day — CheckInMode has no "HOME" value, and leaving the
+            : parsed.data.action === "CHECK_IN" && user.workMode === "HYBRID"
+              ? { checkInMode: hybridPlace ?? "OFFICE" }
+              : // For WFH, only record a value when they actually chose Office
+              // that day — CheckInMode's "HOME" is HYBRID-only, and leaving the
               // field null for an ordinary WFH-from-home day (the vast
               // majority) preserves its existing meaning everywhere else that
               // reads it, which all assume it's FIELD-specific.
@@ -611,6 +677,19 @@ async function handlePost(req: NextRequest) {
           data: {
             attendanceId: created.id,
             mode: effectiveWorkMode === "OFFICE" ? "OFFICE" : "FIELD",
+            startedAt: created.timestamp,
+            startMethod: "CHECKIN",
+          },
+        });
+      }
+      // HYBRID: the day starts as OFFICE or HOME (wherever they checked in);
+      // see /api/kiosk/location's evaluateHybridSegment for how it moves
+      // through TRANSIT afterwards.
+      if (parsed.data.action === "CHECK_IN" && user.workMode === "HYBRID") {
+        await tx.workSegment.create({
+          data: {
+            attendanceId: created.id,
+            mode: hybridPlace ?? "OFFICE",
             startedAt: created.timestamp,
             startMethod: "CHECKIN",
           },
