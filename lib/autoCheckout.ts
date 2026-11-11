@@ -165,7 +165,9 @@ export async function runAutoCheckout(
             type: "CHECK_OUT",
             method: "AUTO",
             timestamp: target,
-            dayKey: istDateKey(target),
+            // The session's own day: an overnight shift's end (e.g. 12:30 AM) is on the next date, and keying it
+            // there would take that day's check-out slot.
+            dayKey: istDateKey(c.timestamp),
             ...(endKm != null ? { odometerKm: endKm, odometerEstimated: true } : {}),
           },
         }),

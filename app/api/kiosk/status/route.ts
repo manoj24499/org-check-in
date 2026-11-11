@@ -104,7 +104,6 @@ export async function GET(req: NextRequest) {
   });
 
   let checkIn = todaysRecords.find((r) => r.type === "CHECK_IN");
-  const checkOut = todaysRecords.find((r) => r.type === "CHECK_OUT");
 
   // No check-in among today's own records — still possibly on an overnight
   // shift that started yesterday and hasn't been checked out yet (see
@@ -120,6 +119,13 @@ export async function GET(req: NextRequest) {
         })) ?? undefined;
     }
   }
+
+  // The check-out that closes THIS session: one recorded after the check-in. Going by "any check-out dated today"
+  // is wrong for an overnight shift — last night's session is closed at, say, 12:30 AM, which falls inside
+  // today's date but belongs to yesterday's check-in, and would otherwise make today look already checked out.
+  const checkOut = checkIn
+    ? todaysRecords.find((r) => r.type === "CHECK_OUT" && r.timestamp > checkIn!.timestamp)
+    : todaysRecords.find((r) => r.type === "CHECK_OUT");
 
   // `user` (and thus its organizationId) is already resolved above.
   const settings = user.organizationId ? await getSettings(user.organizationId) : null;

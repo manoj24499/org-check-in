@@ -145,7 +145,10 @@ export default async function AdminDashboard() {
 
   const employees = employeesRaw.map((e) => {
     const checkIn = e.attendances.find((a) => a.type === "CHECK_IN");
-    const checkOut = e.attendances.find((a) => a.type === "CHECK_OUT");
+    // Only a check-out after today's check-in counts (an overnight shift closes last night's session after midnight).
+    const checkOut = e.attendances.find(
+      (a) => a.type === "CHECK_OUT" && (!checkIn || a.timestamp > checkIn.timestamp),
+    );
     const leave = leaveByUser.get(e.id);
     return {
       id: e.id,

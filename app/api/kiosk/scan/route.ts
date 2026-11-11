@@ -111,7 +111,8 @@ async function autoCloseStaleCheckIns(user: { id: string }, shiftMap: WeekdayShi
             type: "CHECK_OUT",
             method: "AUTO",
             timestamp: checkoutAt,
-            dayKey: istDateKey(checkoutAt),
+            // The session's own day, not the day the (possibly after-midnight) check-out falls on.
+            dayKey: istDateKey(checkIn.timestamp),
           },
         }),
         prisma.attendancePause.updateMany({
@@ -555,10 +556,15 @@ async function handlePost(req: NextRequest) {
       timestamp: offline ? { gte: startOfISTDay(eventTime), lte: endOfISTDay(eventTime) } : { gte: startOfISTDay() },
     },
     orderBy: { timestamp: "asc" },
-    select: { id: true, type: true },
+    select: { id: true, type: true, timestamp: true },
   });
   let hasCheckedInToday = todaysRecords.some((r) => r.type === "CHECK_IN");
-  const hasCheckedOutToday = todaysRecords.some((r) => r.type === "CHECK_OUT");
+  // Only a check-out AFTER today's check-in counts. An overnight shift's check-out lands after midnight, so
+  // last night's session closes with a CHECK_OUT dated today (e.g. 12:30 AM) — that is not today's check-out.
+  const todaysFirstCheckIn = todaysRecords.find((r) => r.type === "CHECK_IN");
+  const hasCheckedOutToday = todaysFirstCheckIn
+    ? todaysRecords.some((r) => r.type === "CHECK_OUT" && r.timestamp > todaysFirstCheckIn.timestamp)
+    : todaysRecords.some((r) => r.type === "CHECK_OUT");
 
   // A CHECK_OUT with no check-in among *today's* records might still be
   // closing out an overnight shift that started yesterday (see
@@ -633,7 +639,13 @@ async function handlePost(req: NextRequest) {
           type: parsed.data.action,
           method: "PIN",
           timestamp: now,
-          dayKey: istDateKey(now),
+          // A check-out belongs to the day its session started (one per session day), so a shift that ends after
+          // midnight does not take the next day's slot and block that day's own check-out.
+          dayKey: istDateKey(
+            parsed.data.action === "CHECK_OUT"
+              ? (todaysRecords.find((r) => r.type === "CHECK_IN") ?? overnightCheckIn)?.timestamp ?? now
+              : now,
+          ),
           lateMinutes: lateness.lateMinutes,
           leaveType: lateness.leaveType,
           ...(parsed.data.action === "CHECK_IN" && user.workMode === "FIELD"
