@@ -29,8 +29,15 @@ export async function GET(req: NextRequest) {
   const records = await prisma.attendance.findMany({
     where: {
       user: { organizationId: admin.organizationId },
+      // One day earlier than `from`, only so an overnight check-out near the start can still be paired with its
+      // check-in; those extra rows are dropped from the file below.
       ...(from || to
-        ? { timestamp: { ...(from ? { gte: from } : {}), ...(to ? { lte: endOfISTDay(to) } : {}) } }
+        ? {
+            timestamp: {
+              ...(from ? { gte: new Date(from.getTime() - 24 * 60 * 60 * 1000) } : {}),
+              ...(to ? { lte: endOfISTDay(to) } : {}),
+            },
+          }
         : {}),
     },
     orderBy: { timestamp: "desc" },
@@ -80,7 +87,10 @@ export async function GET(req: NextRequest) {
 
   const header =
     "Employee ID,Name,Email,Event,Method,Timestamp,Late (min),Leave Type,Worked (min),Office (min),Home (min),Transit (min)";
-  const rows = records.map((r, i) =>
+  const rows = records.flatMap((r, i) =>
+    from && r.timestamp < from
+      ? []
+      : [
     [
       r.user.employeeCode,
       csvField(r.user.name),
@@ -92,6 +102,7 @@ export async function GET(req: NextRequest) {
       r.leaveType,
       ...(minutesByCheckOut.get(i) ?? ["", "", "", ""]),
     ].join(","),
+      ],
   );
   const csv = buildCsv(header, rows);
 

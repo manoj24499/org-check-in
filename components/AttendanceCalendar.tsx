@@ -156,13 +156,28 @@ export default function AttendanceCalendar({
     [attendances],
   );
 
+  // Days are keyed by the day each SESSION started. A check-out is filed under the check-in it closes, even when
+  // it falls after midnight (an overnight shift such as 3:30 PM – 12:30 AM): grouping by each record's own date
+  // would leave the shift's day without a check-out and show a stray check-out on the next day.
   const byDay = useMemo(() => {
     const map = new Map<string, Event[]>();
-    for (const e of events) {
-      const key = dateKey(e.date);
+    const add = (key: string, e: Event) => {
       const list = map.get(key) ?? [];
       list.push(e);
       map.set(key, list);
+    };
+    let openKey: string | null = null;
+    for (const e of events) {
+      if (e.type === "CHECK_IN") {
+        const key = dateKey(e.date);
+        add(key, e);
+        openKey = key;
+      } else if (openKey) {
+        add(openKey, e);
+        openKey = null;
+      } else {
+        add(dateKey(e.date), e);
+      }
     }
     return map;
   }, [events]);

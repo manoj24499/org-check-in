@@ -144,7 +144,8 @@ export async function GET(req: NextRequest) {
         select: { latitude: true, longitude: true, timestamp: true, accuracy: true },
       }),
       prisma.attendance.findMany({
-        where: { userId: emp.id, timestamp: { gte: windowStart, lte: windowEnd } },
+        // A day later than the range: the last day's overnight check-out can fall after midnight.
+        where: { userId: emp.id, timestamp: { gte: windowStart, lte: new Date(windowEnd.getTime() + DAY_MS) } },
         orderBy: { timestamp: "asc" },
         select: {
           type: true,
@@ -186,7 +187,18 @@ export async function GET(req: NextRequest) {
       if (dayPings.length === 0 && dayAtt.length === 0 && dayVisits.length === 0) continue;
 
       const checkIn = dayAtt.find((a) => a.type === "CHECK_IN");
-      const checkOut = dayAtt.find((a) => a.type === "CHECK_OUT" && (!checkIn || a.timestamp > checkIn.timestamp));
+      // The check-out that closes this day's session — the first one after the check-in and before any later
+      // check-in. It can fall on the next date (overnight shift), so look through all records, not just this day's.
+      const checkOut = checkIn
+        ? (() => {
+            for (const a of attendance) {
+              if (a.timestamp <= checkIn.timestamp) continue;
+              if (a.type === "CHECK_IN") return undefined;
+              if (a.type === "CHECK_OUT") return a;
+            }
+            return undefined;
+          })()
+        : dayAtt.find((a) => a.type === "CHECK_OUT");
       // Time spent in an Office segment is not travel; GPS wobble indoors would
       // add phantom distance and stops, so those pings are left out of both.
       const nowTs = Date.now();

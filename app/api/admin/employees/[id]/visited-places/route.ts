@@ -65,9 +65,27 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const todaysCheckIns = dayRecords.filter((r) => r.type === "CHECK_IN");
   const checkIn = todaysCheckIns[0];
-  const checkOut = dayRecords.find(
+  let checkOut = dayRecords.find(
     (r) => r.type === "CHECK_OUT" && r.timestamp > (checkIn?.timestamp ?? startOfISTDay(day)),
   );
+  // An overnight shift is closed after midnight, outside this day's records: look for the check-out that ends
+  // this session (the first one after the check-in, unless a later check-in comes first).
+  if (checkIn && !checkOut) {
+    const after = await prisma.attendance.findFirst({
+      where: { userId: id, timestamp: { gt: checkIn.timestamp }, type: { in: ["CHECK_IN", "CHECK_OUT"] } },
+      orderBy: { timestamp: "asc" },
+      select: {
+        id: true,
+        type: true,
+        timestamp: true,
+        odometerKm: true,
+        odometerEstimated: true,
+        pauses: { select: { pausedAt: true, resumedAt: true } },
+        workSegments: { select: { mode: true, startedAt: true, endedAt: true } },
+      },
+    });
+    if (after?.type === "CHECK_OUT") checkOut = after;
+  }
 
   // Field/Office hour split — only meaningful once the day has actually
   // ended (checked out); a still-open segment would otherwise keep growing
