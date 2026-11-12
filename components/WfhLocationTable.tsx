@@ -371,7 +371,7 @@ export default function WfhLocationTable({
                   <button
                     onClick={handleSave}
                     disabled={loading}
-                    className="flex-1 rounded-xl border border-transparent bg-orange-600 shadow-sm bg-transparent text-white py-2.5 text-sm font-medium hover:bg-orange-700 transition disabled:opacity-50"
+                    className="flex-1 rounded-xl border border-transparent bg-orange-600 shadow-sm text-white py-2.5 text-sm font-medium hover:bg-orange-700 transition disabled:opacity-50"
                   >
                     {loading ? "Saving…" : "Save"}
                   </button>
