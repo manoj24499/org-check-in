@@ -301,7 +301,7 @@ export default function WfhLocationTable({
               </button>
             </div>
 
-            <div className="overflow-y-auto">
+            <div className="min-h-0 flex-1 overflow-y-auto">
               <OfficeLocationMap
                 latitude={latitude}
                 longitude={longitude}
@@ -359,6 +359,7 @@ export default function WfhLocationTable({
                     {error}
                   </div>
                 )}
+<<<<<<< HEAD
 
                 <div className="flex gap-3">
                   <button
@@ -376,7 +377,28 @@ export default function WfhLocationTable({
                     {loading ? "Saving…" : "Save"}
                   </button>
                 </div>
+=======
+>>>>>>> 8dcde70cf2d83be9bca1089b5314993be477b54d
               </div>
+            </div>
+
+            {/* Pinned outside the scrolling area so Save is always on screen, however tall the map and form are. */}
+            <div className="flex shrink-0 gap-3 border-t border-border bg-surface-2 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setEditing(null)}
+                className="flex-1 rounded-lg bg-white border border-border py-2.5 text-sm font-medium text-muted hover:bg-surface transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={loading}
+                className="flex-1 rounded-xl border border-transparent bg-orange-600 shadow-sm text-white py-2.5 text-sm font-semibold hover:bg-orange-700 transition disabled:opacity-50"
+              >
+                {loading ? "Saving…" : "Save"}
+              </button>
             </div>
           </div>
         </div>
