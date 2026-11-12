@@ -1313,3 +1313,51 @@ model ManualEntryRequest {
   @@index([userId, date])
   @@index([status, createdAt])
 }
+
+// One row for every attempt to check in or out — accepted or refused, from the mobile app or a kiosk.
+// Attendance only keeps the ones that succeeded; this is what shows wrong PINs, face mismatches, fake or
+// out-of-area locations and duplicate tries. Written by /api/kiosk/scan after the response is decided and
+// never allowed to affect it. Never holds the PIN or the photo. No relations on purpose, so rows outlive
+// a deleted employee. Read by the separate monitoring site (checkin-monitor).
+model CheckInAttempt {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+  organizationId String?
+  // Null when the employee code was not recognised.
+  userId         String?
+  // As typed by the caller.
+  employeeCode   String
+  // CHECK_IN | CHECK_OUT | UNKNOWN (body could not be read)
+  action         String
+  // SUCCESS | REJECTED | ERROR
+  outcome        String
+  // Short machine code, e.g. INVALID_PIN, FACE_MISMATCH, OUTSIDE_AREA, MOCK_LOCATION, ALREADY_CHECKED_IN.
+  reasonCode     String?
+  // The message the caller was shown.
+  reason         String?
+  httpStatus     Int
+  // MOBILE (signed-in app) | KIOSK (shared device)
+  source         String
+  offline        Boolean  @default(false)
+  ipAddress      String?
+  userAgent      String?
+  latitude       Float?
+  longitude      Float?
+  mocked         Boolean?
+  checkInMode    String?
+  faceVerifyStatus FaceVerifyStatus @default(NOT_CHECKED)
+  faceSimilarity Float?
+  // The photo that failed face verification — kept ONLY for FACE_MISMATCH, so an admin can see who was in front
+  // of the camera. Cleared after the same retention period as presence photos (see expireOldPhotos in
+  // /api/kiosk/scan). Never set for any other outcome.
+  photo          Bytes?
+  hasPhoto       Boolean  @default(false)
+  // The Attendance row created, on success.
+  attendanceId   String?
+  durationMs     Int?
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@index([employeeCode, createdAt])
+  @@index([outcome, createdAt])
+}

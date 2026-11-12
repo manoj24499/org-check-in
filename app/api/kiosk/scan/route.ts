@@ -182,6 +182,12 @@ async function expireOldPhotos() {
       where: { hasPhoto: true, reachedAt: { lt: cutoff } },
       data: { photo: null, hasPhoto: false },
     });
+    // Photos kept with refused face checks follow the same retention. Last, so a missing table (migration
+    // not applied yet) can't stop the cleanups above.
+    await prisma.checkInAttempt.updateMany({
+      where: { hasPhoto: true, createdAt: { lt: cutoff } },
+      data: { photo: null, hasPhoto: false },
+    });
   } catch {
     // Cleanup is opportunistic — never let it block a real check-in.
   }
@@ -195,15 +201,129 @@ async function expireOldPhotos() {
 // returning a clean JSON error (never the real error detail, matching
 // every other route's error handling in this app) fixes both.
 export async function POST(req: NextRequest) {
+  const startedAt = Date.now();
+  const ctx: AttemptContext = {};
+  let res: NextResponse;
   try {
-    return await handlePost(req);
+    res = await handlePost(req, ctx);
   } catch (err) {
     console.error("[POST /api/kiosk/scan] Unhandled error:", err);
-    return NextResponse.json({ error: "Internal server error." }, { status: 500 });
+    res = NextResponse.json({ error: "Internal server error." }, { status: 500 });
+  }
+  // After the response is decided and never awaited: the log can't slow down or change the answer.
+  void recordAttempt(req, res, ctx, startedAt);
+  return res;
+}
+
+/** What the handler learned along the way, for the attempt log (never the PIN or the photo). */
+interface AttemptContext {
+  rawEmployeeCode?: string;
+  body?: {
+    employeeCode: string;
+    action: "CHECK_IN" | "CHECK_OUT";
+    latitude?: number;
+    longitude?: number;
+    mocked?: boolean;
+    checkInMode?: string;
+    offline: boolean;
+  };
+  organizationId?: string;
+  userId?: string;
+  viaMobile?: boolean;
+  faceVerifyStatus?: "NOT_CHECKED" | "MATCHED" | "MISMATCH" | "UNAVAILABLE";
+  faceSimilarity?: number | null;
+  /** The photo that failed face verification — saved with the attempt, for that one case only. */
+  failedFacePhoto?: Uint8Array<ArrayBuffer>;
+}
+
+// The table only exists once its migration has been applied. If it's missing, stop trying for a while
+// instead of failing (and logging an error) on every single check-in.
+let attemptLogPausedUntil = 0;
+
+function reasonCodeFor(status: number, message: string | null, code: string | null, ctx: AttemptContext): string | null {
+  if (status >= 200 && status < 300) return null;
+  const m = message ?? "";
+  if (status >= 500) return "SERVER_ERROR";
+  if (status === 429) return "RATE_LIMITED";
+  if (ctx.faceVerifyStatus === "MISMATCH") return "FACE_MISMATCH";
+  if (code && code.startsWith("OFFLINE_")) return code;
+  if (/not recognized/i.test(m)) return "INVALID_PIN";
+  if (/mock location/i.test(m)) return "MOCK_LOCATION";
+  if (/outside/i.test(m)) return "OUTSIDE_AREA";
+  if (/location permission/i.test(m)) return "LOCATION_REQUIRED";
+  if (/already checked in/i.test(m)) return "ALREADY_CHECKED_IN";
+  if (/already checked out/i.test(m)) return "ALREADY_CHECKED_OUT";
+  if (/check in before/i.test(m)) return "NOT_CHECKED_IN";
+  if (/approved leave/i.test(m)) return "ON_LEAVE";
+  if (/photo is required/i.test(m)) return "PHOTO_REQUIRED";
+  if (/photo/i.test(m)) return "INVALID_PHOTO";
+  if (/odometer/i.test(m)) return "ODOMETER";
+  if (/organization/i.test(m) || /kiosk/i.test(m)) return "ORGANIZATION";
+  if (/invalid request|too large/i.test(m)) return "INVALID_REQUEST";
+  return "OTHER";
+}
+
+async function recordAttempt(req: NextRequest, res: NextResponse, ctx: AttemptContext, startedAt: number) {
+  try {
+    if (Date.now() < attemptLogPausedUntil) return;
+    // Cloned first, synchronously, before the framework starts sending the original body.
+    const clone = res.clone();
+    const body = (await clone.json().catch(() => null)) as {
+      id?: string;
+      error?: string;
+      code?: string;
+      idempotentReplay?: boolean;
+    } | null;
+    const status = res.status;
+    const ok = status >= 200 && status < 300;
+    const message = typeof body?.error === "string" ? body.error : null;
+    const employeeCode = ctx.body?.employeeCode ?? ctx.rawEmployeeCode;
+    // Nothing identifying the caller (an unreadable body): not worth a row.
+    if (!employeeCode) return;
+
+    const reasonCode = ok
+      ? body?.idempotentReplay
+        ? "REPLAY"
+        : null
+      : reasonCodeFor(status, message, body?.code ?? null, ctx);
+    const keepPhoto = reasonCode === "FACE_MISMATCH" && ctx.failedFacePhoto ? ctx.failedFacePhoto : null;
+
+    await prisma.checkInAttempt.create({
+      data: {
+        organizationId: ctx.organizationId ?? null,
+        userId: ctx.userId ?? null,
+        employeeCode: employeeCode.slice(0, 64),
+        action: ctx.body?.action ?? "UNKNOWN",
+        outcome: ok ? "SUCCESS" : status >= 500 ? "ERROR" : "REJECTED",
+        reasonCode,
+        reason: message ? message.slice(0, 500) : null,
+        httpStatus: status,
+        source: ctx.viaMobile ? "MOBILE" : "KIOSK",
+        offline: ctx.body?.offline ?? false,
+        ipAddress: getClientIp(req).slice(0, 64),
+        userAgent: req.headers.get("user-agent")?.slice(0, 300) ?? null,
+        latitude: ctx.body?.latitude ?? null,
+        longitude: ctx.body?.longitude ?? null,
+        mocked: ctx.body?.mocked ?? null,
+        checkInMode: ctx.body?.checkInMode ?? null,
+        faceVerifyStatus: ctx.faceVerifyStatus ?? "NOT_CHECKED",
+        faceSimilarity: ctx.faceSimilarity ?? null,
+        ...(keepPhoto ? { photo: keepPhoto, hasPhoto: true } : {}),
+        attendanceId: ok && body?.id ? body.id : null,
+        durationMs: Date.now() - startedAt,
+      },
+    });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && (err.code === "P2021" || err.code === "P2022")) {
+      attemptLogPausedUntil = Date.now() + 10 * 60_000;
+      console.warn("[scan] CheckInAttempt table not found — attempt logging paused. Apply the pending migration.");
+      return;
+    }
+    console.error("[scan] Could not write the attempt log:", err instanceof Error ? err.message : err);
   }
 }
 
-async function handlePost(req: NextRequest) {
+async function handlePost(req: NextRequest, ctx: AttemptContext) {
   const ip = getClientIp(req);
   if (await isRateLimited(`scan:${ip}`)) {
     return NextResponse.json(
@@ -221,10 +341,22 @@ async function handlePost(req: NextRequest) {
     }
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
+  if (json && typeof json === "object" && typeof (json as { employeeCode?: unknown }).employeeCode === "string") {
+    ctx.rawEmployeeCode = (json as { employeeCode: string }).employeeCode;
+  }
   const parsed = scanSchema.safeParse(json);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
+  ctx.body = {
+    employeeCode: parsed.data.employeeCode,
+    action: parsed.data.action,
+    latitude: parsed.data.latitude,
+    longitude: parsed.data.longitude,
+    mocked: parsed.data.mocked,
+    checkInMode: parsed.data.checkInMode,
+    offline: Boolean(parsed.data.offline),
+  };
 
   // Resolves which organization this kiosk belongs to, from the slug in its
   // own URL (see app/kiosk/[orgSlug]/page.tsx) — everything else below is
@@ -237,6 +369,8 @@ async function handlePost(req: NextRequest) {
   const org = mobileAuth
     ? await prisma.organization.findUnique({ where: { id: mobileAuth.organizationId }, select: { id: true, status: true } })
     : await resolveOrgBySlug(parsed.data.orgSlug);
+  ctx.viaMobile = Boolean(mobileAuth);
+  if (org) ctx.organizationId = org.id;
   if (!org) {
     return NextResponse.json({ error: "This kiosk isn't linked to an organization." }, { status: 401 });
   }
@@ -296,6 +430,7 @@ async function handlePost(req: NextRequest) {
       { status: 401 }
     );
   }
+  ctx.userId = user.id;
   if (!user.pinLookupHash && user.organizationId) {
     backfillPinLookupHash(user.id, user.organizationId, parsed.data.pin);
   }
@@ -392,11 +527,16 @@ async function handlePost(req: NextRequest) {
     } else if (result.outcome === "mismatch") {
       faceVerifyStatus = "MISMATCH";
       faceSimilarity = result.similarity;
+      ctx.faceVerifyStatus = faceVerifyStatus;
+      ctx.faceSimilarity = faceSimilarity;
+      ctx.failedFacePhoto = photoBuffer;
       return NextResponse.json({ error: result.message }, { status: 401 });
     } else {
       faceVerifyStatus = "UNAVAILABLE";
     }
   }
+  ctx.faceVerifyStatus = faceVerifyStatus;
+  ctx.faceSimilarity = faceSimilarity;
 
   // Loaded once and reused below — an employee can be on a different shift
   // on different weekdays (see lib/shiftAssignment.ts).
