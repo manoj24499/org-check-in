@@ -4,6 +4,7 @@ import { combineISTDateAndTime, istDateKey, parseDateOnlyKey, startOfISTDay } fr
 import { computeLateness } from "@/lib/shiftTime";
 import { loadShiftAssignments, shiftForDate } from "@/lib/shiftAssignment";
 import { getSettings } from "@/lib/settings";
+import { logAttendanceEvent } from "@/lib/attendanceEvents";
 
 /** How far back a manual entry (or request for one) may reach — today and the previous 7 days. */
 export const MANUAL_ENTRY_MAX_DAYS_BACK = 7;
@@ -78,7 +79,7 @@ export async function createManualAttendance(params: {
   const base = { userId, method: "MANUAL" as const, dayKey: times.dateKey, manualReason: reason, manualApprovedByName: approvedByName };
 
   try {
-    return await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       const checkIn = await tx.attendance.create({
         data: {
           ...base,
@@ -105,6 +106,22 @@ export async function createManualAttendance(params: {
       }
       return { checkIn, checkOut };
     });
+    void logAttendanceEvent({
+      userId,
+      organizationId,
+      attendanceId: result.checkIn.id,
+      kind: "MANUAL_ENTRY",
+      actor: "ADMIN",
+      summary: `Day entered by hand by ${approvedByName}: check-in ${times.checkInAt.toISOString()}, check-out ${times.checkOutAt.toISOString()}. Reason given: ${reason}`,
+      detail: {
+        approvedBy: approvedByName,
+        reason,
+        checkInAt: times.checkInAt.toISOString(),
+        checkOutAt: times.checkOutAt.toISOString(),
+        dateKey: times.dateKey,
+      },
+    });
+    return result;
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       throw new ManualEntryConflictError("That day already has a check-in or check-out recorded.");

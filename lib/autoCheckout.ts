@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { logAttendanceEvent } from "@/lib/attendanceEvents";
 import { sendPushNotification } from "@/lib/pushNotifications";
 import { istDateKey, istTimeOfDay } from "@/lib/istTime";
 import { combineDateAndShiftEndTime } from "@/lib/shiftTime";
@@ -110,7 +111,7 @@ export async function runAutoCheckout(
     }),
     prisma.shiftAssignment.findMany({
       where: { userId: { in: userIds } },
-      select: { userId: true, weekday: true, shift: { select: { startTime: true, endTime: true } } },
+      select: { userId: true, weekday: true, shift: { select: { name: true, startTime: true, endTime: true } } },
     }),
     prisma.overtimeRequest.findMany({
       where: { attendanceId: { in: open.map((c) => c.id) }, submittedAt: null },
@@ -146,6 +147,24 @@ export async function runAutoCheckout(
         data: { autoCheckoutWarnedAt: now },
       });
       if (claimed.count === 0) continue;
+      void logAttendanceEvent({
+        userId: c.userId,
+        attendanceId: c.id,
+        kind: "AUTO_CHECKOUT_WARNING",
+        actor: "SYSTEM",
+        summary: `Still checked in ${Math.round(AUTO_CHECKOUT_WARN_AFTER_MS / 60000)} minutes after the ${
+          overtimeEnd.has(c.id) ? "overtime end" : "shift end"
+        } (${formatIstTime(target)}): warned that an automatic check-out follows in ${Math.round(AUTO_CHECKOUT_GRACE_MS / 60000)} minutes.`,
+        detail: {
+          target: target.toISOString(),
+          checkInAt: c.timestamp.toISOString(),
+          ranAt: now.toISOString(),
+          shiftName: shift?.name ?? null,
+          shiftStart: shift?.startTime ?? null,
+          shiftEnd: shift?.endTime ?? null,
+          trigger: overtimeEnd.has(c.id) ? "OVERTIME_END" : "SHIFT_END",
+        },
+      });
       await sendPushNotification(
         c.userId,
         "Your shift has ended",
@@ -157,8 +176,9 @@ export async function runAutoCheckout(
 
     const endKm = c.odometerKm != null ? await estimateEndKm(c.id, c.userId, c.odometerKm, c.timestamp, target) : null;
 
+    let createdOut: { id: string } | undefined;
     try {
-      await prisma.$transaction([
+      [createdOut] = await prisma.$transaction([
         prisma.attendance.create({
           data: {
             userId: c.userId,
@@ -186,6 +206,30 @@ export async function runAutoCheckout(
       throw err;
     }
     checkedOut++;
+    const byOvertime = overtimeEnd.has(c.id);
+    void logAttendanceEvent({
+      userId: c.userId,
+      attendanceId: c.id,
+      kind: "AUTO_CHECKOUT",
+      actor: "SYSTEM",
+      summary: `Checked out automatically by the system at ${formatIstTime(target)}: the ${
+        byOvertime ? "approved overtime end time" : "assigned shift end"
+      } passed, the employee was still checked in${
+        c.autoCheckoutWarnedAt ? ` after the ${formatIstTime(c.autoCheckoutWarnedAt)} warning` : ""
+      }, and did not check out. The check-out is recorded at ${formatIstTime(target)}, not at the time the system acted (${formatIstTime(now)}).`,
+      detail: {
+        trigger: byOvertime ? "OVERTIME_END" : "SHIFT_END",
+        recordedAt: target.toISOString(),
+        ranAt: now.toISOString(),
+        checkInAt: c.timestamp.toISOString(),
+        shiftName: shift?.name ?? null,
+        shiftStart: shift?.startTime ?? null,
+        shiftEnd: shift?.endTime ?? null,
+        target: target.toISOString(),
+        warnedAt: c.autoCheckoutWarnedAt ? c.autoCheckoutWarnedAt.toISOString() : null,
+        checkOutId: createdOut?.id ?? null,
+      },
+    });
     await sendPushNotification(
       c.userId,
       "You were checked out automatically",

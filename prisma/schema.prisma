@@ -1352,6 +1352,13 @@ model CheckInAttempt {
   // /api/kiosk/scan). Never set for any other outcome.
   photo          Bytes?
   hasPhoto       Boolean  @default(false)
+  // Sent by the mobile app in request headers (see lib/clientInfo.ts): which build, on what phone, and what the
+  // employee pressed (SLIDE_TO_CONFIRM = the swipe button). Null for kiosks and older app versions.
+  appVersion     String?
+  platform       String?
+  osVersion      String?
+  deviceModel    String?
+  clientAction   String?
   // The Attendance row created, on success.
   attendanceId   String?
   durationMs     Int?
@@ -1360,4 +1367,33 @@ model CheckInAttempt {
   @@index([userId, createdAt])
   @@index([employeeCode, createdAt])
   @@index([outcome, createdAt])
+}
+
+// A decision or action that changed (or tried to change) someone's attendance WITHOUT the employee swiping:
+// the automatic check-out and the warning before it, an admin's manual entry, and every push notification
+// the system sent (and whether any device was registered to receive it). Together with CheckInAttempt (every
+// swipe) this lets an admin answer "what exactly happened to this person's day?". Best-effort, written after
+// the fact, never allowed to affect the thing it describes. No relations, so rows outlive a deleted employee.
+// Read by the separate monitoring site (checkin-monitor).
+model AttendanceEvent {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+  organizationId String?
+  userId         String
+  // The session this belongs to (the CHECK_IN row), when there is one.
+  attendanceId   String?
+  // AUTO_CHECKOUT_WARNING | AUTO_CHECKOUT | MANUAL_ENTRY | PUSH_SENT
+  kind           String
+  // SYSTEM | ADMIN
+  actor          String
+  // One plain-English sentence an admin can read as is.
+  summary        String
+  // Structured facts. AUTO_CHECKOUT: trigger (SHIFT_END | OVERTIME_END | PERMISSION_END | STALE_PREVIOUS_DAY),
+  // recordedAt, ranAt, checkInAt, shiftStart, shiftEnd, shiftName, target, warnedAt, checkOutId.
+  // PUSH_SENT: title, body, data, devices, delivered, errors.
+  detail         Json?
+
+  @@index([userId, createdAt])
+  @@index([attendanceId])
+  @@index([kind, createdAt])
 }

@@ -11,6 +11,7 @@ import { loadShiftAssignments, shiftForDate } from "@/lib/shiftAssignment";
 import { istDateKey } from "@/lib/istTime";
 import { requireMobileUser } from "@/lib/mobileAuth";
 import { trackingTokenMatches } from "@/lib/trackingToken";
+import { logAttendanceEvent } from "@/lib/attendanceEvents";
 import { MAX_STREAK_GAP_MS, GRACE_PERIOD_MS, STREAK_LENGTH, computePauseIntervals } from "@/lib/pauseReplay";
 import {
   findOpenSegment,
@@ -523,6 +524,23 @@ async function evaluateTimedPermission(
           },
         }),
       ]);
+      void logAttendanceEvent({
+        userId: checkIn.userId,
+        attendanceId: checkIn.id,
+        kind: "AUTO_CHECKOUT",
+        actor: "SYSTEM",
+        summary: `Checked out automatically: an approved permission (${permission.startTime.toISOString()} to ${permission.endTime.toISOString()}) ran through the assigned shift end, so there was no shift left to return to. Recorded at the permission end.`,
+        detail: {
+          trigger: "PERMISSION_END",
+          recordedAt: permission.endTime.toISOString(),
+          ranAt: new Date().toISOString(),
+          checkInAt: checkIn.timestamp.toISOString(),
+          shiftStart: shiftThatDay?.startTime ?? null,
+          shiftEnd: shiftThatDay?.endTime ?? null,
+          target: permission.endTime.toISOString(),
+          permissionId: permission.id,
+        },
+      });
       return { active: true, autoCheckedOut: true };
     }
 

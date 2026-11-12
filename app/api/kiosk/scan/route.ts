@@ -18,6 +18,8 @@ import { combineDateAndShiftEndTime, computeLateness } from "@/lib/shiftTime";
 import { loadShiftAssignments, shiftForDate, type WeekdayShiftMap } from "@/lib/shiftAssignment";
 import { startOfISTDay, endOfISTDay, todayDateOnlyIST, istDateKey, parseDateOnlyKey } from "@/lib/istTime";
 import { findActiveCheckIn } from "@/lib/activeSession";
+import { logAttendanceEvent } from "@/lib/attendanceEvents";
+import { readClientInfo } from "@/lib/clientInfo";
 
 const scanSchema = z.object({
   // Which organization this kiosk belongs to — sent by app/kiosk/[orgSlug]
@@ -104,7 +106,7 @@ async function autoCloseStaleCheckIns(user: { id: string }, shiftMap: WeekdayShi
     const checkoutAt = shiftEnd && shiftEnd > checkIn.timestamp ? shiftEnd : dayEnd;
 
     try {
-      await prisma.$transaction([
+      const [createdOut] = await prisma.$transaction([
         prisma.attendance.create({
           data: {
             userId: user.id,
@@ -135,6 +137,26 @@ async function autoCloseStaleCheckIns(user: { id: string }, shiftMap: WeekdayShi
           data: { submittedAt: checkoutAt },
         }),
       ]);
+      void logAttendanceEvent({
+        userId: user.id,
+        attendanceId: checkIn.id,
+        kind: "AUTO_CHECKOUT",
+        actor: "SYSTEM",
+        summary: `Checked out automatically when the employee started a NEW check-in: the earlier check-in of ${checkIn.timestamp.toISOString()} was never checked out, so it was closed at ${
+          shiftEnd && shiftEnd > checkIn.timestamp ? "that day's shift end" : "the end of that day"
+        } (${checkoutAt.toISOString()}).`,
+        detail: {
+          trigger: "STALE_PREVIOUS_DAY",
+          recordedAt: checkoutAt.toISOString(),
+          ranAt: new Date().toISOString(),
+          checkInAt: checkIn.timestamp.toISOString(),
+          shiftName: null,
+          shiftStart: shiftThatDay?.startTime ?? null,
+          shiftEnd: shiftThatDay?.endTime ?? null,
+          target: checkoutAt.toISOString(),
+          checkOutId: createdOut?.id ?? null,
+        },
+      });
     } catch (err) {
       // A (userId, type, dayKey) collision here means something else already
       // occupies this exact day's CHECK_OUT slot — seen in practice from
@@ -309,6 +331,7 @@ async function recordAttempt(req: NextRequest, res: NextResponse, ctx: AttemptCo
         faceVerifyStatus: ctx.faceVerifyStatus ?? "NOT_CHECKED",
         faceSimilarity: ctx.faceSimilarity ?? null,
         ...(keepPhoto ? { photo: keepPhoto, hasPhoto: true } : {}),
+        ...readClientInfo(req),
         attendanceId: ok && body?.id ? body.id : null,
         durationMs: Date.now() - startedAt,
       },

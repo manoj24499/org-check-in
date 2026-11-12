@@ -1,5 +1,6 @@
 import { Expo } from "expo-server-sdk";
 import { prisma } from "@/lib/prisma";
+import { logAttendanceEvent } from "@/lib/attendanceEvents";
 
 const expo = new Expo();
 
@@ -21,10 +22,32 @@ export async function sendPushNotification(
   try {
     const tokens = await prisma.pushToken.findMany({ where: { userId } });
     const validTokens = tokens.filter((t) => Expo.isExpoPushToken(t.token));
-    if (validTokens.length === 0) return;
+    if (validTokens.length === 0) {
+      // Worth knowing when a warning was never deliverable (no phone registered for notifications).
+      void logAttendanceEvent({
+        userId,
+        kind: "PUSH_SENT",
+        actor: "SYSTEM",
+        summary: `Notification "${title}" was NOT delivered: no device registered for push notifications.`,
+        detail: { title, body, ...(data ? { data } : {}), devices: 0, delivered: 0 },
+      });
+      return;
+    }
 
     const messages = validTokens.map((t) => ({ to: t.token, title, body, ...(data ? { data } : {}) }));
     const tickets = await expo.sendPushNotificationsAsync(messages);
+    const delivered = tickets.filter((t) => t.status === "ok").length;
+    const errors = tickets.flatMap((t) => (t.status === "error" ? [t.details?.error ?? t.message ?? "error"] : []));
+    void logAttendanceEvent({
+      userId,
+      kind: "PUSH_SENT",
+      actor: "SYSTEM",
+      summary:
+        delivered > 0
+          ? `Notification sent to the phone: "${title}".`
+          : `Notification "${title}" was NOT delivered (${errors.join(", ") || "rejected by the push service"}).`,
+      detail: { title, body, ...(data ? { data } : {}), devices: validTokens.length, delivered, errors },
+    });
 
     const staleTokens = validTokens.filter(
       (_, i) => tickets[i]?.status === "error" && tickets[i].details?.error === "DeviceNotRegistered",
