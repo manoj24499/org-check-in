@@ -359,26 +359,6 @@ export default function WfhLocationTable({
                     {error}
                   </div>
                 )}
-<<<<<<< HEAD
-
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setEditing(null)}
-                    className="flex-1 rounded-lg bg-white border border-border py-2.5 text-sm font-medium text-muted hover:bg-surface transition"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleSave}
-                    disabled={loading}
-                    className="flex-1 rounded-xl border border-transparent bg-orange-600 shadow-sm text-white py-2.5 text-sm font-medium hover:bg-orange-700 transition disabled:opacity-50"
-                  >
-                    {loading ? "Saving…" : "Save"}
-                  </button>
-                </div>
-=======
->>>>>>> 8dcde70cf2d83be9bca1089b5314993be477b54d
               </div>
             </div>
 
