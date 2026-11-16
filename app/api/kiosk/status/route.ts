@@ -43,6 +43,13 @@ export async function GET(req: NextRequest) {
   // to "default" for the plain, org-less /kiosk route kept for backward
   // compatibility.
   const auth = await requireMobileUser(req);
+  // A phone that sends a sign-in token which no longer checks out (the access token lasts 15 minutes) must be
+  // told so with a 401, so the app refreshes it and asks again. Treating it as an anonymous kiosk instead
+  // answered "no such employee", which the app showed as "Not checked in" and a 00:00:00 timer until it was
+  // refreshed by hand. The real kiosk sends no Authorization header at all, so it is unaffected.
+  if (!auth && req.headers.get("authorization")?.startsWith("Bearer ")) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   const orgId = auth
     ? auth.organizationId
     : (await resolveActiveOrgBySlug(req.nextUrl.searchParams.get("orgSlug") ?? "default"))?.id;
