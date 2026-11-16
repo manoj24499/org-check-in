@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { CalendarDays, ChevronDown, Clock, MapPinned, Route, Search, TriangleAlert } from "lucide-react";
 import VisitDatePicker from "./VisitDatePicker";
@@ -170,27 +170,34 @@ function EmployeeRoute({ employee }: { employee: HistoryEmployee }) {
   const [error, setError] = useState<string | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
 
-  const load = useCallback(
-    async (target: string) => {
-      setLoading(true);
-      setError(null);
+  // Fetches the chosen day. The loading/error state is reset where the day is picked (see `pick`), not here,
+  // so this effect only sets state after the request comes back — and a slow answer for a day the admin has
+  // already moved away from is ignored.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
       try {
-        const res = await fetch(`/api/admin/employees/${employee.id}/visited-places?date=${target}&view=route`, { cache: "no-store" });
+        const res = await fetch(`/api/admin/employees/${employee.id}/visited-places?date=${date}&view=route`, { cache: "no-store" });
         const body = await res.json();
         if (!res.ok) throw new Error(body.error ?? "Failed to load.");
-        setData(body as DayResponse);
+        if (!cancelled) setData(body as DayResponse);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load.");
+        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load.");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
-    },
-    [employee.id],
-  );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [date, employee.id]);
 
-  useEffect(() => {
-    void load(date);
-  }, [date, load]);
+  function pick(next: string) {
+    if (next === date) return;
+    setLoading(true);
+    setError(null);
+    setDate(next);
+  }
 
   const days = Array.from({ length: HISTORY_DAYS + 1 }, (_, i) => shiftKey(today, -i));
   const isRecent = days.includes(date);
@@ -224,7 +231,7 @@ function EmployeeRoute({ employee }: { employee: HistoryEmployee }) {
                   anyData
                   onSelect={(d) => {
                     setCalendarOpen(false);
-                    setDate(d);
+                    pick(d);
                   }}
                 />
                 <div className="mt-3 flex items-center gap-1.5 text-[11px] text-slate-500">
@@ -244,7 +251,7 @@ function EmployeeRoute({ employee }: { employee: HistoryEmployee }) {
               <button
                 key={d}
                 type="button"
-                onClick={() => setDate(d)}
+                onClick={() => pick(d)}
                 aria-current={active ? "true" : undefined}
                 className={`shrink-0 rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors ${
                   active

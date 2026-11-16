@@ -21,7 +21,17 @@ function getTheme(): Theme {
   return document.documentElement.getAttribute("data-admin-theme") === "dark" ? "dark" : "light";
 }
 
-export default function ThemeToggle({ compact = false }: { compact?: boolean }) {
+/**
+ * `rail` is for the desktop sidebar that widens on hover: the full button is always drawn (so the icon never
+ * moves) and its text and switch fade in and out with `open`.
+ */
+export default function ThemeToggle({
+  compact = false,
+  rail,
+}: {
+  compact?: boolean;
+  rail?: { open: boolean };
+}) {
   const theme = useSyncExternalStore(subscribe, getTheme, () => "light" as Theme);
   const isDark = theme === "dark";
 
@@ -43,6 +53,31 @@ export default function ThemeToggle({ compact = false }: { compact?: boolean }) 
   }
 
   const label = isDark ? "Switch to light theme" : "Switch to dark theme";
+
+  if (rail) {
+    const fade = `transition-opacity duration-200 ease-out ${rail.open ? "opacity-100 delay-100" : "pointer-events-none opacity-0"}`;
+    return (
+      <button
+        type="button"
+        role="switch"
+        aria-checked={isDark}
+        onClick={toggle}
+        title={rail.open ? undefined : label}
+        aria-label={label}
+        className="flex w-full items-center gap-3 rounded-lg py-2 pl-[15px] pr-3 text-[13px] text-muted-2 transition-colors hover:bg-black/[0.04] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+      >
+        {isDark ? <Moon className="h-[18px] w-[18px] shrink-0" /> : <Sun className="h-[18px] w-[18px] shrink-0" />}
+        <span className={fade}>{isDark ? "Dark theme" : "Light theme"}</span>
+        <span
+          className={`relative ml-auto h-5 w-9 shrink-0 rounded-full ${isDark ? "bg-orange-600" : "bg-slate-300"} ${fade} [transition-property:background-color,opacity]`}
+        >
+          <span
+            className={`absolute top-0.5 h-4 w-4 rounded-full bg-[#ffffff] shadow transition-all ${isDark ? "left-[18px]" : "left-0.5"}`}
+          />
+        </span>
+      </button>
+    );
+  }
 
   if (compact) {
     return (

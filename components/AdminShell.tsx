@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
@@ -18,8 +18,6 @@ import {
   MapPin,
   MapPinned,
   Menu,
-  PanelLeftClose,
-  PanelLeftOpen,
   Route,
   Settings,
   Timer,
@@ -72,28 +70,6 @@ const GROUPS: Group[] = [
   },
 ];
 
-const STORAGE_KEY = "admin_sidebar_collapsed";
-const CHANGE_EVENT = "admin-sidebar-change";
-
-// The collapse preference lives in localStorage; useSyncExternalStore keeps
-// server HTML and first client render in agreement (server snapshot is
-// always "expanded") and re-renders once the stored value is known.
-function subscribeCollapsed(cb: () => void) {
-  window.addEventListener(CHANGE_EVENT, cb);
-  window.addEventListener("storage", cb);
-  return () => {
-    window.removeEventListener(CHANGE_EVENT, cb);
-    window.removeEventListener("storage", cb);
-  };
-}
-function readCollapsed(): boolean {
-  try {
-    return localStorage.getItem(STORAGE_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
 function initials(name?: string | null): string {
   const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return "A";
@@ -102,8 +78,8 @@ function initials(name?: string | null): string {
 
 /**
  * The admin app shell: a left sidebar with grouped, icon-led navigation, a
- * user card and sign-out. On desktop (>= lg) it can collapse to an icon rail
- * (the choice is remembered per browser); below lg it becomes a slim top bar
+ * user card and sign-out. On desktop (>= lg) it rests as a slim icon rail and widens while
+ * the pointer (or keyboard focus) is on it, with the page resizing alongside it; below lg it becomes a slim top bar
  * that opens the same navigation as a slide-in drawer. `banner` (the face-
  * verification status strip) and `children` sit in the scrolling column to
  * the right, so only the page content scrolls and the sidebar stays put.
@@ -129,17 +105,32 @@ export default function AdminShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const collapsed = useSyncExternalStore(subscribeCollapsed, readCollapsed, () => false);
+  // Desktop sidebar: an icon rail that opens while hovered or holding keyboard focus.
+  const [hovered, setHovered] = useState(false);
+  // A short delay before opening or closing, so brushing the pointer past the edge does not flicker the page.
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function setHoverAfter(open: boolean, delayMs: number) {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    if (delayMs <= 0) setHovered(open);
+    else hoverTimer.current = setTimeout(() => setHovered(open), delayMs);
+  }
+  const openSoon = () => setHoverAfter(true, 90);
+  const openNow = () => setHoverAfter(true, 0);
+  const closeSoon = () => setHoverAfter(false, 180);
+  useEffect(
+    () => () => {
+      if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    },
+    [],
+  );
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  function toggleCollapsed() {
-    try {
-      localStorage.setItem(STORAGE_KEY, collapsed ? "0" : "1");
-    } catch {
-      // Storage can be blocked; the toggle just won't be remembered.
-    }
-    window.dispatchEvent(new Event(CHANGE_EVENT));
-  }
+  // The page resizes with the sidebar. Leaflet maps only re-measure on a window resize, so announce one when
+  // the width animation (300 ms) has finished, or a map would keep its old size and show grey tiles.
+  useEffect(() => {
+    const t = setTimeout(() => window.dispatchEvent(new Event("resize")), 340);
+    return () => clearTimeout(t);
+  }, [hovered]);
 
   // Lock page scroll behind the open drawer.
   useEffect(() => {
@@ -196,17 +187,34 @@ export default function AdminShell({
     notifications: notificationCount,
   };
 
-  function renderNav(compact: boolean) {
+  // `rail` = the desktop sidebar, which rests as a narrow icon strip and widens on hover. In the rail every
+  // icon keeps the same position in both states and only the text fades in and out, so nothing slides or
+  // pops while the width animates. Without `rail` (the phone drawer) everything is always shown in full.
+  const railOpen = hovered;
+  function fadeClass(rail: boolean) {
+    if (!rail) return "";
+    return `transition-opacity duration-200 ease-out ${railOpen ? "opacity-100 delay-100" : "pointer-events-none opacity-0"}`;
+  }
+
+  function renderNav(rail: boolean) {
+    const fade = fadeClass(rail);
     return (
       <nav className="flex flex-col gap-5" aria-label="Admin">
-        {GROUPS.map((group) => (
+        {GROUPS.map((group, gi) => (
           <div key={group.title} className="flex flex-col gap-0.5">
-            {compact ? (
-              <div className="mx-3 mb-1 h-px bg-border-soft first:hidden" />
+            {rail ? (
+              <div className="relative mb-1 h-4">
+                <p className={`absolute inset-x-0 top-0 px-3 text-[10.5px] font-medium tracking-[0.14em] uppercase text-muted-2 ${fade}`}>
+                  {group.title}
+                </p>
+                {gi > 0 && (
+                  <div
+                    className={`absolute inset-x-3 top-1/2 h-px bg-border-soft transition-opacity duration-200 ${railOpen ? "opacity-0" : "opacity-100 delay-100"}`}
+                  />
+                )}
+              </div>
             ) : (
-              <p className="px-3 pb-1 text-[10.5px] font-medium tracking-[0.14em] uppercase text-muted-2">
-                {group.title}
-              </p>
+              <p className="px-3 pb-1 text-[10.5px] font-medium tracking-[0.14em] uppercase text-muted-2">{group.title}</p>
             )}
             {group.items.map(({ href, label, icon: Icon, badge }) => {
               const active = pathname === href || pathname?.startsWith(`${href}/`);
@@ -215,30 +223,36 @@ export default function AdminShell({
                 <Link
                   key={href}
                   href={href}
-                  title={compact ? label : undefined}
+                  title={rail && !railOpen ? label : undefined}
                   data-tour={`nav-${href}`}
                   aria-current={active ? "page" : undefined}
                   onClick={() => setDrawerOpen(false)}
-                  className={`group relative flex items-center gap-3 rounded-lg px-3 py-2 text-[14px] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
-                    compact ? "justify-center" : ""
+                  className={`group relative flex items-center gap-3 rounded-lg py-2 text-[14px] transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
+                    rail ? "pl-[15px] pr-3" : "px-3"
                   } ${
                     active
                       ? "bg-primary/10 font-medium text-primary-dark"
-                      : "text-muted-2 hover:translate-x-0.5 hover:bg-black/[0.04] hover:text-foreground"
+                      : "text-muted-2 hover:bg-black/[0.04] hover:text-foreground"
                   }`}
                 >
                   {active && <span className="absolute -left-3 top-1.5 bottom-1.5 w-[3px] animate-[admin-fade_300ms_ease-out] rounded-r-full bg-primary" />}
                   <span className="relative shrink-0">
                     <Icon className="h-[18px] w-[18px]" strokeWidth={active ? 2 : 1.7} />
-                    {compact && count > 0 && (
-                      <span className="absolute -right-1.5 -top-1.5 grid h-3.5 min-w-3.5 place-items-center rounded-full bg-primary px-[3px] text-[8.5px] font-semibold leading-none text-white">
+                    {rail && count > 0 && (
+                      <span
+                        className={`absolute -right-1.5 -top-1.5 grid h-3.5 min-w-3.5 place-items-center rounded-full bg-primary px-[3px] text-[8.5px] font-semibold leading-none text-white transition-opacity duration-150 ${
+                          railOpen ? "opacity-0" : "opacity-100 delay-100"
+                        }`}
+                      >
                         {count}
                       </span>
                     )}
                   </span>
-                  {!compact && <span className="truncate">{label}</span>}
-                  {!compact && count > 0 && (
-                    <span className="ml-auto grid h-[19px] min-w-[19px] place-items-center rounded-full bg-primary px-1.5 text-[10.5px] font-semibold tabular-nums text-white">
+                  <span className={`truncate ${fade}`}>{label}</span>
+                  {count > 0 && (
+                    <span
+                      className={`ml-auto grid h-[19px] min-w-[19px] place-items-center rounded-full bg-primary px-1.5 text-[10.5px] font-semibold tabular-nums text-white ${fade}`}
+                    >
                       {count}
                     </span>
                   )}
@@ -251,7 +265,7 @@ export default function AdminShell({
     );
   }
 
-  function renderTourButton(compact: boolean) {
+  function renderTourButton(rail: boolean) {
     return (
       <button
         type="button"
@@ -259,39 +273,37 @@ export default function AdminShell({
           setDrawerOpen(false);
           window.dispatchEvent(new Event(TOUR_START_EVENT));
         }}
-        title={compact ? "Take a tour" : undefined}
+        title={rail && !railOpen ? "Take a tour" : undefined}
         aria-label="Take a tour"
-        className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-[13px] text-muted-2 transition-colors hover:bg-black/[0.04] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
-          compact ? "justify-center" : ""
+        className={`flex w-full items-center gap-3 rounded-lg py-2 text-[13px] text-muted-2 transition-colors hover:bg-black/[0.04] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
+          rail ? "pl-[15px] pr-3" : "px-3"
         }`}
       >
-        <Compass className="h-[18px] w-[18px]" />
-        {!compact && <span>Take a tour</span>}
+        <Compass className="h-[18px] w-[18px] shrink-0" />
+        <span className={fadeClass(rail)}>Take a tour</span>
       </button>
     );
   }
 
-  function renderUser(compact: boolean) {
+  function renderUser(rail: boolean) {
     return (
-      <div className={`flex items-center gap-3 ${compact ? "flex-col" : ""}`}>
+      <div className={`flex items-center gap-3 ${rail ? "pl-[6px]" : ""}`}>
         <span
-          title={compact ? (userName ?? "Admin") : undefined}
+          title={rail && !railOpen ? (userName ?? "Admin") : undefined}
           className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/15 text-[12px] font-semibold text-primary-dark"
         >
           {initials(userName)}
         </span>
-        {!compact && (
-          <div className="min-w-0 flex-1 leading-tight">
-            <p className="truncate text-[13px] font-medium text-foreground">{userName ?? "Admin"}</p>
-            <p className="text-[11.5px] text-muted-2">Administrator</p>
-          </div>
-        )}
+        <div className={`min-w-0 flex-1 leading-tight ${fadeClass(rail)}`}>
+          <p className="truncate text-[13px] font-medium text-foreground">{userName ?? "Admin"}</p>
+          <p className="text-[11.5px] text-muted-2">Administrator</p>
+        </div>
         <button
           type="button"
           onClick={() => signOut({ callbackUrl: "/login" })}
           title="Sign out"
           aria-label="Sign out"
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-2 transition-colors hover:bg-black/[0.05] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+          className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-2 transition-colors hover:bg-black/[0.05] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${fadeClass(rail)}`}
         >
           <LogOut className="h-4 w-4" />
         </button>
@@ -299,16 +311,14 @@ export default function AdminShell({
     );
   }
 
-  function renderBrand(compact: boolean) {
+  function renderBrand(rail: boolean) {
     return (
-      <div className={`flex items-center gap-2.5 ${compact ? "justify-center" : ""}`}>
-        <Logo variant="static" size={compact ? 26 : 24} className="shrink-0 text-foreground" />
-        {!compact && (
-          <div className="min-w-0 leading-tight">
-            <p className="text-[15px] font-medium tracking-[-0.02em] text-foreground">Inzivo</p>
-            <p className="truncate text-[11.5px] text-muted-2">{orgName ?? "Admin console"}</p>
-          </div>
-        )}
+      <div className={`flex items-center gap-2.5 ${rail ? "pl-6" : ""}`}>
+        <Logo variant="static" size={24} className="shrink-0 text-foreground" />
+        <div className={`min-w-0 leading-tight ${fadeClass(rail)}`}>
+          <p className="text-[15px] font-medium tracking-[-0.02em] text-foreground">Inzivo</p>
+          <p className="truncate text-[11.5px] text-muted-2">{orgName ?? "Admin console"}</p>
+        </div>
       </div>
     );
   }
@@ -317,34 +327,26 @@ export default function AdminShell({
     <div className="admin-root flex h-screen overflow-hidden bg-surface text-foreground">
       {/* Desktop sidebar */}
       <aside
-        className={`hidden shrink-0 flex-col border-r border-border bg-surface-2 transition-[width] duration-200 lg:flex ${
-          collapsed ? "w-[72px]" : "w-[256px]"
+        onMouseEnter={openSoon}
+        onMouseLeave={closeSoon}
+        onFocus={openNow}
+        onBlur={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) closeSoon();
+        }}
+        className={`hidden shrink-0 flex-col overflow-hidden whitespace-nowrap border-r border-border bg-surface-2 will-change-[width] transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] lg:flex ${
+          hovered ? "w-[256px]" : "w-[72px]"
         }`}
       >
-        <div className={`flex h-16 shrink-0 items-center border-b border-border-soft ${collapsed ? "px-0" : "px-5"}`}>
-          <div className={collapsed ? "w-full" : "flex-1"}>{renderBrand(collapsed)}</div>
-        </div>
+        <div className="flex h-16 shrink-0 items-center border-b border-border-soft">{renderBrand(true)}</div>
 
-        <div className={`no-scrollbar flex-1 overflow-y-auto py-5 ${collapsed ? "px-3" : "px-4"}`}>{renderNav(collapsed)}</div>
+        <div className="no-scrollbar flex-1 overflow-y-auto px-3 py-5">{renderNav(true)}</div>
 
-        <div className={`shrink-0 border-t border-border-soft ${collapsed ? "px-3 py-3" : "px-4 py-3"}`}>
-          <div className="mb-1">{renderTourButton(collapsed)}</div>
-          <div className="mb-1">
-            <ThemeToggle compact={collapsed} />
+        <div className="shrink-0 border-t border-border-soft px-3 py-3">
+          <div className="mb-1">{renderTourButton(true)}</div>
+          <div className="mb-3">
+            <ThemeToggle rail={{ open: hovered }} />
           </div>
-          <button
-            type="button"
-            onClick={toggleCollapsed}
-            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className={`mb-3 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-[13px] text-muted-2 transition-colors hover:bg-black/[0.04] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
-              collapsed ? "justify-center" : ""
-            }`}
-          >
-            {collapsed ? <PanelLeftOpen className="h-[18px] w-[18px]" /> : <PanelLeftClose className="h-[18px] w-[18px]" />}
-            {!collapsed && <span>Collapse</span>}
-          </button>
-          {renderUser(collapsed)}
+          {renderUser(true)}
         </div>
       </aside>
 
