@@ -28,11 +28,14 @@ export default function VisitDatePicker({
   userId,
   selectedDate,
   onSelect,
+  anyData = false,
 }: {
   userId: string;
   /** "YYYY-MM-DD" */
   selectedDate: string;
   onSelect: (date: string) => void;
+  /** Dot every day that has any location data (Hybrid / Work-from-home history), not just days with travel. */
+  anyData?: boolean;
 }) {
   const selected = new Date(`${selectedDate}T00:00:00`);
   const [viewDate, setViewDate] = useState(
@@ -55,7 +58,7 @@ export default function VisitDatePicker({
   useEffect(() => {
     let cancelled = false;
     const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
-    fetch(`/api/admin/employees/${userId}/field-visit-days?month=${monthKey}`)
+    fetch(`/api/admin/employees/${userId}/field-visit-days?month=${monthKey}${anyData ? "&any=1" : ""}`)
       .then((res) => (res.ok ? res.json() : { days: [] }))
       .then((body) => {
         if (!cancelled) setTravelDays(new Set(body.days ?? []));
@@ -66,7 +69,7 @@ export default function VisitDatePicker({
     return () => {
       cancelled = true;
     };
-  }, [userId, year, month]);
+  }, [userId, year, month, anyData]);
 
   const monthStartWeekday = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -140,7 +143,7 @@ export default function VisitDatePicker({
  ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/40"
  : "text-muted-2 hover:bg-primary/10 hover:text-primary"
  } ${isFuture ? "cursor-not-allowed opacity-30" : "cursor-pointer"}`}
-              title={traveled ? "Logged a field visit this day" : undefined}
+              title={traveled ? (anyData ? "Location data recorded this day" : "Logged a field visit this day") : undefined}
             >
               {day}
               {traveled && (

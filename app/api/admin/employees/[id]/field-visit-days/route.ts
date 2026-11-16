@@ -85,8 +85,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       if (list) list.push(p);
       else pingsByDay.set(day, [p]);
     }
+    // `any=1` (the Location history page for Hybrid / Work-from-home staff): mark every day that has location
+    // data at all, not only days with real travel — these employees mostly stay put.
+    const anyData = req.nextUrl.searchParams.get("any") === "1";
     for (const [day, dayPings] of pingsByDay) {
-      if (computeTotalDistanceMeters(dayPings) >= MIN_TRAVEL_DISTANCE_METERS) traveledDays.add(day);
+      if (anyData || computeTotalDistanceMeters(dayPings) >= MIN_TRAVEL_DISTANCE_METERS) traveledDays.add(day);
     }
   }
 

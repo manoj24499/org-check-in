@@ -20,6 +20,7 @@ import {
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
+  Route,
   Settings,
   Timer,
   Users,
@@ -47,6 +48,7 @@ const GROUPS: Group[] = [
     items: [
       { href: "/admin/employees", label: "Employees", icon: Users },
       { href: "/admin/field-workers", label: "Field workers", icon: MapPinned },
+      { href: "/admin/location-history", label: "Location history", icon: Route },
       { href: "/admin/shifts", label: "Shifts", icon: CalendarClock },
       { href: "/admin/leave-balances", label: "Leave balances", icon: CalendarCheck },
     ],

@@ -34,8 +34,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!employee) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
   const day = parseDateParam(req.nextUrl.searchParams.get("date"));
+  // The Location history page (Hybrid / Work-from-home employees) only needs the route, not the field-work
+  // extras: no stop clustering (which would geocode every place) and no reimbursement. It also follows an
+  // overnight session past midnight so the whole shift's route is on one day.
+  const routeOnly = req.nextUrl.searchParams.get("view") === "route";
 
-  const [pings, mostRecentPing, dayRecords, settings, existingReimbursement] = await Promise.all([
+  const [pingsToday, mostRecentPing, dayRecords, settings, existingReimbursement] = await Promise.all([
     prisma.locationPing.findMany({
       where: { userId: id, timestamp: { gte: startOfISTDay(day), lte: endOfISTDay(day) } },
       orderBy: { timestamp: "asc" },
@@ -85,6 +89,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       },
     });
     if (after?.type === "CHECK_OUT") checkOut = after;
+  }
+
+  // Overnight session (route-only view): the route carries on after midnight until the check-out.
+  let pings = pingsToday;
+  if (routeOnly && checkIn && checkOut && checkOut.timestamp > endOfISTDay(day)) {
+    const spill = await prisma.locationPing.findMany({
+      where: { userId: id, timestamp: { gt: endOfISTDay(day), lte: new Date(checkOut.timestamp.getTime() + 10 * 60_000) } },
+      orderBy: { timestamp: "asc" },
+    });
+    pings = [...pingsToday, ...spill];
   }
 
   // Field/Office hour split — only meaningful once the day has actually
@@ -137,7 +151,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   // merged places are reverse-geocoded; Nominatim's ~1 req/sec policy is
   // enforced inside reverseGeocode itself, and a place the employee logged by
   // hand uses their own name, so it needs no lookup at all.
-  const groups = buildPlaces(clusterPings(fieldPings), fieldVisits);
+  const groups = routeOnly ? [] : buildPlaces(clusterPings(fieldPings), fieldVisits);
   const places = await Promise.all(
     groups.map(async (g, i) => {
       const loggedName = g.logged[0]?.name ?? null;
@@ -185,6 +199,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       : null,
     currentMode,
     workMode: employee.workMode,
+    // The day's office / home / transit / field timeline, in order (Hybrid shows where each stretch was spent).
+    segments: todaysCheckIns
+      .flatMap((c) => c.workSegments)
+      .sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime())
+      .map((s) => ({ mode: s.mode, startedAt: s.startedAt, endedAt: s.endedAt })),
+    pingCount: pings.length,
     officeMinutes,
     pings: drawnPings.map((p) => ({ latitude: p.latitude, longitude: p.longitude, timestamp: p.timestamp })),
     places,
