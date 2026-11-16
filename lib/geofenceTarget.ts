@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { User } from "@prisma/client";
-import type { GeofenceTarget } from "@/lib/geofence";
+import { haversineDistanceMeters, type GeofenceTarget } from "@/lib/geofence";
 
 export type { GeofenceTarget };
 
@@ -20,11 +20,13 @@ export async function resolveGeofenceTarget(
   user: Pick<
     User,
     "workMode" | "homeLatitude" | "homeLongitude" | "homeRadiusMeters" | "organizationId"
-  >,
+  > &
+    Partial<Pick<User, "home2Latitude" | "home2Longitude" | "home2RadiusMeters">>,
+  near?: { latitude: number; longitude: number } | null,
 ): Promise<GeofenceTarget | null> {
   if (user.workMode === "FIELD") return null;
 
-  if (user.workMode === "WFH") return resolveHomeTarget(user);
+  if (user.workMode === "WFH") return resolveHomeTarget(user, near);
 
   // HYBRID: the office is the profile's default place (e.g. the shared office
   // kiosk's anonymous status lookup). Everything segment-aware — the check-in
@@ -40,14 +42,25 @@ export async function resolveGeofenceTarget(
  * is saved. Pure — no database access.
  */
 export function resolveHomeTarget(
-  user: Pick<User, "homeLatitude" | "homeLongitude" | "homeRadiusMeters">,
+  user: Pick<User, "homeLatitude" | "homeLongitude" | "homeRadiusMeters"> &
+    Partial<Pick<User, "home2Latitude" | "home2Longitude" | "home2RadiusMeters">>,
+  near?: { latitude: number; longitude: number } | null,
 ): GeofenceTarget | null {
-  if (user.homeLatitude == null || user.homeLongitude == null) return null;
-  return {
-    latitude: user.homeLatitude,
-    longitude: user.homeLongitude,
-    radiusMeters: user.homeRadiusMeters,
-  };
+  const first: GeofenceTarget | null =
+    user.homeLatitude == null || user.homeLongitude == null
+      ? null
+      : { latitude: user.homeLatitude, longitude: user.homeLongitude, radiusMeters: user.homeRadiusMeters };
+  const second: GeofenceTarget | null =
+    user.home2Latitude == null || user.home2Longitude == null
+      ? null
+      : { latitude: user.home2Latitude, longitude: user.home2Longitude, radiusMeters: user.home2RadiusMeters ?? 50 };
+  if (!second) return first;
+  if (!first) return second;
+  // Two homes: with a position, whichever circle the person is in (or, if in neither, is closest to);
+  // without one, the first. The rest of the app keeps working with a single target either way.
+  if (!near) return first;
+  const gap = (t: GeofenceTarget) => haversineDistanceMeters(near.latitude, near.longitude, t.latitude, t.longitude) - t.radiusMeters;
+  return gap(second) < gap(first) ? second : first;
 }
 
 /**

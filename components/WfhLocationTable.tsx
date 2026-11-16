@@ -24,7 +24,13 @@ type WfhEmployee = {
   homeLatitude: number | null;
   homeLongitude: number | null;
   homeRadiusMeters: number;
+  // Optional second home (Work-from-home list only).
+  home2Latitude?: number | null;
+  home2Longitude?: number | null;
+  home2RadiusMeters?: number;
 };
+
+type Place = { lat: number; lng: number; r: number };
 
 interface WfhLocationTableProps {
   employees: WfhEmployee[];
@@ -69,9 +75,19 @@ export default function WfhLocationTable({
   const [query, setQuery] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [editing, setEditing] = useState<WfhEmployee | null>(null);
-  const [latitude, setLatitude] = useState(0);
-  const [longitude, setLongitude] = useState(0);
-  const [radiusMeters, setRadiusMeters] = useState<number>(copy.defaultRadius);
+  // Up to two places for WFH: the first home, and an optional second one (tab picks which is being edited).
+  const [p1, setP1] = useState<Place>({ lat: 0, lng: 0, r: copy.defaultRadius });
+  const [p2, setP2] = useState<Place | null>(null);
+  const [tab, setTab] = useState<1 | 2>(1);
+  const cur = tab === 2 && p2 ? p2 : p1;
+  const latitude = cur.lat;
+  const longitude = cur.lng;
+  const radiusMeters = cur.r;
+  const patchCur = (patch: Partial<Place>) =>
+    tab === 2 && p2 ? setP2({ ...p2, ...patch }) : setP1({ ...p1, ...patch });
+  const setLatitude = (v: number) => patchCur({ lat: v });
+  const setLongitude = (v: number) => patchCur({ lng: v });
+  const setRadiusMeters = (v: number) => patchCur({ r: v });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -95,9 +111,13 @@ export default function WfhLocationTable({
 
   function openEdit(emp: WfhEmployee) {
     setEditing(emp);
-    setLatitude(emp.homeLatitude ?? 0);
-    setLongitude(emp.homeLongitude ?? 0);
-    setRadiusMeters(emp.homeRadiusMeters ?? copy.defaultRadius);
+    setP1({ lat: emp.homeLatitude ?? 0, lng: emp.homeLongitude ?? 0, r: emp.homeRadiusMeters ?? copy.defaultRadius });
+    setP2(
+      emp.home2Latitude != null && emp.home2Longitude != null
+        ? { lat: emp.home2Latitude, lng: emp.home2Longitude, r: emp.home2RadiusMeters ?? copy.defaultRadius }
+        : null,
+    );
+    setTab(1);
     setError(null);
   }
 
@@ -124,9 +144,12 @@ export default function WfhLocationTable({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: copy.action,
-        latitude,
-        longitude,
-        radiusMeters,
+        latitude: p1.lat,
+        longitude: p1.lng,
+        radiusMeters: p1.r,
+        ...(mode === "WFH"
+          ? { second: p2 ? { latitude: p2.lat, longitude: p2.lng, radiusMeters: p2.r } : null }
+          : {}),
       }),
     });
     const data = await res
@@ -236,6 +259,11 @@ export default function WfhLocationTable({
                   </td>
                   <td className="px-6 py-4 text-secondary">
                     {Math.round(emp.homeRadiusMeters)}m
+                    {mode === "WFH" && emp.home2Latitude != null && (
+                      <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary-dark">
+                        + 2nd home
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-4">
                     <Pill tone={emp.active ? "green" : "slate"} dot>{emp.active ? "Active" : "Inactive"}</Pill>
@@ -302,7 +330,58 @@ export default function WfhLocationTable({
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
+              {mode === "WFH" && (
+                <div className="flex flex-wrap items-center gap-2 border-b border-border-soft px-6 py-3">
+                  <button
+                    type="button"
+                    onClick={() => setTab(1)}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${tab === 1 ? "bg-primary/10 text-primary-dark" : "text-muted-2 hover:bg-black/[0.04]"}`}
+                  >
+                    Home 1
+                  </button>
+                  {p2 ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setTab(2)}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${tab === 2 ? "bg-primary/10 text-primary-dark" : "text-muted-2 hover:bg-black/[0.04]"}`}
+                      >
+                        Home 2
+                      </button>
+                      {tab === 2 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setP2(null);
+                            setTab(1);
+                          }}
+                          className="ml-auto text-xs font-medium text-red-600 hover:underline"
+                        >
+                          Remove second home
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Start the second pin a little way from the first so it is visible on the map.
+                        setP2({ lat: p1.lat + 0.001, lng: p1.lng + 0.001, r: p1.r });
+                        setTab(2);
+                      }}
+                      className="inline-flex items-center gap-1 rounded-lg border border-dashed border-border px-3 py-1.5 text-xs font-medium text-muted-2 hover:bg-black/[0.03]"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Add second home
+                    </button>
+                  )}
+                  <p className="basis-full text-xs text-secondary">
+                    Checking in inside either circle counts as home.
+                  </p>
+                </div>
+              )}
               <OfficeLocationMap
+                key={tab}
                 latitude={latitude}
                 longitude={longitude}
                 radiusMeters={radiusMeters}

@@ -26,6 +26,15 @@ const actionSchema = z.object({
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
   radiusMeters: z.number().min(1).max(100_000).optional(),
+  // Optional second home for update-wfh-location; null removes it.
+  second: z
+    .object({
+      latitude: z.number().min(-90).max(90),
+      longitude: z.number().min(-180).max(180),
+      radiusMeters: z.number().min(1).max(100_000).optional(),
+    })
+    .nullable()
+    .optional(),
   enabled: z.boolean().optional(),
   // For "set-face-verification-exempt" only.
   exempt: z.boolean().optional(),
@@ -150,6 +159,16 @@ export async function PATCH(
         homeLatitude: parsed.data.latitude,
         homeLongitude: parsed.data.longitude,
         homeRadiusMeters: parsed.data.radiusMeters ?? DEFAULT_GEOFENCE_RADIUS_METERS,
+        // Second home: set when given, removed on null, left alone when the field is absent.
+        ...(parsed.data.second === undefined
+          ? {}
+          : parsed.data.second === null
+            ? { home2Latitude: null, home2Longitude: null, home2RadiusMeters: DEFAULT_GEOFENCE_RADIUS_METERS }
+            : {
+                home2Latitude: parsed.data.second.latitude,
+                home2Longitude: parsed.data.second.longitude,
+                home2RadiusMeters: parsed.data.second.radiusMeters ?? DEFAULT_GEOFENCE_RADIUS_METERS,
+              }),
       },
     });
     return NextResponse.json({
@@ -184,6 +203,8 @@ export async function PATCH(
         homeLatitude: parsed.data.latitude,
         homeLongitude: parsed.data.longitude,
         homeRadiusMeters: parsed.data.radiusMeters ?? HYBRID_DEFAULT_HOME_RADIUS_METERS,
+        home2Latitude: null,
+        home2Longitude: null,
       },
     });
     return NextResponse.json({
@@ -205,6 +226,9 @@ export async function PATCH(
         homeLatitude: null,
         homeLongitude: null,
         homeRadiusMeters: DEFAULT_GEOFENCE_RADIUS_METERS,
+        home2Latitude: null,
+        home2Longitude: null,
+        home2RadiusMeters: DEFAULT_GEOFENCE_RADIUS_METERS,
       },
     });
     return NextResponse.json({ ok: true });
@@ -276,6 +300,9 @@ export async function PATCH(
         homeLatitude: null,
         homeLongitude: null,
         homeRadiusMeters: DEFAULT_GEOFENCE_RADIUS_METERS,
+        home2Latitude: null,
+        home2Longitude: null,
+        home2RadiusMeters: DEFAULT_GEOFENCE_RADIUS_METERS,
       },
     });
     return NextResponse.json({ workMode: updated.workMode });

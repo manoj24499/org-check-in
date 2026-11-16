@@ -84,7 +84,12 @@ export async function GET(req: NextRequest) {
   // workers/employees with no location set aren't blocked from a feature
   // that was never gated for them elsewhere either.
   if (!auth) {
-    const target = await resolveGeofenceTarget(user);
+    const qLat = Number(req.nextUrl.searchParams.get("latitude"));
+    const qLng = Number(req.nextUrl.searchParams.get("longitude"));
+    const target = await resolveGeofenceTarget(
+      user,
+      Number.isFinite(qLat) && Number.isFinite(qLng) ? { latitude: qLat, longitude: qLng } : null,
+    );
     if (target) {
       const lat = Number(req.nextUrl.searchParams.get("latitude"));
       const lng = Number(req.nextUrl.searchParams.get("longitude"));

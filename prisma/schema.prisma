@@ -461,6 +461,10 @@ model User {
   homeLatitude     Float?
   homeLongitude    Float?
   homeRadiusMeters Float    @default(50)
+  // Optional second home (WFH only): checking in or being tracked inside either circle counts as home.
+  home2Latitude     Float?
+  home2Longitude    Float?
+  home2RadiusMeters Float   @default(50)
 
   // Per-employee opt-in for face verification at check-in (see
   // /api/kiosk/scan and lib/faceVerify.ts). Normally flipped on

@@ -35,6 +35,9 @@ export default async function OfficeLocationPage() {
           homeLatitude: true,
           homeLongitude: true,
           homeRadiusMeters: true,
+          home2Latitude: true,
+          home2Longitude: true,
+          home2RadiusMeters: true,
         },
       }),
       prisma.user.findMany({

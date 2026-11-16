@@ -81,11 +81,12 @@ async function evaluateRangeStreak(
 async function resolveSessionTarget(
   user: Parameters<typeof resolveGeofenceTarget>[0],
   checkInMode: CheckInMode | null,
+  near?: { latitude: number; longitude: number } | null,
 ): Promise<GeofenceTarget | null> {
   if (user.workMode === "WFH" && checkInMode === "OFFICE") {
     return user.organizationId ? resolveOfficeLocationTarget(user.organizationId) : null;
   }
-  return resolveGeofenceTarget(user);
+  return resolveGeofenceTarget(user, near);
 }
 
 /**
@@ -553,7 +554,7 @@ async function evaluateTimedPermission(
         ? null
         : user.workMode === "HYBRID"
           ? await resolveHybridCurrentTarget(checkIn.id, user)
-          : await resolveSessionTarget(user, checkIn.checkInMode);
+          : await resolveSessionTarget(user, checkIn.checkInMode, ping);
     if (!target) {
       await prisma.attendancePause.update({
         where: { id: permission.pause.id },
@@ -848,7 +849,7 @@ export async function POST(req: NextRequest) {
           : null
         : user.workMode === "HYBRID"
           ? hybridTarget
-          : await resolveSessionTarget(user, checkIn.checkInMode);
+          : await resolveSessionTarget(user, checkIn.checkInMode, ping);
     await evaluatePauseState(checkIn, target, ping, { skipWarningPush: user.workMode === "HYBRID" });
   }
 

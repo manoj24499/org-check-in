@@ -684,7 +684,12 @@ async function handlePost(req: NextRequest, ctx: AttemptContext) {
         { status: 409 },
       );
     }
-    const target = await resolveGeofenceTarget({ ...user, workMode: effectiveWorkMode });
+    const target = await resolveGeofenceTarget(
+      { ...user, workMode: effectiveWorkMode },
+      parsed.data.latitude !== undefined && parsed.data.longitude !== undefined
+        ? { latitude: parsed.data.latitude, longitude: parsed.data.longitude }
+        : null,
+    );
     if (target) {
       if (parsed.data.latitude === undefined || parsed.data.longitude === undefined) {
         return NextResponse.json(
