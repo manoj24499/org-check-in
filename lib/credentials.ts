@@ -177,12 +177,43 @@ export async function isPinTakenByAnotherEmployee(
     where: { ...base, pinHash: { not: null }, pinLookupHash: null },
     select: { pinHash: true },
   });
-  for (const other of legacy) {
-    if (other.pinHash && (await bcrypt.compare(pin, other.pinHash))) {
-      return true;
+  const hashes = legacy.map((u) => u.pinHash).filter((h): h is string => !!h);
+  if (hashes.length === 0) return false;
+
+  // Native bcrypt compares on libuv's thread pool, so a batch runs on several cores at once; bcryptjs
+  // (the fallback) is single-threaded JS, so batching gains nothing there. A time budget bounds the
+  // worst case: past it the remaining legacy PINs go unchecked (they get the fast lookup hash the next
+  // time each employee signs in, so this window shrinks daily), and we log it.
+  const { compare, parallel } = await getBcryptCompare();
+  const deadline = Date.now() + LEGACY_SCAN_BUDGET_MS;
+  for (let i = 0; i < hashes.length; i += parallel) {
+    if (Date.now() > deadline) {
+      console.warn(`[isPinTakenByAnotherEmployee] Legacy scan hit its time budget after ${i}/${hashes.length} hashes.`);
+      return false;
     }
+    const results = await Promise.all(hashes.slice(i, i + parallel).map((h) => compare(pin, h)));
+    if (results.some(Boolean)) return true;
   }
   return false;
+}
+
+const LEGACY_SCAN_BUDGET_MS = 8000;
+
+type BcryptCompare = (pin: string, hash: string) => Promise<boolean>;
+let compareImpl: { compare: BcryptCompare; parallel: number } | undefined;
+
+/** Native `bcrypt` when it loads (about 3x faster, multi-threaded); bcryptjs otherwise. */
+async function getBcryptCompare() {
+  if (compareImpl) return compareImpl;
+  try {
+    const native = await import("bcrypt");
+    const compare = (native.compare ?? native.default?.compare) as BcryptCompare;
+    compareImpl = { compare, parallel: 4 };
+  } catch {
+    console.warn("[credentials] Native bcrypt unavailable, using bcryptjs for the legacy PIN scan.");
+    compareImpl = { compare: (p, h) => bcrypt.compare(p, h), parallel: 1 };
+  }
+  return compareImpl;
 }
 
 /** Builds the next sequential employee code, e.g. EMP001, EMP002... */

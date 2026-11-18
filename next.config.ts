@@ -42,6 +42,8 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Native addon: must be required at runtime, not bundled (used for the fast PIN-uniqueness scan).
+  serverExternalPackages: ["bcrypt"],
   async headers() {
     return [
       {

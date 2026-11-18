@@ -92,14 +92,24 @@ async function autoCloseStaleCheckIns(user: { id: string }, shiftMap: WeekdayShi
     select: { id: true, timestamp: true },
   });
 
+  if (staleCheckIns.length === 0) return;
+
+  // One query for every check-out in the backlog's range, matched in memory. This used to be one
+  // findFirst per old check-in (hundreds, one after another, each a round trip to the database), which
+  // made every check-in take 15+ seconds for anyone with months of history.
+  const checkOutTimes = (
+    await prisma.attendance.findMany({
+      where: { userId: user.id, type: "CHECK_OUT", timestamp: { gt: staleCheckIns[0].timestamp } },
+      select: { timestamp: true },
+    })
+  ).map((r) => r.timestamp.getTime());
+
   for (const checkIn of staleCheckIns) {
     const dayEnd = endOfISTDay(checkIn.timestamp);
 
-    const hasCheckOutThatDay = await prisma.attendance.findFirst({
-      where: { userId: user.id, type: "CHECK_OUT", timestamp: { gt: checkIn.timestamp, lte: dayEnd } },
-      select: { id: true },
-    });
-    if (hasCheckOutThatDay) continue;
+    const start = checkIn.timestamp.getTime();
+    const end = dayEnd.getTime();
+    if (checkOutTimes.some((t) => t > start && t <= end)) continue;
 
     const shiftThatDay = shiftForDate(shiftMap, checkIn.timestamp);
     const shiftEnd = shiftThatDay ? combineDateAndShiftEndTime(checkIn.timestamp, shiftThatDay) : null;
