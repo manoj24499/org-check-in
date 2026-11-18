@@ -134,6 +134,72 @@ export default function ShiftTable({ shifts: initialShifts, allEmployees }: Shif
     return (userId, weekday) => index.get(userId)?.get(weekday) ?? null;
   }, [shifts]);
 
+  // Per-employee edits from the shift card: click a weekday chip to add/remove that day, or the X to take
+  // the employee off the shift. Updates the card straight away and rolls back if the save fails.
+  const [savingEmployeeId, setSavingEmployeeId] = useState<string | null>(null);
+  const [rosterError, setRosterError] = useState<string | null>(null);
+
+  async function saveEmployeeDays(shift: Shift, employeeId: string, weekdays: number[]) {
+    const previous = shifts;
+    const emp = allEmployees.find((e) => e.id === employeeId);
+    const existing = shift.assignments.find((a) => a.user.id === employeeId);
+    const userInfo = existing?.user ?? (emp ? { id: emp.id, employeeCode: emp.employeeCode, name: emp.name, createdAt: new Date().toISOString() } : null);
+    if (!userInfo) return;
+    setRosterError(null);
+    setSavingEmployeeId(employeeId);
+    setShifts((prev) =>
+      prev.map((s) => {
+        // Drop this employee's days on this shift, and on any other shift for the days being set.
+        const kept = s.assignments.filter(
+          (a) => !(a.user.id === employeeId && (s.id === shift.id || weekdays.includes(a.weekday))),
+        );
+        return s.id === shift.id
+          ? { ...s, assignments: [...kept, ...weekdays.map((weekday) => ({ weekday, user: userInfo }))] }
+          : { ...s, assignments: kept };
+      }),
+    );
+    try {
+      const res = await fetch(`/api/admin/shifts/${shift.id}/assignments`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employeeId, weekdays }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Couldn't save the change.");
+      }
+      router.refresh();
+    } catch (e) {
+      setShifts(previous);
+      setRosterError(e instanceof Error ? e.message : "Couldn't save the change.");
+    } finally {
+      setSavingEmployeeId(null);
+    }
+  }
+
+  function toggleEmployeeDay(shift: Shift, employeeId: string, weekday: number) {
+    const current = new Set(shift.assignments.filter((a) => a.user.id === employeeId).map((a) => a.weekday));
+    if (current.has(weekday)) {
+      current.delete(weekday);
+    } else {
+      const other = getConflict(employeeId, weekday);
+      if (
+        other &&
+        other.shiftId !== shift.id &&
+        !confirm(`This employee is on "${other.label}" on ${WEEKDAY_SHORT[weekday]}. Move that day to this shift?`)
+      ) {
+        return;
+      }
+      current.add(weekday);
+    }
+    void saveEmployeeDays(shift, employeeId, [...current].sort());
+  }
+
+  function removeEmployee(shift: Shift, employeeId: string, name: string) {
+    if (!confirm(`Remove ${name} from "${shift.name || formatTimeLabel(shift.startTime)}"? They'll have no shift on these days.`)) return;
+    void saveEmployeeDays(shift, employeeId, []);
+  }
+
   function openAdd() {
     setEditing({ id: null, name: "", startTime: "09:00", endTime: "18:00", weekdays: [1, 2, 3, 4, 5] });
     setError(null);
@@ -224,7 +290,8 @@ export default function ShiftTable({ shifts: initialShifts, allEmployees }: Shif
         subtitle={
           <>
             Office and field employees are marked Permission or Half-day leave when they check in late for their shift, and everyone
-            with a shift gets a reminder near its end. Assign weekly schedules from each{" "}
+            with a shift gets a reminder near its end. Use Bulk assign to add people, click a day chip to change one
+            person's days, or the X to remove them. A full weekly schedule can also be set from each{" "}
             <Link href="/admin/employees" className="font-medium text-orange-600 transition-colors hover:text-orange-700">
               employee page
             </Link>
@@ -238,6 +305,12 @@ export default function ShiftTable({ shifts: initialShifts, allEmployees }: Shif
           </button>
         }
       />
+
+      {rosterError && (
+        <div className="rounded-xl border border-red-100 bg-red-50 p-3 text-sm text-red-600" role="alert">
+          {rosterError}
+        </div>
+      )}
 
       {shifts.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
@@ -347,19 +420,38 @@ export default function ShiftTable({ shifts: initialShifts, allEmployees }: Shif
                           <Avatar name={emp.name} size={28} />
                           <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-slate-800">{emp.name}</span>
                           <span className="flex gap-1">
-                            {WEEKDAY_CHIP_LABELS.map((label, weekday) => (
-                              <span
-                                key={weekday}
-                                className={`flex h-[22px] w-[22px] items-center justify-center rounded-md text-[10px] font-semibold ${
-                                  emp.weekdays.has(weekday)
-                                    ? "bg-orange-500 text-white"
-                                    : "bg-slate-100 text-slate-400"
-                                }`}
-                              >
-                                {label}
-                              </span>
-                            ))}
+                            {WEEKDAY_CHIP_LABELS.map((label, weekday) => {
+                              const on = emp.weekdays.has(weekday);
+                              return (
+                                <button
+                                  key={weekday}
+                                  type="button"
+                                  disabled={savingEmployeeId === emp.id}
+                                  onClick={() => toggleEmployeeDay(shift, emp.id, weekday)}
+                                  title={`${on ? "Remove" : "Add"} ${emp.name} on ${WEEKDAY_SHORT[weekday]}`}
+                                  aria-pressed={on}
+                                  aria-label={`${WEEKDAY_SHORT[weekday]}: ${on ? "assigned" : "not assigned"}`}
+                                  className={`flex h-[22px] w-[22px] items-center justify-center rounded-md text-[10px] font-semibold transition-colors disabled:opacity-60 ${
+                                    on
+                                      ? "bg-orange-500 text-white hover:bg-orange-600"
+                                      : "bg-slate-100 text-slate-400 hover:bg-orange-100 hover:text-orange-600"
+                                  }`}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })}
                           </span>
+                          <button
+                            type="button"
+                            disabled={savingEmployeeId === emp.id}
+                            onClick={() => removeEmployee(shift, emp.id, emp.name)}
+                            title={`Remove ${emp.name} from this shift`}
+                            aria-label={`Remove ${emp.name} from this shift`}
+                            className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-60"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
                         </li>
                       ))}
                     </ul>
