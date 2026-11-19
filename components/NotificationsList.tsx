@@ -3,7 +3,7 @@
 import { useSyncedState } from "./useSyncedState";
 import { useState } from "react";
 import Link from "next/link";
-import { Bell, Hourglass, Loader2, MapPin, MapPinOff, ScanEye, ShieldAlert, Smartphone, Trash2, TriangleAlert } from "lucide-react";
+import { Bell, Hourglass, Loader2, MapPin, MapPinOff, ScanEye, ShieldAlert, Smartphone, Trash2, Users, TriangleAlert } from "lucide-react";
 import { Avatar, BTN_PRIMARY, BTN_SECONDARY, CARD, EmptyState, Pill, type Tone } from "./admin/ui";
 import { refreshAdminCounts } from "./adminCountsEvent";
 import type { AdminNotification, NotificationKind } from "@/lib/adminNotifications";
@@ -14,6 +14,7 @@ const KIND: Record<NotificationKind, { icon: typeof Bell; chip: string; tone: To
   TRACKING_STOPPED: { icon: MapPinOff, chip: "bg-red-500/10 text-red-600", tone: "red", label: "Tracking" },
   PHONE_STILL: { icon: MapPinOff, chip: "bg-amber-500/15 text-amber-600", tone: "amber", label: "Phone still" },
   NEW_PHONE: { icon: Smartphone, chip: "bg-amber-500/15 text-amber-600", tone: "amber", label: "New phone" },
+  MEETING: { icon: Users, chip: "bg-indigo-500/10 text-indigo-600", tone: "indigo", label: "Meeting" },
   FACE_SERVICE: { icon: ShieldAlert, chip: "bg-amber-500/10 text-amber-600", tone: "amber", label: "Face service" },
   FACE_MISSED: { icon: ScanEye, chip: "bg-amber-500/10 text-amber-600", tone: "amber", label: "Face check" },
 };

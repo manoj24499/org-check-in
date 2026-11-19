@@ -532,6 +532,7 @@ model User {
   attendances         Attendance[]
   locationPings       LocationPing[]
   pushTokens          PushToken[]
+  meetings            Meeting[]
   shiftReminders      ShiftReminder[]
   assignedPlaces      AssignedPlace[]
   reimbursements      Reimbursement[]
@@ -997,6 +998,24 @@ model PushToken {
   createdAt DateTime @default(now())
 
   @@index([userId])
+}
+
+// A meeting the employee declares ahead of time that falls outside their shift (before it starts or after it
+// ends). Self-declared, so it takes effect at once with no approval; the admin is only notified (see
+// lib/adminNotifications.ts and /admin/meetings). While one is running the employee is not nagged to check
+// out and is not auto-checked-out (lib/meetings.ts's extendForMeetings). Meetings inside shift hours are
+// refused by the API: nothing needs declaring for those.
+model Meeting {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  startAt   DateTime
+  endAt     DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId, startAt])
+  @@index([startAt])
 }
 
 // One row per live-location ping sent from an employee's kiosk tab while

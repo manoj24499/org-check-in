@@ -5,6 +5,7 @@ import { sendPushNotification } from "@/lib/pushNotifications";
 import { istDateKey, istTimeOfDay } from "@/lib/istTime";
 import { combineDateAndShiftEndTime } from "@/lib/shiftTime";
 import { computeTotalDistanceMeters } from "@/lib/locationClustering";
+import { extendForMeetings } from "@/lib/meetings";
 
 /** How long after the shift ends a still-checked-in employee gets the "please check out" push. */
 export const AUTO_CHECKOUT_WARN_AFTER_MS = 10 * 60 * 1000;
@@ -103,7 +104,7 @@ export async function runAutoCheckout(
   if (open.length === 0) return { checked: 0, warned: 0, checkedOut: 0 };
 
   const userIds = [...new Set(open.map((c) => c.userId))];
-  const [checkOuts, assignments, overtime] = await Promise.all([
+  const [checkOuts, assignments, overtime, meetings] = await Promise.all([
     prisma.attendance.groupBy({
       by: ["userId"],
       _max: { timestamp: true },
@@ -118,7 +119,20 @@ export async function runAutoCheckout(
       orderBy: { createdAt: "desc" },
       select: { attendanceId: true, estimatedEndAt: true },
     }),
+    // Declared meetings: the employee is not checked out (or nagged to) while one is running at, or about to
+    // start right after, the end of their shift.
+    prisma.meeting.findMany({
+      where: { userId: { in: userIds }, endAt: { gte: since } },
+      orderBy: { startAt: "asc" },
+      select: { userId: true, startAt: true, endAt: true },
+    }),
   ]);
+  const meetingsByUser = new Map<string, { startAt: Date; endAt: Date }[]>();
+  for (const m of meetings) {
+    const list = meetingsByUser.get(m.userId);
+    if (list) list.push(m);
+    else meetingsByUser.set(m.userId, [m]);
+  }
   const outAt = new Map(checkOuts.map((o) => [o.userId, o._max.timestamp]));
   const shiftByUserDay = new Map(assignments.map((a) => [`${a.userId}:${a.weekday}`, a.shift]));
   const overtimeEnd = new Map<string, Date>();
@@ -134,8 +148,9 @@ export async function runAutoCheckout(
     // Weekday of the check-in in IST (ShiftAssignment.weekday: 0 = Sunday).
     const weekday = new Date(c.timestamp.getTime() + IST_OFFSET_MS).getUTCDay();
     const shift = shiftByUserDay.get(`${c.userId}:${weekday}`) ?? null;
-    const target = overtimeEnd.get(c.id) ?? (shift ? combineDateAndShiftEndTime(c.timestamp, shift) : null);
-    if (!target) continue; // no shift entered for that day: nothing to count from
+    const baseTarget = overtimeEnd.get(c.id) ?? (shift ? combineDateAndShiftEndTime(c.timestamp, shift) : null);
+    if (!baseTarget) continue; // no shift entered for that day: nothing to count from
+    const target = extendForMeetings(baseTarget, meetingsByUser.get(c.userId) ?? []);
 
     const decision = decideAutoCheckout({ now, target, checkInAt: c.timestamp, warnedAt: c.autoCheckoutWarnedAt });
     if (decision === "wait") continue;

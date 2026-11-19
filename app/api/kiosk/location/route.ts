@@ -7,6 +7,7 @@ import { resolveGeofenceTarget, resolveOfficeLocationTarget, type GeofenceTarget
 import type { CheckInMode } from "@prisma/client";
 import { sendPushNotification } from "@/lib/pushNotifications";
 import { combineDateAndShiftEndTime } from "@/lib/shiftTime";
+import { extendTargetForMeetings } from "@/lib/meetings";
 import { loadShiftAssignments, shiftForDate } from "@/lib/shiftAssignment";
 import { istDateKey } from "@/lib/istTime";
 import { requireMobileUser } from "@/lib/mobileAuth";
@@ -607,12 +608,15 @@ async function evaluateEndOfWorkReminder(
       orderBy: { createdAt: "desc" },
     });
 
-    const target = overtimeRequest
+    const baseTarget = overtimeRequest
       ? overtimeRequest.estimatedEndAt
       : shiftThatDay
         ? combineDateAndShiftEndTime(checkIn.timestamp, shiftThatDay)
         : null;
-    if (!target) return;
+    if (!baseTarget) return;
+    // A declared meeting at the end of the day moves the reminder to its end, so the employee isn't told to
+    // check out in the middle of it.
+    const target = await extendTargetForMeetings(checkIn.userId, baseTarget);
 
     const alreadySent = overtimeRequest ? overtimeRequest.reminderSentAt : checkIn.shiftReminderSentAt;
     if (alreadySent) return;

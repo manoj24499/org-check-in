@@ -16,6 +16,7 @@ export type NotificationKind =
   | "TRACKING_STOPPED"
   | "PHONE_STILL"
   | "NEW_PHONE"
+  | "MEETING"
   | "FACE_SERVICE"
   | "FACE_MISSED";
 
@@ -33,7 +34,7 @@ export interface AdminNotification {
   permission?: { id: string; startTime: string; endTime: string };
 }
 
-const KEY_PATTERN = /^(tracking|face|facesvc|outside|still|phone):[A-Za-z0-9:_.\-]{1,100}$/;
+const KEY_PATTERN = /^(tracking|face|facesvc|outside|still|phone|meeting):[A-Za-z0-9:_.\-]{1,100}$/;
 /** Only these keys can be dismissed through the API. */
 export function isDismissibleKey(key: string): boolean {
   return KEY_PATTERN.test(key);
@@ -98,7 +99,7 @@ export async function getAdminNotifications(
   const settings = await getSettings(organizationId);
   const outsideMs = settings.outsideAlertMinutes * 60_000;
 
-  const [dismissed, permissions, silent, missed, faceStatus, unavailableToday, outside, still, newPhones] = await Promise.all([
+  const [dismissed, permissions, silent, missed, faceStatus, unavailableToday, outside, still, newPhones, meetings] = await Promise.all([
     options.includeDismissed ? Promise.resolve(new Set<string>()) : getDismissedKeys(organizationId),
     prisma.timedPermission.findMany({
       where: { approvalStatus: "PENDING", attendance: { user: { organizationId } } },
@@ -138,6 +139,13 @@ export async function getAdminNotifications(
     prisma.user.findMany({
       where: { organizationId, active: true, pendingDeviceId: { not: null }, pendingDeviceAt: { gte: new Date(now.getTime() - 14 * 24 * 3600 * 1000) } },
       select: { id: true, name: true, employeeCode: true, pendingDeviceLabel: true, pendingDeviceAt: true },
+    }),
+    // Meetings employees declared outside their shift. Nothing to approve: this is the "heads up".
+    prisma.meeting.findMany({
+      where: { createdAt: { gte: new Date(now.getTime() - 3 * 24 * 3600 * 1000) }, endAt: { gte: now }, user: { organizationId, active: true } },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      select: { id: true, title: true, startAt: true, endAt: true, createdAt: true, user: { select: { id: true, name: true, employeeCode: true } } },
     }),
   ]);
 
@@ -220,6 +228,21 @@ export async function getAdminNotifications(
     });
   }
 
+  const dayTime = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true });
+  for (const m of meetings) {
+    const key = `meeting:${m.id}`;
+    if (dismissed.has(key)) continue;
+    out.push({
+      key,
+      kind: "MEETING",
+      title: "Meeting outside shift hours",
+      message: `“${m.title}”, ${dayTime.format(m.startAt)} to ${timeIST.format(m.endAt)}. Logged by the employee; nothing to approve. They won't be reminded or checked out automatically while it runs.`,
+      occurredAt: m.createdAt.toISOString(),
+      employee: m.user,
+      dismissible: true,
+    });
+  }
+
   const recentlyMissed = happenedWithin(unavailableToday._max.timestamp?.toISOString() ?? null, 30 * 60 * 1000);
   const serviceKey = faceServiceKey(now);
   if ((faceStatus !== "ok" || (unavailableToday._count > 0 && recentlyMissed)) && !dismissed.has(serviceKey)) {
@@ -250,6 +273,6 @@ export async function getAdminNotifications(
     });
   }
 
-  const rank: Record<NotificationKind, number> = { PERMISSION_REQUEST: 0, OUTSIDE_AREA: 1, TRACKING_STOPPED: 2, NEW_PHONE: 3, PHONE_STILL: 4, FACE_SERVICE: 5, FACE_MISSED: 6 };
+  const rank: Record<NotificationKind, number> = { PERMISSION_REQUEST: 0, OUTSIDE_AREA: 1, TRACKING_STOPPED: 2, NEW_PHONE: 3, PHONE_STILL: 4, MEETING: 5, FACE_SERVICE: 6, FACE_MISSED: 7 };
   return out.sort((a, b) => rank[a.kind] - rank[b.kind] || b.occurredAt.localeCompare(a.occurredAt));
 }
