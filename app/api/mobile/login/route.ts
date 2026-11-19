@@ -5,6 +5,7 @@ import { verifyPin, backfillPinLookupHash } from "@/lib/credentials";
 import { getClientIp, isRateLimited, isPinGuessLimited } from "@/lib/rateLimit";
 import { resolveOrgBySlug } from "@/lib/organization";
 import { signAccessToken, issueRefreshToken } from "@/lib/mobileAuth";
+import { checkDevice, DEVICE_MISMATCH_CODE } from "@/lib/deviceBinding";
 
 const bodySchema = z.object({
   organizationCode: z.string().min(1),
@@ -77,6 +78,13 @@ async function handlePost(req: NextRequest) {
   }
 
   if (!user.pinLookupHash) backfillPinLookupHash(user.id, org.id, parsed.data.pin);
+
+  // One registered phone per employee: the first phone to sign in is bound, any other is refused until an
+  // admin approves it. Checked after the PIN so a wrong PIN can't be used to probe who has what phone.
+  const device = await checkDevice(user, req);
+  if (!device.allowed) {
+    return NextResponse.json({ error: device.message, code: DEVICE_MISMATCH_CODE }, { status: 403 });
+  }
 
   // A PIN the admin generated is only good for choosing one's own: no tokens until that's done. 403, not
   // 401 (which the app reads as an expired session); the code lets the app open the set-your-PIN screen.

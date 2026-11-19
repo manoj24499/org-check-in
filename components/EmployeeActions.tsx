@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { KeyRound, Power, Copy, Check, ScanFace, Camera, ShieldOff, ShieldCheck } from "lucide-react";
+import { KeyRound, Power, Copy, Check, ScanFace, Camera, ShieldOff, ShieldCheck, Smartphone } from "lucide-react";
 
 /** Reads a File as a `data:image/...;base64,...` URL — same format lib/photoUpload.ts's decodePhoto expects. */
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -19,11 +19,20 @@ export default function EmployeeActions({
   active,
   faceVerificationEnabled,
   faceVerificationExempt,
+  device,
 }: {
   employeeId: string;
   active: boolean;
   faceVerificationEnabled: boolean;
   faceVerificationExempt: boolean;
+  device: {
+    bound: boolean;
+    boundLabel: string | null;
+    boundAt: string | null;
+    pending: boolean;
+    pendingLabel: string | null;
+    pendingAt: string | null;
+  };
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
@@ -208,6 +217,52 @@ export default function EmployeeActions({
           </button>
         </div>
       )}
+
+      <div className="flex flex-col gap-3 rounded-xl border border-border px-4 py-3">
+        <div className="flex items-start gap-3">
+          <Smartphone className="w-4 h-4 mt-0.5 shrink-0 text-secondary" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-foreground">Registered phone</p>
+            <p className="text-xs text-secondary mt-0.5">
+              {device.boundLabel || device.bound
+                ? `${device.boundLabel ?? "Unknown phone"}${device.boundAt ? ` · since ${new Date(device.boundAt).toLocaleDateString("en-IN", { dateStyle: "medium" })}` : ""}. Only this phone can sign in.`
+                : "None yet. The first phone this employee signs in on becomes their registered phone."}
+            </p>
+          </div>
+          {device.bound && (
+            <button
+              onClick={() => {
+                if (window.confirm("Clear the registered phone? The next phone this employee signs in on becomes the registered one, and the current phone is signed out.")) {
+                  void call("reset-device");
+                }
+              }}
+              disabled={loading !== null}
+              className="shrink-0 inline-flex items-center rounded-full px-3 py-1 text-xs font-medium border border-border text-muted hover:bg-surface transition disabled:opacity-50"
+            >
+              {loading === "reset-device" ? "…" : "Reset"}
+            </button>
+          )}
+        </div>
+        {device.pending && (
+          <div className="flex items-start gap-3 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-amber-700">A different phone tried to sign in</p>
+              <p className="text-xs text-amber-700/90 mt-0.5">
+                {device.pendingLabel ?? "Unknown phone"}
+                {device.pendingAt ? ` · ${new Date(device.pendingAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}` : ""}.
+                Approve it only if the employee really changed phones; approving signs the old phone out.
+              </p>
+            </div>
+            <button
+              onClick={() => call("approve-device")}
+              disabled={loading !== null}
+              className="shrink-0 inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold bg-amber-600 text-white hover:bg-amber-700 transition disabled:opacity-50"
+            >
+              {loading === "approve-device" ? "…" : "Approve"}
+            </button>
+          </div>
+        )}
+      </div>
 
       {resetCode && (
         <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 text-center">

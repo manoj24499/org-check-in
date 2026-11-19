@@ -8,6 +8,7 @@ import {
   tokenVersionMatches,
   claimRefreshToken,
 } from "@/lib/mobileAuth";
+import { checkDevice, DEVICE_MISMATCH_CODE } from "@/lib/deviceBinding";
 
 const bodySchema = z.object({ refreshToken: z.string().min(1) });
 
@@ -48,6 +49,13 @@ export async function POST(req: NextRequest) {
   // a real login.
   if (!tokenVersionMatches(payload, user)) {
     return NextResponse.json({ error: "Invalid or expired session. Please log in again." }, { status: 401 });
+  }
+
+  // A session that was signed in before phone-binding existed (or on a phone the admin has since replaced)
+  // stops here: the refresh is refused, which signs that phone out.
+  const device = await checkDevice(user, req);
+  if (!device.allowed) {
+    return NextResponse.json({ error: device.message, code: DEVICE_MISMATCH_CODE }, { status: 401 });
   }
 
   // The old token is already revoked above (claimRefreshToken) — safe to

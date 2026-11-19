@@ -21,6 +21,10 @@ const actionSchema = z.object({
     "set-field-mode",
     "set-face-verification",
     "set-face-verification-exempt",
+    // Phone binding (lib/deviceBinding.ts): approve the phone that tried to sign in, or clear the registered
+    // phone so the next one to sign in becomes it.
+    "approve-device",
+    "reset-device",
   ]),
   active: z.boolean().optional(),
   latitude: z.number().min(-90).max(90).optional(),
@@ -274,6 +278,46 @@ export async function PATCH(
       data: { faceVerificationEnabled: enabled },
     });
     return NextResponse.json({ faceVerificationEnabled: updated.faceVerificationEnabled });
+  }
+
+  if (parsed.data.action === "approve-device" || parsed.data.action === "reset-device") {
+    const current = await prisma.user.findUnique({
+      where: { id },
+      select: { pendingDeviceId: true, pendingDeviceLabel: true },
+    });
+    if (parsed.data.action === "approve-device") {
+      if (!current?.pendingDeviceId) {
+        return NextResponse.json({ error: "No phone is waiting for approval." }, { status: 400 });
+      }
+      await prisma.user.update({
+        where: { id },
+        data: {
+          boundDeviceId: current.pendingDeviceId,
+          boundDeviceLabel: current.pendingDeviceLabel,
+          boundDeviceAt: new Date(),
+          pendingDeviceId: null,
+          pendingDeviceLabel: null,
+          pendingDeviceAt: null,
+          // Signs the old phone out everywhere: its refresh token no longer matches the registered phone anyway,
+          // this just makes it immediate for sessions that are still live.
+          tokenVersion: { increment: 1 },
+        },
+      });
+    } else {
+      await prisma.user.update({
+        where: { id },
+        data: {
+          boundDeviceId: null,
+          boundDeviceLabel: null,
+          boundDeviceAt: null,
+          pendingDeviceId: null,
+          pendingDeviceLabel: null,
+          pendingDeviceAt: null,
+          tokenVersion: { increment: 1 },
+        },
+      });
+    }
+    return NextResponse.json({ ok: true });
   }
 
   if (parsed.data.action === "set-face-verification-exempt") {

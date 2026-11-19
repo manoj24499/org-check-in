@@ -454,6 +454,17 @@ model User {
   // by its own PIN change — only any other outstanding copy is.
   tokenVersion Int @default(0)
 
+  // The one phone this employee may sign in from (see lib/deviceBinding.ts). Set from the first phone that
+  // signs in after this shipped, then only changed by an admin. A different phone trying to sign in is
+  // refused and recorded as the pending* fields, which the admin can approve (it becomes the bound phone)
+  // or ignore. Null bound id = nothing bound yet; the next phone to sign in is bound.
+  boundDeviceId    String?
+  boundDeviceLabel String?
+  boundDeviceAt    DateTime?
+  pendingDeviceId    String?
+  pendingDeviceLabel String?
+  pendingDeviceAt    DateTime?
+
   // WFH employees are geofenced against their own home location instead of
   // the office; FIELD employees skip geofencing entirely (see
   // /api/kiosk/scan). OFFICE (the default) is unaffected.

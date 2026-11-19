@@ -190,6 +190,14 @@ export default async function EmployeeDetailPage({
             active={employee.active}
             faceVerificationEnabled={employee.faceVerificationEnabled}
             faceVerificationExempt={employee.faceVerificationExempt}
+            device={{
+              bound: !!employee.boundDeviceId,
+              boundLabel: employee.boundDeviceLabel,
+              boundAt: employee.boundDeviceAt?.toISOString() ?? null,
+              pending: !!employee.pendingDeviceId,
+              pendingLabel: employee.pendingDeviceLabel,
+              pendingAt: employee.pendingDeviceAt?.toISOString() ?? null,
+            }}
           />
         </div>
 
