@@ -13,7 +13,7 @@ import { istDateKey } from "@/lib/istTime";
 import { requireMobileUser } from "@/lib/mobileAuth";
 import { trackingTokenMatches } from "@/lib/trackingToken";
 import { logAttendanceEvent } from "@/lib/attendanceEvents";
-import { MAX_STREAK_GAP_MS, GRACE_PERIOD_MS, STREAK_LENGTH, computePauseIntervals } from "@/lib/pauseReplay";
+import { MAX_STREAK_GAP_MS, GRACE_PERIOD_MS, STREAK_LENGTH, MAX_RELIABLE_ACCURACY_M, computePauseIntervals } from "@/lib/pauseReplay";
 import {
   findOpenSegment,
   isTransitExpired,
@@ -44,7 +44,8 @@ async function evaluateRangeStreak(
   const priorPings = await prisma.locationPing.findMany({
     // Trail samples are dense extras for distance accuracy only — counting them
     // would make three readings seconds apart look like a confirmed streak.
-    where: { userId, isTrail: false, timestamp: { gte: sinceTimestamp, lt: ping.timestamp } },
+    // Only precise readings count: a coarse network fix (see MAX_RELIABLE_ACCURACY_M) says nothing either way.
+    where: { userId, isTrail: false, accuracy: { lte: MAX_RELIABLE_ACCURACY_M }, timestamp: { gte: sinceTimestamp, lt: ping.timestamp } },
     orderBy: { timestamp: "desc" },
     take: STREAK_LENGTH - 1,
   });
@@ -217,7 +218,7 @@ async function reconcilePausesAfterBackfill(
       prisma.locationPing.findMany({
         where: { userId: checkIn.userId, timestamp: { gte: checkIn.timestamp, ...(endedAt ? { lte: endedAt } : {}) } },
         orderBy: { timestamp: "asc" },
-        select: { latitude: true, longitude: true, timestamp: true },
+        select: { latitude: true, longitude: true, timestamp: true, accuracy: true },
       }),
       prisma.attendancePause.findMany({
         where: { attendanceId: checkIn.id },
@@ -832,16 +833,21 @@ export async function POST(req: NextRequest) {
   // Field/office segment tracking runs regardless of pause state — where
   // someone physically is doesn't depend on whether their time is paused.
   // Not applicable at all outside FIELD-workMode profiles.
+  // A coarse reading (the phone had no GPS lock and fell back to a network position) cannot say whether anyone
+  // is inside or outside the area, so it is stored below but takes no part in any position-based decision:
+  // nothing starts, pauses or resumes on it. That used to pause people at home for over an hour.
+  const reliable = parsed.data.accuracy <= MAX_RELIABLE_ACCURACY_M;
   const segmentResult =
-    user.workMode === "FIELD" ? await evaluateWorkSegment(checkIn, ping, user.organizationId) : null;
+    user.workMode === "FIELD" && reliable ? await evaluateWorkSegment(checkIn, ping, user.organizationId) : null;
   // HYBRID: same idea for the OFFICE / TRANSIT / HOME timeline; gives back
   // the geofence for this ping (none while in TRANSIT).
-  const hybridTarget = user.workMode === "HYBRID" ? await evaluateHybridSegment(checkIn, user, ping, permissionResult.active) : null;
+  const hybridTarget =
+    user.workMode === "HYBRID" && reliable ? await evaluateHybridSegment(checkIn, user, ping, permissionResult.active) : null;
 
   // A timed permission's pause is managed on its own timeline — skip the
   // geofence auto-pause entirely while one is open, so the two never both
   // try to act on the same session's pause state for the same ping.
-  if (!permissionResult.active) {
+  if (!permissionResult.active && reliable) {
     // For a FIELD profile, geofencing only applies while their *current*
     // segment is OFFICE — reusing the office target evaluateWorkSegment
     // already resolved, rather than fetching it again. Non-FIELD profiles

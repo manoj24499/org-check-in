@@ -10,10 +10,21 @@ export const MAX_STREAK_GAP_MS = 5 * 60 * 1000;
 export const GRACE_PERIOD_MS = 10 * 60 * 1000;
 export const STREAK_LENGTH = 3;
 
+/**
+ * A reading whose own accuracy is worse than this says "somewhere within a few hundred metres", which cannot
+ * show whether someone is inside or outside a 50 to 100 m work area. Phones fall back to coarse network
+ * positions like this when GPS has no lock (indoors, screen off, battery saver), often repeating the same
+ * wrong point for an hour. Such readings are stored but never used to start a warning, a pause, or a
+ * resume: the state simply stays as it was until a precise reading arrives.
+ */
+export const MAX_RELIABLE_ACCURACY_M = 150;
+
 export interface Reading {
   latitude: number;
   longitude: number;
   timestamp: Date;
+  /** Metres; leave out when unknown (treated as reliable). */
+  accuracy?: number | null;
 }
 
 export interface ReplayedPause {
@@ -34,7 +45,9 @@ export function computePauseIntervals(
   readings: Reading[],
   target: { latitude: number; longitude: number; radiusMeters: number },
 ): ReplayedPause[] {
-  const sorted = [...readings].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+  const sorted = readings
+    .filter((r) => r.accuracy == null || r.accuracy <= MAX_RELIABLE_ACCURACY_M)
+    .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
   const inside = sorted.map(
     (r) => haversineDistanceMeters(r.latitude, r.longitude, target.latitude, target.longitude) <= target.radiusMeters,
   );
