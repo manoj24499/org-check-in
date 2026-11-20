@@ -5,6 +5,7 @@ import { computeTotalDistanceMeters, clusterPings, findTrackingGaps } from "@/li
 import { reverseGeocode } from "@/lib/geocoding";
 import { buildPlaces, shortPlaceName } from "@/lib/visitedPlaces";
 import { getSettings } from "@/lib/settings";
+import { haversineDistanceMeters } from "@/lib/geofence";
 import { computeFieldOfficeSplit } from "@/lib/attendanceHours";
 import { startOfISTDay, endOfISTDay, istDateKey, parseDateOnlyKey, todayDateOnlyIST } from "@/lib/istTime";
 
@@ -136,8 +137,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       .filter((s) => s.mode === "OFFICE")
       .map((s) => ({ from: s.startedAt.getTime(), to: (s.endedAt ?? now).getTime() })),
   );
-  const inOffice = (t: Date) => officeIntervals.some((i) => t.getTime() >= i.from && t.getTime() < i.to);
-  const fieldPings = pings.filter((p) => !inOffice(p.timestamp));
+  // The Office segment only ends once the employee is confirmed somewhere else (for a Hybrid employee, on
+  // arriving home), so the whole trip out of the office is still inside it. A reading is therefore treated as
+  // "in the office" only when it is also physically at the office; anything farther out is the route home and
+  // must be drawn. Without an office location on file, fall back to the segment alone.
+  const office = await prisma.officeLocation.findUnique({
+    where: { organizationId: admin.organizationId },
+    select: { latitude: true, longitude: true, radiusMeters: true },
+  });
+  const OFFICE_AREA_MARGIN_M = 75;
+  const atOffice = (p: { latitude: number; longitude: number }) =>
+    !office ||
+    haversineDistanceMeters(p.latitude, p.longitude, office.latitude, office.longitude) <=
+      office.radiusMeters + OFFICE_AREA_MARGIN_M;
+  const inOfficeSegment = (t: Date) => officeIntervals.some((i) => t.getTime() >= i.from && t.getTime() < i.to);
+  const fieldPings = pings.filter((p) => !(inOfficeSegment(p.timestamp) && atOffice(p)));
   const officeMinutes = Math.round(officeIntervals.reduce((sum, i) => sum + Math.max(0, i.to - i.from), 0) / 60_000);
   const lastCheckIn = todaysCheckIns[todaysCheckIns.length - 1];
   const currentMode = checkOut ? null : (lastCheckIn?.workSegments.find((s) => s.endedAt === null)?.mode ?? null);
