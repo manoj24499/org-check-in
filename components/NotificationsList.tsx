@@ -3,7 +3,7 @@
 import { useSyncedState } from "./useSyncedState";
 import { useState } from "react";
 import Link from "next/link";
-import { Bell, Hourglass, Loader2, MapPin, MapPinOff, ScanEye, ShieldAlert, Smartphone, Trash2, Users, TriangleAlert } from "lucide-react";
+import { Bell, Hourglass, LifeBuoy, Loader2, MapPin, MapPinOff, ScanEye, ShieldAlert, Smartphone, Trash2, Users, TriangleAlert } from "lucide-react";
 import { Avatar, BTN_PRIMARY, BTN_SECONDARY, CARD, EmptyState, Pill, type Tone } from "./admin/ui";
 import { refreshAdminCounts } from "./adminCountsEvent";
 import type { AdminNotification, NotificationKind } from "@/lib/adminNotifications";
@@ -14,6 +14,7 @@ const KIND: Record<NotificationKind, { icon: typeof Bell; chip: string; tone: To
   TRACKING_STOPPED: { icon: MapPinOff, chip: "bg-red-500/10 text-red-600", tone: "red", label: "Tracking" },
   PHONE_STILL: { icon: MapPinOff, chip: "bg-amber-500/15 text-amber-600", tone: "amber", label: "Phone still" },
   NEW_PHONE: { icon: Smartphone, chip: "bg-amber-500/15 text-amber-600", tone: "amber", label: "New phone" },
+  SUPPORT: { icon: LifeBuoy, chip: "bg-sky-500/10 text-sky-600", tone: "indigo", label: "Support" },
   MEETING: { icon: Users, chip: "bg-indigo-500/10 text-indigo-600", tone: "indigo", label: "Meeting" },
   FACE_SERVICE: { icon: ShieldAlert, chip: "bg-amber-500/10 text-amber-600", tone: "amber", label: "Face service" },
   FACE_MISSED: { icon: ScanEye, chip: "bg-amber-500/10 text-amber-600", tone: "amber", label: "Face check" },
@@ -172,6 +173,12 @@ export default function NotificationsList({ initial }: { initial: AdminNotificat
                     </button>
                   </>
                 ) : (
+                  <>
+                  {n.kind === "SUPPORT" && (
+                    <Link href="/admin/support" className={BTN_SECONDARY}>
+                      Open
+                    </Link>
+                  )}
                   <button
                     type="button"
                     onClick={() => deleteOne(n.key)}
@@ -182,6 +189,7 @@ export default function NotificationsList({ initial }: { initial: AdminNotificat
                   >
                     {busy === n.key ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : <Trash2 className="h-[18px] w-[18px]" />}
                   </button>
+                  </>
                 )}
               </div>
             </li>

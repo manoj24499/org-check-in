@@ -17,6 +17,7 @@ export type NotificationKind =
   | "PHONE_STILL"
   | "NEW_PHONE"
   | "MEETING"
+  | "SUPPORT"
   | "FACE_SERVICE"
   | "FACE_MISSED";
 
@@ -34,7 +35,7 @@ export interface AdminNotification {
   permission?: { id: string; startTime: string; endTime: string };
 }
 
-const KEY_PATTERN = /^(tracking|face|facesvc|outside|still|phone|meeting):[A-Za-z0-9:_.\-]{1,100}$/;
+const KEY_PATTERN = /^(tracking|face|facesvc|outside|still|phone|meeting|support):[A-Za-z0-9:_.\-]{1,100}$/;
 /** Only these keys can be dismissed through the API. */
 export function isDismissibleKey(key: string): boolean {
   return KEY_PATTERN.test(key);
@@ -99,7 +100,7 @@ export async function getAdminNotifications(
   const settings = await getSettings(organizationId);
   const outsideMs = settings.outsideAlertMinutes * 60_000;
 
-  const [dismissed, permissions, silent, missed, faceStatus, unavailableToday, outside, still, newPhones, meetings] = await Promise.all([
+  const [dismissed, permissions, silent, missed, faceStatus, unavailableToday, outside, still, newPhones, meetings, supportTickets] = await Promise.all([
     options.includeDismissed ? Promise.resolve(new Set<string>()) : getDismissedKeys(organizationId),
     prisma.timedPermission.findMany({
       where: { approvalStatus: "PENDING", attendance: { user: { organizationId } } },
@@ -146,6 +147,13 @@ export async function getAdminNotifications(
       orderBy: { createdAt: "desc" },
       take: 100,
       select: { id: true, title: true, startAt: true, endAt: true, createdAt: true, user: { select: { id: true, name: true, employeeCode: true } } },
+    }),
+    // Issues employees sent from the app's Support screen that are still open (resolving one removes it here).
+    prisma.supportTicket.findMany({
+      where: { status: "OPEN", user: { organizationId, active: true } },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      select: { id: true, message: true, hasPhoto: true, createdAt: true, user: { select: { id: true, name: true, employeeCode: true } } },
     }),
   ]);
 
@@ -243,6 +251,21 @@ export async function getAdminNotifications(
     });
   }
 
+  for (const t of supportTickets) {
+    const key = `support:${t.id}`;
+    if (dismissed.has(key)) continue;
+    const text = t.message.replace(/\s+/g, " ").trim();
+    out.push({
+      key,
+      kind: "SUPPORT",
+      title: "Support message",
+      message: `${text.length > 280 ? `${text.slice(0, 280)}…` : text}${t.hasPhoto ? " (photo attached)" : ""}`,
+      occurredAt: t.createdAt.toISOString(),
+      employee: t.user,
+      dismissible: true,
+    });
+  }
+
   const recentlyMissed = happenedWithin(unavailableToday._max.timestamp?.toISOString() ?? null, 30 * 60 * 1000);
   const serviceKey = faceServiceKey(now);
   if ((faceStatus !== "ok" || (unavailableToday._count > 0 && recentlyMissed)) && !dismissed.has(serviceKey)) {
@@ -273,6 +296,6 @@ export async function getAdminNotifications(
     });
   }
 
-  const rank: Record<NotificationKind, number> = { PERMISSION_REQUEST: 0, OUTSIDE_AREA: 1, TRACKING_STOPPED: 2, NEW_PHONE: 3, PHONE_STILL: 4, MEETING: 5, FACE_SERVICE: 6, FACE_MISSED: 7 };
+  const rank: Record<NotificationKind, number> = { PERMISSION_REQUEST: 0, SUPPORT: 1, OUTSIDE_AREA: 2, TRACKING_STOPPED: 3, NEW_PHONE: 4, PHONE_STILL: 5, MEETING: 6, FACE_SERVICE: 7, FACE_MISSED: 8 };
   return out.sort((a, b) => rank[a.kind] - rank[b.kind] || b.occurredAt.localeCompare(a.occurredAt));
 }
