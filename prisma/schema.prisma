@@ -464,6 +464,9 @@ model User {
   pendingDeviceId    String?
   pendingDeviceLabel String?
   pendingDeviceAt    DateTime?
+  // When an admin's password was last changed or reset. Admin sign-ins older than this stop working (see
+  // lib/sessionVersion.ts), so changing the password signs everyone else out.
+  passwordChangedAt  DateTime?
 
   // WFH employees are geofenced against their own home location instead of
   // the office; FIELD employees skip geofencing entirely (see

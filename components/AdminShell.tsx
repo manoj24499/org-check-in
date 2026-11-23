@@ -10,6 +10,7 @@ import {
   CalendarClock,
   CalendarOff,
   Clock,
+  KeyRound,
   PencilLine,
   Compass,
   LayoutDashboard,
@@ -300,6 +301,14 @@ export default function AdminShell({
           <p className="truncate text-[13px] font-medium text-foreground">{userName ?? "Admin"}</p>
           <p className="text-[11.5px] text-muted-2">Administrator</p>
         </div>
+        <Link
+          href="/admin/account"
+          title="Change password"
+          aria-label="Change password"
+          className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-2 transition-colors hover:bg-black/[0.05] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${fadeClass(rail)}`}
+        >
+          <KeyRound className="h-4 w-4" />
+        </Link>
         <button
           type="button"
           onClick={() => signOut({ callbackUrl: "/login" })}

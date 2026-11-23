@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { getClientIp, isRateLimited } from "@/lib/rateLimit";
 import { consumeUserToken } from "@/lib/userToken";
+import { forgetPasswordChange } from "@/lib/sessionVersion";
 
 const bodySchema = z.object({
   token: z.string().min(1),
@@ -37,12 +38,13 @@ async function handlePost(req: NextRequest) {
     if (!user || user.role !== "ADMIN" || !user.active) return null;
 
     const passwordHash = await bcrypt.hash(parsed.data.password, 10);
-    await tx.user.update({ where: { id: user.id }, data: { passwordHash } });
-    return { email: user.email };
+    await tx.user.update({ where: { id: user.id }, data: { passwordHash, passwordChangedAt: new Date() } });
+    return { id: user.id, email: user.email };
   });
 
   if (!result) {
     return NextResponse.json({ error: "invalid_or_expired" }, { status: 400 });
   }
+  forgetPasswordChange(result.id);
   return NextResponse.json({ email: result.email });
 }

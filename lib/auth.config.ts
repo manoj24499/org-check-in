@@ -36,6 +36,17 @@ export const authConfig = {
         // never on later token refreshes — app/auth/continue uses it to tell a
         // brand-new sign-in apart from an old, merely still-valid cookie.
         token.signedInAt = Date.now();
+        return token;
+      }
+      // An admin's sign-in stops being valid once their password has been changed or reset after it. Returning
+      // null makes Auth.js drop the session. A lookup failure keeps the session rather than signing everyone out.
+      if (token.role === "ADMIN" && typeof token.id === "string") {
+        try {
+          const { isAdminSessionStale } = await import("@/lib/sessionVersion");
+          if (await isAdminSessionStale(token.id, token.signedInAt as number | undefined)) return null;
+        } catch (err) {
+          console.error("[auth] session version check failed:", err);
+        }
       }
       return token;
     },
