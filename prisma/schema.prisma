@@ -164,6 +164,7 @@ model Organization {
   signupCheckout          SignupCheckout?
   apiKeys                 OrganizationApiKey[]
   planChangeCheckouts     PlanChangeCheckout[]
+  kioskDevices            KioskDevice[]
 }
 
 enum PlanChangeStatus {
@@ -1433,4 +1434,27 @@ model AttendanceEvent {
   @@index([userId, createdAt])
   @@index([attendanceId])
   @@index([kind, createdAt])
+}
+
+// A kiosk PC or tablet that an admin has paired to the organization. A browser's own location is useless on a
+// desktop without GPS (it reports the city from the IP address, often 20 km off), so a fixed kiosk proves where
+// it is by holding a secret instead: the admin creates the device and gets a one-time pairing code, enters it on
+// the kiosk page, and the browser keeps the token the server hands back. Only hashes are stored. Check-ins from a
+// paired kiosk count as being at the office, so no browser location is needed; PIN and face checks still apply.
+model KioskDevice {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  // Hash of the one-time pairing code; cleared once the kiosk has paired (or expired).
+  pairingCodeHash String?
+  pairingExpiresAt DateTime?
+  // Hash of the long-lived device token; null until the kiosk has paired. Deleting the device revokes it.
+  tokenHash      String?      @unique
+  pairedAt       DateTime?
+  lastUsedAt     DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+  @@index([pairingCodeHash])
 }

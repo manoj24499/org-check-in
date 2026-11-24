@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireMobileUser } from "@/lib/mobileAuth";
+import { requireEmployee } from "@/lib/webEmployee";
 import { countLeaveDays, getLeaveBalances } from "@/lib/timeOff";
 import { parseDateOnlyKey, startOfISTDay, endOfISTDay, todayDateOnlyIST, istDateKey } from "@/lib/istTime";
 
@@ -20,7 +21,7 @@ const bodySchema = z.object({
  * same-day, hours-long pause during an active check-in) — this is neither.
  */
 export async function POST(req: NextRequest) {
-  const auth = await requireMobileUser(req);
+  const auth = await requireEmployee(req);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const json = await req.json().catch(() => null);

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { resolveActiveOrgBySlug } from "@/lib/organization";
 import { requireMobileUser } from "@/lib/mobileAuth";
+import { requireWebEmployee } from "@/lib/webEmployee";
+import { KIOSK_DEVICE_HEADER, resolveKioskDevice } from "@/lib/kioskDevice";
 
 // Public, unauthenticated (same trust model as /api/kiosk/status) — lets the
 // kiosk show a live distance indicator before check-in. No sensitive data.
@@ -12,7 +14,7 @@ import { requireMobileUser } from "@/lib/mobileAuth";
 export async function GET(req: NextRequest) {
   // Mobile-app callers are scoped by their bearer token (the app sends no
   // orgSlug); anonymous kiosks resolve from the slug in their URL.
-  const auth = await requireMobileUser(req);
+  const auth = (await requireMobileUser(req)) ?? (await requireWebEmployee());
   const org = auth
     ? { id: auth.organizationId }
     : await resolveActiveOrgBySlug(req.nextUrl.searchParams.get("orgSlug") ?? "default");
@@ -31,5 +33,10 @@ export async function GET(req: NextRequest) {
     select: { name: true, latitude: true, longitude: true, radiusMeters: true },
   });
 
-  return NextResponse.json({ officeLocation, organizationName });
+  // Tells a kiosk that kept a device token whether the server still honours it (an admin may have removed the
+  // device), so the page can drop a dead token instead of silently falling back to browser location.
+  const deviceValid =
+    !auth && req.headers.has(KIOSK_DEVICE_HEADER) ? Boolean(await resolveKioskDevice(req, org.id)) : undefined;
+
+  return NextResponse.json({ officeLocation, organizationName, ...(deviceValid !== undefined ? { deviceValid } : {}) });
 }

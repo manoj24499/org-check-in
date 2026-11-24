@@ -19,6 +19,7 @@ import {
   MapPin,
   MapPinned,
   Menu,
+  Monitor,
   Presentation,
   Route,
   Settings,
@@ -68,6 +69,7 @@ const GROUPS: Group[] = [
     title: "Workspace",
     items: [
       { href: "/admin/office-location", label: "Office location", icon: MapPin },
+      { href: "/admin/kiosk-devices", label: "Kiosk devices", icon: Monitor },
       { href: "/admin/settings", label: "Settings", icon: Settings },
     ],
   },

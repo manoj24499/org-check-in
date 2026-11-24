@@ -67,7 +67,11 @@ async function sendPing(attendanceId: string) {
       }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok || data.tracking === false) {
+    // Only the server saying "this session is over" (checked out elsewhere, not found, not allowed) ends
+    // tracking. Any other failure, such as a 502 while the server restarts, a 429, or a brief database error,
+    // is temporary: ending the session on it would wipe the saved session and silently stop tracking for the
+    // rest of the day, so it just tries again at the next tick.
+    if (data.tracking === false) {
       stopTracking();
     }
   } catch {

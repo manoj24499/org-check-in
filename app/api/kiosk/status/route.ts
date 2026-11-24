@@ -4,6 +4,7 @@ import { getClientIp, isRateLimited } from "@/lib/rateLimit";
 import { getSettings } from "@/lib/settings";
 import { resolveActiveOrgBySlug } from "@/lib/organization";
 import { requireMobileUser } from "@/lib/mobileAuth";
+import { requireWebEmployee } from "@/lib/webEmployee";
 import { resolveGeofenceTarget, resolveHomeTarget, resolveOfficeLocationTarget } from "@/lib/geofenceTarget";
 import { findOpenSegment, HYBRID_TRANSIT_WINDOW_MINUTES, serializeSegment } from "@/lib/hybridSegments";
 import { computeSegmentSplit } from "@/lib/attendanceHours";
@@ -14,6 +15,7 @@ import { findActiveCheckIn } from "@/lib/activeSession";
 import { computeLateness } from "@/lib/shiftTime";
 import { checkFaceVerifyHealth } from "@/lib/faceVerify";
 import { OFFLINE_MAX_AGE_MINUTES } from "@/lib/offlineCheckIn";
+import { resolveKioskDevice } from "@/lib/kioskDevice";
 
 // Lightweight, PIN-less lookup so the kiosk can steer an employee to the
 // right button (Check In vs Check Out) and warn them about a forgotten
@@ -42,7 +44,7 @@ export async function GET(req: NextRequest) {
   // resolve from the orgSlug in its URL (see app/kiosk/[orgSlug]), defaulting
   // to "default" for the plain, org-less /kiosk route kept for backward
   // compatibility.
-  const auth = await requireMobileUser(req);
+  const auth = (await requireMobileUser(req)) ?? (await requireWebEmployee());
   // A phone that sends a sign-in token which no longer checks out (the access token lasts 15 minutes) must be
   // told so with a 401, so the app refreshes it and asks again. Treating it as an anonymous kiosk instead
   // answered "no such employee", which the app showed as "Not checked in" and a 00:00:00 timer until it was
@@ -83,7 +85,9 @@ export async function GET(req: NextRequest) {
   // configured" precedent (same as the real check-in gate) so FIELD
   // workers/employees with no location set aren't blocked from a feature
   // that was never gated for them elsewhere either.
-  if (!auth) {
+  // A paired kiosk (see KioskDevice) is at the office by definition, so its browser's location isn't needed.
+  const pairedKiosk = auth ? null : await resolveKioskDevice(req, orgId);
+  if (!auth && !pairedKiosk) {
     const qLat = Number(req.nextUrl.searchParams.get("latitude"));
     const qLng = Number(req.nextUrl.searchParams.get("longitude"));
     const target = await resolveGeofenceTarget(
@@ -93,10 +97,14 @@ export async function GET(req: NextRequest) {
     if (target) {
       const lat = Number(req.nextUrl.searchParams.get("latitude"));
       const lng = Number(req.nextUrl.searchParams.get("longitude"));
+      // A PC without GPS locates itself from Wi-Fi or its IP and can be a few hundred metres off, so the reported
+      // accuracy (up to 300 m, same limit as the check-in gate) is allowed for. Anything rougher proves nothing.
+      const accuracy = Number(req.nextUrl.searchParams.get("accuracy"));
+      const tolerance = Number.isFinite(accuracy) && accuracy > 0 && accuracy <= 300 ? accuracy : 0;
       const withinRadius =
         Number.isFinite(lat) &&
         Number.isFinite(lng) &&
-        haversineDistanceMeters(lat, lng, target.latitude, target.longitude) <= target.radiusMeters;
+        haversineDistanceMeters(lat, lng, target.latitude, target.longitude) - tolerance <= target.radiusMeters;
       if (!withinRadius) {
         return NextResponse.json({ exists: false });
       }

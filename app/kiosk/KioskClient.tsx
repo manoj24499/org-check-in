@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   Loader2,
   MapPin,
+  Monitor,
   Lock,
   Home,
   Building2,
@@ -62,6 +63,11 @@ type EmployeeStatus = {
   faceCheckUnavailable?: boolean;
 };
 
+// The token the server gave this browser when an admin paired it as a kiosk (see KioskDevice). While it is set, the
+// server treats check-ins from this page as being at the office and the browser's own location is not used.
+const DEVICE_TOKEN_KEY = "kiosk_device_token";
+const DEVICE_HEADER = "X-Kiosk-Device";
+
 const PIN_SLOTS = 6;
 // Idle time after which a half-filled form (ID/PIN) is wiped, so the next person
 // at this shared device never sees the previous employee's ID.
@@ -100,6 +106,32 @@ const NOTICE_STYLE: Record<Notice["tone"], string> = {
   error: "bg-red-50 border-red-200 text-red-700",
 };
 
+function readPosition(highAccuracy: boolean): Promise<GeolocationPosition> {
+  return new Promise<GeolocationPosition>((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("unsupported"));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: highAccuracy,
+      timeout: 10_000,
+      maximumAge: 0,
+    });
+  });
+}
+
+// A desktop PC has no GPS: asking for high accuracy often times out or fails there while Wi-Fi/IP location would
+// have worked. So try for a precise fix first and, unless the person refused permission, settle for a rougher one
+// (the server allows for the reported accuracy) instead of blocking the check-in.
+async function getPositionWithFallback(): Promise<GeolocationPosition> {
+  try {
+    return await readPosition(true);
+  } catch (err) {
+    if (typeof err === "object" && err !== null && "code" in err && (err as GeolocationPositionError).code === 1) throw err;
+    return await readPosition(false);
+  }
+}
+
 // Shared by both app/kiosk/page.tsx (org-less, kept for backward
 // compatibility with already-bookmarked physical devices — the backend
 // treats a missing orgSlug as "default") and app/kiosk/[orgSlug]/page.tsx
@@ -113,6 +145,8 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [empStatus, setEmpStatus] = useState<EmployeeStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
+  // The employee code the last status lookup finished for, so a "couldn't confirm" notice only appears after a real lookup.
+  const [lookedUpFor, setLookedUpFor] = useState("");
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraSlow, setCameraSlow] = useState(false);
   const [trackingPopupId, setTrackingPopupId] = useState<string | null>(null);
@@ -126,7 +160,13 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
   // for anyone who never touches it. Reset whenever the typed employee code
   // changes so it can't carry over from whoever was there before.
   const [wfhCheckInMode, setWfhCheckInMode] = useState<"HOME" | "OFFICE">("HOME");
-  const [kioskCoords, setKioskCoords] = useState<{ latitude: number; longitude: number } | null>(
+  // undefined until localStorage has been read; null when this browser is not a paired kiosk.
+  const [deviceToken, setDeviceToken] = useState<string | null | undefined>(undefined);
+  const [pairOpen, setPairOpen] = useState(false);
+  const [pairCode, setPairCode] = useState("");
+  const [pairBusy, setPairBusy] = useState(false);
+  const [pairError, setPairError] = useState<string | null>(null);
+  const [kioskCoords, setKioskCoords] = useState<{ latitude: number; longitude: number; accuracy?: number } | null>(
     null,
   );
   const cameraRef = useRef<CameraCaptureHandle>(null);
@@ -136,14 +176,34 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
   // Fetched once so the distance indicator can be shown as soon as a GPS fix
   // comes in — this is purely informational, the server remains the gate.
   useEffect(() => {
+    // Read after mount (localStorage doesn't exist on the server) and deferred a tick, like the clock below.
+    const t = setTimeout(() => {
+      try {
+        setDeviceToken(localStorage.getItem(DEVICE_TOKEN_KEY));
+      } catch {
+        setDeviceToken(null);
+      }
+    }, 0);
+    return () => clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    if (deviceToken === undefined) return;
     let cancelled = false;
     const params = orgSlug ? `?${new URLSearchParams({ orgSlug }).toString()}` : "";
-    fetch(`/api/kiosk/office-location${params}`)
+    fetch(`/api/kiosk/office-location${params}`, { headers: deviceToken ? { [DEVICE_HEADER]: deviceToken } : {} })
       .then((res) => res.json())
       .then((data) => {
         if (cancelled) return;
         setOfficeLocation(data.officeLocation ?? null);
         setOrganizationName(typeof data.organizationName === "string" ? data.organizationName : null);
+        // The admin removed this kiosk: forget the dead token so the page stops acting as paired.
+        if (deviceToken && data.deviceValid === false) {
+          try {
+            localStorage.removeItem(DEVICE_TOKEN_KEY);
+          } catch {}
+          setDeviceToken(null);
+        }
       })
       .catch(() => {});
     return () => {
@@ -151,7 +211,7 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
     };
     // orgSlug comes from the route and never changes without a full
     // remount, but is listed for correctness rather than suppressed.
-  }, [orgSlug]);
+  }, [orgSlug, deviceToken]);
 
   // Fetched once on load, not per keystroke — the pre-PIN status lookup
   // below needs this to prove the kiosk is physically near the employee's
@@ -161,15 +221,20 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
   // greeting — the actual check-in/check-out button still works, since
   // handleAction() gets its own independent, authoritative location fix.
   useEffect(() => {
+    // A paired kiosk doesn't use the browser's location at all.
+    if (deviceToken !== null) return;
     if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setKioskCoords({ latitude: position.coords.latitude, longitude: position.coords.longitude });
-      },
-      () => {},
-      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 },
-    );
-  }, []);
+    // Same precise-then-rough fallback as the check-in itself: a PC without GPS often fails the precise attempt.
+    getPositionWithFallback()
+      .then((position) => {
+        setKioskCoords({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+        });
+      })
+      .catch(() => {});
+  }, [deviceToken]);
 
   // Tick the clock every second. The initial paint stays null (set via a
   // deferred timer, not synchronously) so the server-rendered markup never
@@ -203,6 +268,7 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
   useEffect(() => {
     const code = employeeCode.trim();
     let cancelled = false;
+    if (deviceToken === undefined) return;
 
     const timer = setTimeout(
       async () => {
@@ -216,17 +282,23 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
         try {
           const params = new URLSearchParams({ employeeCode: code });
           if (orgSlug) params.set("orgSlug", orgSlug);
-          if (kioskCoords) {
+          if (kioskCoords && !deviceToken) {
             params.set("latitude", String(kioskCoords.latitude));
             params.set("longitude", String(kioskCoords.longitude));
+            if (kioskCoords.accuracy !== undefined) params.set("accuracy", String(kioskCoords.accuracy));
           }
-          const res = await fetch(`/api/kiosk/status?${params.toString()}`);
+          const res = await fetch(`/api/kiosk/status?${params.toString()}`, {
+            headers: deviceToken ? { [DEVICE_HEADER]: deviceToken } : {},
+          });
           const data = await res.json();
           if (!cancelled) setEmpStatus(data);
         } catch {
           if (!cancelled) setEmpStatus(null);
         } finally {
-          if (!cancelled) setStatusLoading(false);
+          if (!cancelled) {
+            setStatusLoading(false);
+            setLookedUpFor(code);
+          }
         }
       },
       code.length < 3 ? 0 : 400,
@@ -240,7 +312,7 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
     // without them (geolocation hadn't returned yet) retries with them as
     // soon as they're available, instead of being stuck without the
     // personalized greeting for the rest of that employee's session.
-  }, [employeeCode, kioskCoords, orgSlug]);
+  }, [employeeCode, kioskCoords, orgSlug, deviceToken]);
 
   // Wipe a half-filled form after a quiet spell (shared device privacy).
   // Skipped mid-request and while the post-check-in popup is open.
@@ -272,13 +344,16 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
     async (
       action: "CHECK_IN" | "CHECK_OUT",
       photo?: string,
-      coords?: { latitude: number; longitude: number },
+      coords?: { latitude: number; longitude: number; accuracy?: number },
     ) => {
       setBusy(true);
       try {
         const res = await fetch("/api/kiosk/scan", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(deviceToken ? { [DEVICE_HEADER]: deviceToken } : {}),
+          },
           body: JSON.stringify({
             mode: "pin",
             orgSlug,
@@ -288,6 +363,7 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
             photo,
             latitude: coords?.latitude,
             longitude: coords?.longitude,
+            accuracy: coords?.accuracy,
             // Only meaningful to the server for CHECK_IN, and only when the
             // employee actually chose Office — omitting it otherwise keeps
             // every other profile's default behavior untouched.
@@ -320,13 +396,10 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
           setTimeout(() => setResult({ status: "idle" }), 4000);
         } else if (data.id) {
           if (action === "CHECK_IN") {
-            // The kiosk tab reports the *device's* position, so it only means something
-            // for a work-from-home employee on their own laptop at home. Office and Field
-            // employees are tracked from their phone instead: a shared kiosk left behind
-            // in the office would keep reading "inside" after they walk out, and a second
-            // source would fight the phone's readings. (A WFH employee who picked
-            // "Office" for the day counts as Office here.)
-            const trackedFromKiosk = data.workMode === "WFH" && data.checkInMode !== "OFFICE";
+            // This page is for a shared kiosk, which stays behind in the office when people walk out, so it only
+            // tracks a work-from-home employee on their own laptop. Everyone else is tracked from My Page (signed in
+            // on their own device) or the Inzivo app.
+            const trackedFromKiosk = !deviceToken && data.workMode === "WFH" && data.checkInMode !== "OFFICE";
             if (trackedFromKiosk) startTracking(data.id, data.trackingToken);
             setBusy(false);
             setPin("");
@@ -349,7 +422,7 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
         setTimeout(() => setResult({ status: "idle" }), 4000);
       }
     },
-    [employeeCode, pin, router, wfhCheckInMode, orgSlug],
+    [employeeCode, pin, router, wfhCheckInMode, orgSlug, deviceToken],
   );
 
   // Unknown / not-yet-looked-up employees default to a fresh state: Check In
@@ -361,9 +434,13 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
   // additionally requires a working camera, since a photo is mandatory.
   const notYetCheckedIn = !empStatus?.exists || !empStatus.checkedIn;
   const canCheckIn = notYetCheckedIn && cameraReady;
-  const canCheckOut =
-    Boolean(empStatus?.exists && empStatus.checkedIn && !empStatus.checkedOut) &&
-    (!checkOutPhotoRequired || cameraReady);
+  // When today's status couldn't be looked up (location off or imprecise, no match yet), Check out stays available:
+  // the server knows whether they are checked in and says so. Disabling it left a checked-in employee with only
+  // Check in, which fails with "already checked in".
+  const statusKnown = Boolean(empStatus?.exists);
+  const canCheckOut = statusKnown
+    ? Boolean(empStatus?.checkedIn && !empStatus.checkedOut) && (!checkOutPhotoRequired || cameraReady)
+    : true;
   const formReady = employeeCode.trim().length > 0 && pin.length >= 4;
 
   // A problem the person can fix on the spot: show a message with a "Try again" button
@@ -378,12 +455,9 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
     setResult({ status: "idle" });
     if (action === "CHECK_OUT") {
       if (!canCheckOut) return;
-      if (!checkOutPhotoRequired) {
-        submit(action);
-        return;
-      }
-      const photo = cameraRef.current?.capture();
-      if (!photo) {
+      // Without a status we can't know if this organization wants a check-out photo, so send one when the camera has it.
+      const photo = checkOutPhotoRequired || !statusKnown ? cameraRef.current?.capture() : undefined;
+      if (checkOutPhotoRequired && !photo) {
         showFixable(
           cameraSlow
             ? "The camera isn't responding. Allow camera access in the browser, then try again."
@@ -392,7 +466,7 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
         );
         return;
       }
-      submit(action, photo);
+      submit(action, photo || undefined);
       return;
     }
     if (!canCheckIn) return;
@@ -407,22 +481,19 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
       return;
     }
 
+    // A paired kiosk is at the office by definition: no browser location is read or sent.
+    if (deviceToken) {
+      setGeofenceStatus(null);
+      submit(action, photo);
+      return;
+    }
+
     // Location permission is requested (and required) before the check-in
     // completes — live tracking only ever starts after this succeeds.
     setBusy(true);
     let position: GeolocationPosition;
     try {
-      position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        if (!navigator.geolocation) {
-          reject(new Error("unsupported"));
-          return;
-        }
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 10_000,
-          maximumAge: 0,
-        });
-      });
+      position = await getPositionWithFallback();
     } catch (err) {
       setBusy(false);
       const denied =
@@ -439,7 +510,11 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
       return;
     }
 
-    const coords = { latitude: position.coords.latitude, longitude: position.coords.longitude };
+    const coords = {
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude,
+      accuracy: position.coords.accuracy,
+    };
     // WFH employees are normally checked against their home location, which
     // is personal data never fetched to the client, so no pill is shown for
     // them — unless they picked "Office" for today (the toggle below), in
@@ -465,6 +540,38 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
     }
 
     submit(action, photo, coords);
+  }
+
+  async function handlePair(e: React.FormEvent) {
+    e.preventDefault();
+    if (pairBusy || !pairCode.trim()) return;
+    setPairBusy(true);
+    setPairError(null);
+    try {
+      const res = await fetch("/api/kiosk/pair", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgSlug, code: pairCode }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || typeof data?.token !== "string") {
+        setPairError(data?.error ?? "Could not pair this kiosk. Please try again.");
+        return;
+      }
+      try {
+        localStorage.setItem(DEVICE_TOKEN_KEY, data.token);
+      } catch {
+        setPairError("This browser blocked saving the pairing. Allow site data for this page and try again.");
+        return;
+      }
+      setDeviceToken(data.token);
+      setPairOpen(false);
+      setPairCode("");
+    } catch {
+      setPairError("Network error. Please try again.");
+    } finally {
+      setPairBusy(false);
+    }
   }
 
   function handlePinKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -505,6 +612,14 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
       tone: "done",
       icon: CheckCircle2,
       message: `${firstName ?? "You've"} completed today's attendance. See you tomorrow!`,
+    });
+  }
+  if (!empStatus?.exists && !statusLoading && employeeCode.trim().length >= 3 && lookedUpFor === employeeCode.trim()) {
+    notices.push({
+      tone: "info",
+      icon: Info,
+      message:
+        "Today's status isn't available for this ID from this device (check the ID, and that location is allowed for this site). You can still choose Check in or Check out.",
     });
   }
   if (empStatus?.exists && empStatus.publicHoliday) {
@@ -558,6 +673,21 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
                 {organizationName}
               </span>
             )}
+            {deviceToken ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11.5px] font-medium text-emerald-800">
+                <Monitor className="h-3 w-3" />
+                Paired kiosk
+              </span>
+            ) : deviceToken === null ? (
+              <button
+                type="button"
+                onClick={() => setPairOpen((v) => !v)}
+                className="inline-flex items-center gap-1 rounded-full border border-border bg-surface-2 px-2.5 py-0.5 text-[11.5px] font-medium text-muted-2 transition-colors hover:text-foreground"
+              >
+                <Monitor className="h-3 w-3" />
+                Pair this kiosk
+              </button>
+            ) : null}
             <Link
               href="/"
               className="ml-auto inline-flex items-center gap-1.5 text-[13px] text-muted transition-colors hover:text-foreground"
@@ -566,6 +696,35 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
               Back to start
             </Link>
           </div>
+
+          {pairOpen && !deviceToken && (
+            <form onSubmit={handlePair} className="lp-rise flex flex-col gap-2 rounded-xl border border-border bg-surface-2 p-3.5">
+              <p className="text-[13px] text-muted-2">
+                Enter the pairing code from your admin (Admin &rarr; Kiosk devices). Once paired, this kiosk is treated as being at
+                the office and no longer needs the browser&apos;s location.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  value={pairCode}
+                  onChange={(e) => setPairCode(e.target.value.toUpperCase())}
+                  placeholder="PAIRING CODE"
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  maxLength={20}
+                  className="h-10 w-48 rounded-lg border border-border bg-surface px-3 font-mono text-[15px] tracking-[0.2em] text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+                <button
+                  type="submit"
+                  disabled={pairBusy || !pairCode.trim()}
+                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-white transition-colors hover:bg-primary-dark disabled:opacity-50"
+                >
+                  {pairBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Pair
+                </button>
+              </div>
+              {pairError && <p className="text-[13px] text-red-700">{pairError}</p>}
+            </form>
+          )}
 
           <div>
             {currentTime ? (
@@ -756,7 +915,7 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
             </div>
           </div>
 
-          {empStatus?.workMode === "WFH" && notYetCheckedIn && (
+          {empStatus?.workMode === "WFH" && notYetCheckedIn && !deviceToken && (
             <div>
               <label className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
                 Where are you today?
@@ -817,6 +976,9 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
             <ShieldCheck className="h-3.5 w-3.5" />
             Photo and location are verified on every check-in
           </p>
+          <Link href="/login/employee" className="text-center text-[12px] text-muted underline-offset-2 hover:text-foreground hover:underline">
+            On your own phone or laptop? Sign in to My Page to check in and be tracked
+          </Link>
         </div>
       </div>
 
@@ -843,7 +1005,7 @@ export default function KioskClient({ orgSlug }: { orgSlug?: string }) {
               <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
               <p className="text-sm text-foreground">
                 {trackingFromKiosk
-                  ? "Live location tracking has started. Please keep this tab open and keep location services enabled during your working hours. Closing this tab will stop live location tracking."
+                  ? "Live location tracking has started. Please keep this tab open, keep the screen awake and keep location services enabled during your working hours. Closing this tab, or your phone locking it, will stop live location tracking."
                   : "Your location is tracked from the Inzivo app on your phone. Keep it signed in with location enabled during your working hours."}
               </p>
             </div>

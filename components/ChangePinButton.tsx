@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { KeyRound } from "lucide-react";
 
-export default function ChangePinButton() {
+export default function ChangePinButton({ variant = "pill" }: { variant?: "pill" | "side" }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,15 +49,24 @@ export default function ChangePinButton() {
 
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[13px] text-muted hover:bg-black/[0.03] transition-colors"
-      >
-        <KeyRound className="w-[15px] h-[15px]" />
-        <span className="hidden sm:inline">Change PIN</span>
-      </button>
+      {variant === "side" ? (
+        // My Page sidebar: same look as the other menu links (the label fades in when the sidebar opens).
+        <button type="button" onClick={() => setOpen(true)} className="side-link">
+          <KeyRound size={20} strokeWidth={1.8} style={{ flexShrink: 0 }} aria-hidden />
+          <span className="lbl">Change PIN</span>
+        </button>
+      ) : (
+        <button
+          onClick={() => setOpen(true)}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[13px] text-muted hover:bg-black/[0.03] transition-colors"
+        >
+          <KeyRound className="w-[15px] h-[15px]" />
+          <span className="hidden sm:inline">Change PIN</span>
+        </button>
+      )}
 
-      {open && (
+      {open &&
+        createPortal(
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
           <div className="w-full max-w-sm bg-surface-2 rounded-lg shadow-[0_8px_24px_rgba(41,43,49,0.16)] p-6 border border-border">
             {done ? (
@@ -136,7 +146,8 @@ export default function ChangePinButton() {
               </form>
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );

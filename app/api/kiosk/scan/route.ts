@@ -9,6 +9,7 @@ import { resolveGeofenceTarget, resolveHomeTarget, resolveOfficeLocationTarget }
 import { getSettings } from "@/lib/settings";
 import { resolveOrgBySlug } from "@/lib/organization";
 import { requireMobileUser } from "@/lib/mobileAuth";
+import { requireWebEmployee } from "@/lib/webEmployee";
 import { newTrackingToken } from "@/lib/trackingToken";
 import { OFFLINE_FUTURE_SLACK_MS, OFFLINE_MAX_AGE_MS } from "@/lib/offlineCheckIn";
 import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
@@ -20,6 +21,7 @@ import { startOfISTDay, endOfISTDay, todayDateOnlyIST, istDateKey, parseDateOnly
 import { findActiveCheckIn } from "@/lib/activeSession";
 import { logAttendanceEvent } from "@/lib/attendanceEvents";
 import { readClientInfo } from "@/lib/clientInfo";
+import { resolveKioskDevice } from "@/lib/kioskDevice";
 
 const scanSchema = z.object({
   // Which organization this kiosk belongs to — sent by app/kiosk/[orgSlug]
@@ -27,11 +29,16 @@ const scanSchema = z.object({
   // backward compatibility with already-bookmarked physical devices).
   orgSlug: z.string().min(1).default("default"),
   employeeCode: z.string().min(1),
-  pin: z.string().min(4).max(10),
+  // Omitted by someone already signed in (the phone app or the website's My Page): their sign-in is the proof.
+  pin: z.string().min(4).max(10).optional(),
   action: z.enum(["CHECK_IN", "CHECK_OUT"]),
   photo: z.string().optional(),
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
+  // How precise that reading is, in metres (browser kiosks send it). A desktop PC with no GPS locates itself from
+  // Wi-Fi or its IP address, often 100 m or more off, so the gate below allows for it instead of treating the
+  // reading as exact. Left out by older clients, which are then held to the exact reading as before.
+  accuracy: z.number().min(0).max(1_000_000).optional(),
   // Set by the client when the OS flags the reading as coming from a mock
   // location provider (Android only). Rejected outright wherever the
   // geofence would otherwise be enforced — see below.
@@ -194,6 +201,17 @@ const PHOTO_RETENTION_DAYS = 45;
 const MAX_REQUEST_BYTES = 6 * 1024 * 1024;
 
 /**
+ * A reading with an accuracy up to this is believed to within its error: someone whose position could be inside the
+ * area (distance minus accuracy is within the radius) is let in. Worse than this, the reading says too little to
+ * decide either way, so the person is asked to retry rather than told they are outside.
+ */
+const IMPRECISE_LOCATION_M = 300;
+
+function impreciseLocationMessage(accuracy: number): string {
+  return `Your device could only locate you to within about ${Math.round(accuracy)} m, which is too rough to confirm you are at the right place. Turn on Wi-Fi and location services (or move near a window) and try again.`;
+}
+
+/**
  * Best-effort cleanup: clear photo bytes (and the hasPhoto flag) once
  * they're past retention — both for check-in/out presence photos and for
  * FieldVisit's manually-logged site photos (same retention window; see its
@@ -262,6 +280,7 @@ interface AttemptContext {
   organizationId?: string;
   userId?: string;
   viaMobile?: boolean;
+  viaWeb?: boolean;
   faceVerifyStatus?: "NOT_CHECKED" | "MATCHED" | "MISMATCH" | "UNAVAILABLE";
   faceSimilarity?: number | null;
   /** The photo that failed face verification — saved with the attempt, for that one case only. */
@@ -281,6 +300,7 @@ function reasonCodeFor(status: number, message: string | null, code: string | nu
   if (code && code.startsWith("OFFLINE_")) return code;
   if (/not recognized/i.test(m)) return "INVALID_PIN";
   if (/mock location/i.test(m)) return "MOCK_LOCATION";
+  if (/too rough/i.test(m)) return "LOCATION_IMPRECISE";
   if (/outside/i.test(m)) return "OUTSIDE_AREA";
   if (/location permission/i.test(m)) return "LOCATION_REQUIRED";
   if (/already checked in/i.test(m)) return "ALREADY_CHECKED_IN";
@@ -330,7 +350,7 @@ async function recordAttempt(req: NextRequest, res: NextResponse, ctx: AttemptCo
         reasonCode,
         reason: message ? message.slice(0, 500) : null,
         httpStatus: status,
-        source: ctx.viaMobile ? "MOBILE" : "KIOSK",
+        source: ctx.viaMobile ? "MOBILE" : ctx.viaWeb ? "WEB" : "KIOSK",
         offline: ctx.body?.offline ?? false,
         ipAddress: getClientIp(req).slice(0, 64),
         userAgent: req.headers.get("user-agent")?.slice(0, 300) ?? null,
@@ -399,10 +419,18 @@ async function handlePost(req: NextRequest, ctx: AttemptContext) {
   // employees would be looked up in the default org and rejected. Anonymous
   // (kiosk) callers still resolve from the slug in their URL.
   const mobileAuth = await requireMobileUser(req);
-  const org = mobileAuth
-    ? await prisma.organization.findUnique({ where: { id: mobileAuth.organizationId }, select: { id: true, status: true } })
+  // Someone signed in on the website (My Page) is proven the same way, without the PIN being typed again.
+  const webAuth = mobileAuth ? null : await requireWebEmployee();
+  const signedIn = mobileAuth ?? webAuth;
+  const org = signedIn
+    ? await prisma.organization.findUnique({ where: { id: signedIn.organizationId }, select: { id: true, status: true } })
     : await resolveOrgBySlug(parsed.data.orgSlug);
   ctx.viaMobile = Boolean(mobileAuth);
+  ctx.viaWeb = Boolean(webAuth);
+  // A signed-in caller can only act on their own record.
+  if (webAuth && webAuth.employeeCode !== parsed.data.employeeCode) {
+    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+  }
   if (org) ctx.organizationId = org.id;
   if (!org) {
     return NextResponse.json({ error: "This kiosk isn't linked to an organization." }, { status: 401 });
@@ -454,8 +482,13 @@ async function handlePost(req: NextRequest, ctx: AttemptContext) {
     return NextResponse.json({ error: `A photo is required to ${verb}.` }, { status: 400 });
   }
 
-  const user =
-    candidate?.pinHash && (await verifyPin(parsed.data.pin, candidate.pinHash)) ? candidate : null;
+  const user = webAuth
+    ? candidate && candidate.id === webAuth.sub
+      ? candidate
+      : null
+    : candidate?.pinHash && parsed.data.pin && (await verifyPin(parsed.data.pin, candidate.pinHash))
+      ? candidate
+      : null;
 
   if (!user || user.role !== "EMPLOYEE" || !user.active) {
     return NextResponse.json(
@@ -464,8 +497,23 @@ async function handlePost(req: NextRequest, ctx: AttemptContext) {
     );
   }
   ctx.userId = user.id;
-  if (!user.pinLookupHash && user.organizationId) {
+  if (!user.pinLookupHash && user.organizationId && parsed.data.pin) {
     backfillPinLookupHash(user.id, user.organizationId, parsed.data.pin);
+  }
+
+  // A kiosk an admin has paired (see KioskDevice) is a fixed PC at the office whose browser can't report a usable
+  // location (a desktop without GPS reports the city from its IP address, tens of km away). The device token
+  // stands in for the location: a check-in from it counts as being at the office. PIN and face checks still apply.
+  // A WFH or Hybrid employee at the office kiosk is at the office, whatever the page sent.
+  if (!signedIn && parsed.data.action === "CHECK_IN" && (await resolveKioskDevice(req, org.id))) {
+    const office = await resolveOfficeLocationTarget(org.id);
+    if (office) {
+      parsed.data.latitude = office.latitude;
+      parsed.data.longitude = office.longitude;
+    }
+    parsed.data.accuracy = 0;
+    parsed.data.mocked = false;
+    if (user.workMode === "WFH" || user.workMode === "HYBRID") parsed.data.checkInMode = "OFFICE";
   }
 
   // Offline (saved on the phone, sent later). Only the employee's own signed-in app may send one, the
@@ -662,7 +710,10 @@ async function handlePost(req: NextRequest, ctx: AttemptContext) {
         ...p,
         overshoot: haversineDistanceMeters(lat, lng, p.target.latitude, p.target.longitude) - p.target.radiusMeters,
       }));
-      const inside = measured.find((m) => m.overshoot <= 0);
+      const accuracy = parsed.data.accuracy;
+      const tolerance = accuracy !== undefined && accuracy <= IMPRECISE_LOCATION_M ? accuracy : 0;
+      // Truly inside a place first (office tried first); otherwise inside once the reading's own error is allowed for.
+      const inside = measured.find((m) => m.overshoot <= 0) ?? measured.find((m) => m.overshoot - tolerance <= 0);
       if (inside) {
         hybridPlace = inside.place;
       } else if (offline) {
@@ -670,6 +721,8 @@ async function handlePost(req: NextRequest, ctx: AttemptContext) {
         // whichever place they were nearest to.
         offlineOutsideArea = true;
         hybridPlace = measured.reduce((a, b) => (b.overshoot < a.overshoot ? b : a)).place;
+      } else if (accuracy !== undefined && accuracy > IMPRECISE_LOCATION_M && measured.some((m) => m.overshoot - accuracy <= 0)) {
+        return NextResponse.json({ error: impreciseLocationMessage(accuracy) }, { status: 409 });
       } else {
         const message =
           requested === "HOME"
@@ -713,9 +766,16 @@ async function handlePost(req: NextRequest, ctx: AttemptContext) {
         target.latitude,
         target.longitude,
       );
-      if (distance > target.radiusMeters && offline) {
+      const accuracy = parsed.data.accuracy;
+      // Beyond the radius, but the reading's own error leaves room for being inside: benefit of the doubt.
+      const withinError =
+        accuracy !== undefined && accuracy <= IMPRECISE_LOCATION_M && distance - accuracy <= target.radiusMeters;
+      if (distance > target.radiusMeters && !withinError && offline) {
         offlineOutsideArea = true;
-      } else if (distance > target.radiusMeters) {
+      } else if (distance > target.radiusMeters && !withinError) {
+        if (accuracy !== undefined && accuracy > IMPRECISE_LOCATION_M && distance - accuracy <= target.radiusMeters) {
+          return NextResponse.json({ error: impreciseLocationMessage(accuracy) }, { status: 409 });
+        }
         const message =
           effectiveWorkMode === "WFH"
             ? "You are outside your assigned work location."

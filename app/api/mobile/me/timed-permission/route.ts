@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireMobileUser } from "@/lib/mobileAuth";
+import { requireEmployee } from "@/lib/webEmployee";
 import { startOfISTDay } from "@/lib/istTime";
 import { findActiveCheckIn } from "@/lib/activeSession";
 
@@ -16,7 +17,7 @@ const bodySchema = z.object({
  * actually opens/resolves as location pings arrive.
  */
 export async function POST(req: NextRequest) {
-  const auth = await requireMobileUser(req);
+  const auth = await requireEmployee(req);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const json = await req.json().catch(() => null);
