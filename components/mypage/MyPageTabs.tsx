@@ -36,7 +36,7 @@ export default function MyPageTabs({ data }: { data: TabsData }) {
     <section id="workspace" className="card nohover rise" style={{ animationDelay: ".3s", flex: "999 1 560px", minWidth: 0, padding: 24, display: "flex", flexDirection: "column", gap: 24 }}>
       <div role="tablist" aria-label="Workspace" className="tabs" style={{ alignSelf: "flex-start" }}>
         {TABS.map((t, i) => (
-          <button key={t} role="tab" aria-selected={tab === i} className={tab === i ? "on" : ""} onClick={() => setTab(i)}>
+          <button key={t} type="button" role="tab" aria-selected={tab === i} className={tab === i ? "on" : ""} onClick={() => setTab(i)}>
             {t}
           </button>
         ))}

@@ -7,9 +7,14 @@ function createPrismaClient() {
   // opens up to 10 per process by default, so two copies could already exhaust it and every request would
   // fail with EMAXCONNSESSION. Keep each process small and let idle connections go.
   // Raise DB_POOL_MAX only if the pooler's limit is raised too.
+  //
+  // DATABASE_POOL_URL, when set, is the pooler's *transaction-mode* address (Supabase: port 6543). Transaction
+  // mode hands a connection out only for the length of one query, so hundreds of clients can share it, and the
+  // 15-client session limit above stops being a problem. It is used only here, at runtime: migrations and scripts
+  // keep using DATABASE_URL (session mode), which they need.
   const max = Number.parseInt(process.env.DB_POOL_MAX ?? "", 10) || 5;
   const adapter = new PrismaPg({
-    connectionString: process.env.DATABASE_URL!,
+    connectionString: process.env.DATABASE_POOL_URL || process.env.DATABASE_URL!,
     max,
     idleTimeoutMillis: 10_000,
   });

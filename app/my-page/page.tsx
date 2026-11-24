@@ -17,6 +17,20 @@ const LEAVE_COLOR: Record<string, string> = { CASUAL: "#1a1512", SICK: "#ef6c00"
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const DAY_MS = 24 * 3600_000;
 
+/**
+ * Everything on this page except the attendance records is supporting detail (leave balances, request lists, the
+ * calendar's holidays). If one of those queries fails (a database hiccup, a busy connection pool), the page should
+ * still open with that part empty, not collapse into "Something went wrong". The failure is logged for diagnosis.
+ */
+async function safe<T>(label: string, work: Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await work;
+  } catch (err) {
+    console.error(`[my-page] ${label} failed:`, err instanceof Error ? err.message : err);
+    return fallback;
+  }
+}
+
 const IST = { timeZone: "Asia/Kolkata" } as const;
 const fmtTime = (d: Date) => d.toLocaleTimeString("en-IN", { ...IST, hour: "2-digit", minute: "2-digit", hour12: false });
 const fmtDay = (d: Date) => d.toLocaleDateString("en-IN", { ...IST, day: "numeric", month: "short" });
@@ -58,23 +72,31 @@ export default async function MyPage() {
         workSegments: { select: { mode: true, heading: true, startedAt: true, endedAt: true } },
       },
     }),
-    prisma.user.findUnique({ where: { id: userId }, select: { workMode: true, name: true } }),
-    getCalendarSpecialDays(userId, orgId),
-    getLeaveBalances(userId, orgId),
-    prisma.timeOffRequest.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 8 }),
-    prisma.timedPermission.findMany({
-      where: { attendance: { userId } },
-      orderBy: { createdAt: "desc" },
-      take: 8,
-      select: { startTime: true, endTime: true, approvalStatus: true, createdAt: true },
-    }),
-    prisma.overtimeRequest.findMany({
-      where: { attendance: { userId } },
-      orderBy: { createdAt: "desc" },
-      take: 8,
-      select: { estimatedEndAt: true, reason: true, status: true, createdAt: true },
-    }),
-    prisma.manualEntryRequest.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 5 }),
+    safe("user", prisma.user.findUnique({ where: { id: userId }, select: { workMode: true, name: true } }), null),
+    safe("calendar days", getCalendarSpecialDays(userId, orgId), {}),
+    safe("leave balances", getLeaveBalances(userId, orgId), []),
+    safe("leave requests", prisma.timeOffRequest.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 8 }), []),
+    safe(
+      "permissions",
+      prisma.timedPermission.findMany({
+        where: { attendance: { userId } },
+        orderBy: { createdAt: "desc" },
+        take: 8,
+        select: { startTime: true, endTime: true, approvalStatus: true, createdAt: true },
+      }),
+      [],
+    ),
+    safe(
+      "overtime",
+      prisma.overtimeRequest.findMany({
+        where: { attendance: { userId } },
+        orderBy: { createdAt: "desc" },
+        take: 8,
+        select: { estimatedEndAt: true, reason: true, status: true, createdAt: true },
+      }),
+      [],
+    ),
+    safe("manual entries", prisma.manualEntryRequest.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 5 }), []),
   ]);
 
   const chrono = [...records].reverse();

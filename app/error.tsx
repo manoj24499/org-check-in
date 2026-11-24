@@ -26,6 +26,10 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
         <p className="mt-2 text-sm text-secondary">
           An unexpected error occurred. You can try again, or reload the page if it keeps happening.
         </p>
+        {error.digest ? (
+          // Production hides the real message; this reference lets it be found in the server log.
+          <p className="mt-3 text-xs text-secondary">Reference: {error.digest}</p>
+        ) : null}
         {process.env.NODE_ENV !== "production" ? (
           <pre className="mt-4 max-h-48 overflow-auto rounded-lg bg-surface border border-border-soft p-3 text-left text-xs text-secondary whitespace-pre-wrap">
             {error.message}

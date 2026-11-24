@@ -27,10 +27,16 @@ export default function MyPageSidebar({ name, initials, employeeCode }: { name: 
 
         <nav aria-label="Primary" style={{ display: "flex", flexDirection: "column", gap: 4, flexGrow: 1 }}>
           {LINKS.map(({ href, label, Icon }, i) => (
-            <a key={href} className={`side-link${i === 0 ? " side-on" : ""}`} href={href}>
+            // A button that scrolls, not an `#anchor` link: nothing here should ever navigate or reload the page.
+            <button
+              key={href}
+              type="button"
+              className={`side-link${i === 0 ? " side-on" : ""}`}
+              onClick={() => document.getElementById(href.slice(1))?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            >
               <Icon size={20} strokeWidth={1.8} style={{ flexShrink: 0 }} aria-hidden />
               <span className="lbl">{label}</span>
-            </a>
+            </button>
           ))}
         </nav>
 
