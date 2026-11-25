@@ -12,7 +12,8 @@ import { haversineDistanceMeters } from "@/lib/geofence";
 import { startOfISTDay, todayDateOnlyIST } from "@/lib/istTime";
 import { loadShiftAssignments, shiftForDate } from "@/lib/shiftAssignment";
 import { findActiveCheckIn } from "@/lib/activeSession";
-import { computeLateness } from "@/lib/shiftTime";
+import { MAX_RESUMES_PER_DAY } from "@/lib/resumeLimit";
+import { combineDateAndShiftEndTime, computeLateness } from "@/lib/shiftTime";
 import { checkFaceVerifyHealth } from "@/lib/faceVerify";
 import { OFFLINE_MAX_AGE_MINUTES } from "@/lib/offlineCheckIn";
 import { resolveKioskDevice } from "@/lib/kioskDevice";
@@ -260,10 +261,29 @@ export async function GET(req: NextRequest) {
         }
       : null;
 
+  // "Resume work": checked out earlier today, not used yet, and the shift hasn't ended (the automatic check-out
+  // would close it again straight away).
+  let canResume = false;
+  let resumeUsed = false;
+  if (checkIn && checkOut) {
+    try {
+      resumeUsed =
+        (await prisma.attendanceResume.count({ where: { attendanceId: checkIn.id } })) >= MAX_RESUMES_PER_DAY;
+      const shiftEnd = shiftThatDay ? combineDateAndShiftEndTime(checkIn.timestamp, shiftThatDay) : null;
+      canResume = !resumeUsed && (!shiftEnd || Date.now() < shiftEnd.getTime());
+    } catch (err) {
+      // The table only exists once its migration has been applied; until then, resuming is simply not offered
+      // (this route is polled by every signed-in phone and must never fail because of it).
+      console.warn("[status] resume lookup failed:", err instanceof Error ? err.message : err);
+    }
+  }
+
   return NextResponse.json({
     exists: true,
     name: user.name,
     workMode: user.workMode,
+    canResume,
+    resumeUsed,
     checkedIn: Boolean(checkIn),
     checkedOut: Boolean(checkOut),
     checkInAt: checkIn?.timestamp ?? null,

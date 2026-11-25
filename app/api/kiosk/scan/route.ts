@@ -16,6 +16,7 @@ import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
 import { verifyFace } from "@/lib/faceVerify";
 import { PayloadTooLargeError, readJsonWithLimit } from "@/lib/readJsonBody";
 import { combineDateAndShiftEndTime, computeLateness } from "@/lib/shiftTime";
+import { MAX_CHECKINS_PER_DAY, MAX_RESUMES_PER_DAY } from "@/lib/resumeLimit";
 import { loadShiftAssignments, shiftForDate, type WeekdayShiftMap } from "@/lib/shiftAssignment";
 import { startOfISTDay, endOfISTDay, todayDateOnlyIST, istDateKey, parseDateOnlyKey } from "@/lib/istTime";
 import { findActiveCheckIn } from "@/lib/activeSession";
@@ -31,7 +32,9 @@ const scanSchema = z.object({
   employeeCode: z.string().min(1),
   // Omitted by someone already signed in (the phone app or the website's My Page): their sign-in is the proof.
   pin: z.string().min(4).max(10).optional(),
-  action: z.enum(["CHECK_IN", "CHECK_OUT"]),
+  // RESUME: reopen today's session after checking out (see AttendanceResume). Same photo, face and location checks as
+  // a check-in; the gap since the check-out becomes a break.
+  action: z.enum(["CHECK_IN", "CHECK_OUT", "RESUME"]),
   photo: z.string().optional(),
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
@@ -270,7 +273,7 @@ interface AttemptContext {
   rawEmployeeCode?: string;
   body?: {
     employeeCode: string;
-    action: "CHECK_IN" | "CHECK_OUT";
+    action: "CHECK_IN" | "CHECK_OUT" | "RESUME";
     latitude?: number;
     longitude?: number;
     mocked?: boolean;
@@ -310,6 +313,7 @@ function reasonCodeFor(status: number, message: string | null, code: string | nu
   if (/photo is required/i.test(m)) return "PHOTO_REQUIRED";
   if (/photo/i.test(m)) return "INVALID_PHOTO";
   if (/odometer/i.test(m)) return "ODOMETER";
+  if (/resume|shift has ended|limit of \d+ check-ins/i.test(m)) return "RESUME_REJECTED";
   if (/organization/i.test(m) || /kiosk/i.test(m)) return "ORGANIZATION";
   if (/invalid request|too large/i.test(m)) return "INVALID_REQUEST";
   return "OTHER";
@@ -473,12 +477,13 @@ async function handlePost(req: NextRequest, ctx: AttemptContext) {
   // employeeCode, so an attacker supplying a fresh/nonexistent code on every
   // request always passes it, then this used to decode a full photo before
   // ever checking whether the credentials were even plausible.
-  const photoRequired =
-    parsed.data.action === "CHECK_IN" ||
-    (parsed.data.action === "CHECK_OUT" && settings.checkOutPhotoRequired);
+  const isResume = parsed.data.action === "RESUME";
+  // A resume is an entry like a check-in: it needs the same photo, face match and location.
+  const isEntry = parsed.data.action === "CHECK_IN" || isResume;
+  const photoRequired = isEntry || (parsed.data.action === "CHECK_OUT" && settings.checkOutPhotoRequired);
 
   if (photoRequired && !parsed.data.photo) {
-    const verb = parsed.data.action === "CHECK_IN" ? "check in" : "check out";
+    const verb = parsed.data.action === "CHECK_IN" ? "check in" : isResume ? "resume work" : "check out";
     return NextResponse.json({ error: `A photo is required to ${verb}.` }, { status: 400 });
   }
 
@@ -650,6 +655,55 @@ async function handlePost(req: NextRequest, ctx: AttemptContext) {
     }
   }
 
+  // RESUME: today's session must exist, be checked out, not already resumed, and not be past its shift end (the
+  // automatic check-out would close it again at once). Worked out here so the geofence below can use the mode
+  // the day was started in.
+  let resumeSession: { id: string; timestamp: Date; checkInMode: string | null } | null = null;
+  let resumeCheckOutId: string | null = null;
+  if (isResume) {
+    if (offline) {
+      return NextResponse.json({ error: "Resume work isn't available offline." }, { status: 400 });
+    }
+    const today = await prisma.attendance.findMany({
+      where: { userId: user.id, timestamp: { gte: startOfISTDay() } },
+      orderBy: { timestamp: "asc" },
+      select: { id: true, type: true, timestamp: true, checkInMode: true, _count: { select: { resumes: true } } },
+    });
+    const checkInRow = today.find((r) => r.type === "CHECK_IN");
+    const checkOutRow = checkInRow ? today.find((r) => r.type === "CHECK_OUT" && r.timestamp > checkInRow.timestamp) : undefined;
+    if (!checkInRow) {
+      return NextResponse.json({ error: "You haven't checked in today, so there is nothing to resume." }, { status: 409 });
+    }
+    if (!checkOutRow) {
+      return NextResponse.json({ error: "You're still checked in." }, { status: 409 });
+    }
+    if (checkInRow._count.resumes >= MAX_RESUMES_PER_DAY) {
+      return NextResponse.json(
+        { error: `You've reached the limit of ${MAX_CHECKINS_PER_DAY} check-ins today. Ask your admin if you need more.` },
+        { status: 409 },
+      );
+    }
+    const shiftToday = shiftForDate(shiftMap, checkInRow.timestamp);
+    const shiftEnd = shiftToday ? combineDateAndShiftEndTime(checkInRow.timestamp, shiftToday) : null;
+    if (shiftEnd && eventTime.getTime() >= shiftEnd.getTime()) {
+      return NextResponse.json(
+        { error: "Your shift has ended, so you can't resume. Ask your admin to add the extra time." },
+        { status: 409 },
+      );
+    }
+    resumeSession = { id: checkInRow.id, timestamp: checkInRow.timestamp, checkInMode: checkInRow.checkInMode };
+    resumeCheckOutId = checkOutRow.id;
+  }
+  // The place choice that decides which geofence applies: sent by the person for a check-in; for a resume it is
+  // whatever the day was started with (and a hybrid employee may resume from either place).
+  const modeChoice: "OFFICE" | "FIELD" | "HOME" | undefined = isResume
+    ? user.workMode === "HYBRID"
+      ? undefined
+      : resumeSession?.checkInMode === "OFFICE" || resumeSession?.checkInMode === "FIELD" || resumeSession?.checkInMode === "HOME"
+        ? resumeSession.checkInMode
+        : undefined
+    : parsed.data.checkInMode;
+
   // A FIELD or WFH-workMode employee picks their mode for the day at
   // check-in — if they chose "Office", they're geofenced against the shared
   // office location exactly like a regular OFFICE employee (covers a WFH
@@ -659,11 +713,11 @@ async function handlePost(req: NextRequest, ctx: AttemptContext) {
   // choice existed.
   const effectiveWorkMode: typeof user.workMode =
     user.workMode === "FIELD"
-      ? parsed.data.checkInMode === "OFFICE"
+      ? modeChoice === "OFFICE"
         ? "OFFICE"
         : "FIELD"
       : user.workMode === "WFH"
-        ? parsed.data.checkInMode === "OFFICE"
+        ? modeChoice === "OFFICE"
           ? "OFFICE"
           : "WFH"
         : user.workMode;
@@ -676,8 +730,8 @@ async function handlePost(req: NextRequest, ctx: AttemptContext) {
   // the first WorkSegment. Decided by the geofence gate below.
   let hybridPlace: "OFFICE" | "HOME" | null = null;
 
-  if (parsed.data.action === "CHECK_IN" && user.workMode === "HYBRID") {
-    if (parsed.data.checkInMode === "FIELD") {
+  if (isEntry && user.workMode === "HYBRID") {
+    if (modeChoice === "FIELD") {
       return NextResponse.json({ error: "Invalid request." }, { status: 400 });
     }
     if (parsed.data.mocked) {
@@ -686,7 +740,7 @@ async function handlePost(req: NextRequest, ctx: AttemptContext) {
         { status: 409 },
       );
     }
-    const requested = parsed.data.checkInMode as "OFFICE" | "HOME" | undefined;
+    const requested = modeChoice as "OFFICE" | "HOME" | undefined;
     const [officeTarget, homeTarget] = await Promise.all([
       requested === "HOME" || !user.organizationId ? null : resolveOfficeLocationTarget(user.organizationId),
       requested === "OFFICE" ? null : resolveHomeTarget(user),
@@ -740,7 +794,7 @@ async function handlePost(req: NextRequest, ctx: AttemptContext) {
   // Geofence the check-in against whichever location applies to this
   // employee. No location configured yet (office or home) == not enforced.
   // (HYBRID was handled just above.)
-  if (parsed.data.action === "CHECK_IN" && effectiveWorkMode !== "FIELD" && user.workMode !== "HYBRID") {
+  if (isEntry && effectiveWorkMode !== "FIELD" && user.workMode !== "HYBRID") {
     if (parsed.data.mocked) {
       return NextResponse.json(
         { error: "Mock location detected. Please disable mock/fake GPS apps and try again." },
@@ -785,6 +839,83 @@ async function handlePost(req: NextRequest, ctx: AttemptContext) {
         return NextResponse.json({ error: message }, { status: 409 });
       }
     }
+  }
+
+  // RESUME: reopen today's session. The gate above has already checked the photo, face and location.
+  if (isResume && resumeSession && resumeCheckOutId) {
+    const resumeAt = eventTime;
+    const secret = newTrackingToken();
+    try {
+      await prisma.$transaction(async (tx) => {
+        // The check-out being reopened, with the photo and odometer it holds (kept in AttendanceResume).
+        const out = await tx.attendance.findUnique({
+          where: { id: resumeCheckOutId! },
+          select: { timestamp: true, photo: true, odometerKm: true, faceVerifyStatus: true },
+        });
+        if (!out) throw new Error("RESUME_GONE");
+        await tx.attendanceResume.create({
+          data: {
+            attendanceId: resumeSession!.id,
+            userId: user.id,
+            checkOutAt: out.timestamp,
+            checkOutPhoto: out.photo,
+            checkOutOdometerKm: out.odometerKm,
+            checkOutFaceStatus: out.faceVerifyStatus,
+            resumedAt: resumeAt,
+            resumePhoto: photoBuffer,
+            faceVerifyStatus,
+            faceSimilarity,
+            latitude: parsed.data.latitude,
+            longitude: parsed.data.longitude,
+          },
+        });
+        // The time away is a break, not work.
+        await tx.attendancePause.create({
+          data: { attendanceId: resumeSession!.id, pausedAt: out.timestamp, resumedAt: resumeAt, isBreak: true },
+        });
+        await tx.attendance.delete({ where: { id: resumeCheckOutId! } });
+        // A new tracking secret: location uploads for the reopened session prove themselves with it.
+        await tx.attendance.update({
+          where: { id: resumeSession!.id },
+          data: { trackingTokenHash: secret.hash, pauseWarningAt: null, autoCheckoutWarnedAt: null },
+        });
+        // The work-segment timeline restarts from the resume (FIELD and HYBRID only).
+        if (user.workMode === "FIELD" || user.workMode === "HYBRID") {
+          await tx.workSegment.create({
+            data: {
+              attendanceId: resumeSession!.id,
+              mode: user.workMode === "HYBRID" ? (hybridPlace ?? "OFFICE") : effectiveWorkMode === "OFFICE" ? "OFFICE" : "FIELD",
+              startedAt: resumeAt,
+              startMethod: "CHECKIN",
+            },
+          });
+        }
+      });
+    } catch (err) {
+      if (err instanceof Error && err.message === "RESUME_GONE") {
+        return NextResponse.json({ error: "Your check-out changed. Reload the page and try again." }, { status: 409 });
+      }
+      throw err;
+    }
+    void logAttendanceEvent({
+      userId: user.id,
+      organizationId: org.id,
+      attendanceId: resumeSession.id,
+      kind: "WORK_RESUMED",
+      actor: "SYSTEM",
+      summary: "Resumed work after checking out (the gap is recorded as a break).",
+      detail: { resumedAt: resumeAt.toISOString(), faceVerifyStatus },
+    });
+    return NextResponse.json({
+      id: resumeSession.id,
+      name: user.name,
+      employeeCode: user.employeeCode,
+      type: "CHECK_IN",
+      resumed: true,
+      timestamp: resumeAt,
+      workMode: user.workMode,
+      trackingToken: secret.token,
+    });
   }
 
   // An employee may only check in once and check out once per calendar day.
@@ -874,7 +1005,8 @@ async function handlePost(req: NextRequest, ctx: AttemptContext) {
       const created = await tx.attendance.create({
         data: {
           userId: user.id,
-          type: parsed.data.action,
+          // RESUME has already returned above, so what reaches here is a check-in or a check-out.
+          type: parsed.data.action === "RESUME" ? "CHECK_IN" : parsed.data.action,
           method: "PIN",
           timestamp: now,
           // A check-out belongs to the day its session started (one per session day), so a shift that ends after

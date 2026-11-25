@@ -19,6 +19,7 @@ import {
   CircleAlert,
   WifiOff,
   MapPinOff,
+  RotateCcw,
 } from "lucide-react";
 import { computeSegmentSplit, computeWorkedMs } from "@/lib/attendanceHours";
 
@@ -39,7 +40,7 @@ type AttendanceRecord = {
   // request, not a detected geofence departure — see AttendancePause.
   // timedPermissionId. Falls back to "geofence" for older serialized data
   // that predates this field.
-  pauses?: { pausedAt: string; resumedAt: string | null; reason?: "geofence" | "permission" }[];
+  pauses?: { pausedAt: string; resumedAt: string | null; reason?: "geofence" | "permission" | "break" }[];
   // The CHECK_IN's work-segment timeline (FIELD: Office/Field; HYBRID:
   // Office/Transit/Home) — absent/empty for everyone else. TRANSIT time is
   // not work, so it's left out of the hours below.
@@ -105,7 +106,8 @@ function formatTimeOfDay(d: Date) {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-const PAUSE_REASON_LABEL = { geofence: "Geofence", permission: "Permission" } as const;
+// "break": the gap between a check-out and the "Resume work" that reopened the same day.
+const PAUSE_REASON_LABEL = { geofence: "Geofence", permission: "Permission", break: "Break after check-out" } as const;
 
 // NOT_CHECKED (or missing, for older data) renders no badge at all — it just
 // means face verification wasn't enabled for this employee/record, which
@@ -511,6 +513,18 @@ export default function AttendanceCalendar({
                     <span className="inline-flex items-center rounded-md bg-surface px-2 py-0.5 text-xs font-medium text-muted border border-border">
                       {e.method}
                     </span>
+                    {e.type === "CHECK_IN" && (e.pauses ?? []).some((p) => p.reason === "break") && (
+                      <span
+                        className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700"
+                        title="Checked out earlier and checked in again on the same day. The time away is recorded as a break."
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        Resumed
+                        {(e.pauses ?? []).filter((p) => p.reason === "break").length > 1
+                          ? ` ×${(e.pauses ?? []).filter((p) => p.reason === "break").length}`
+                          : ""}
+                      </span>
+                    )}
                     {e.recordedOffline && (
                       <span
                         className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700"
@@ -655,7 +669,9 @@ export default function AttendanceCalendar({
                         className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border ${
                           reason === "permission"
                             ? "bg-surface text-muted-2 border-border"
-                            : "bg-amber-50 text-amber-700 border-amber-200"
+                            : reason === "break"
+                              ? "bg-violet-50 text-violet-700 border-violet-200"
+                              : "bg-amber-50 text-amber-700 border-amber-200"
                         }`}
                       >
                         {PAUSE_REASON_LABEL[reason]}

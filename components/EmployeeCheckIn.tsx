@@ -19,10 +19,12 @@ type Status = {
   pauses?: { pausedAt: string; resumedAt: string | null }[];
   shiftStartTime?: string | null;
   shiftEndTime?: string | null;
+  canResume?: boolean;
+  resumeUsed?: boolean;
 };
 
 type Office = { name: string; latitude: number; longitude: number; radiusMeters: number } | null;
-type Action = "CHECK_IN" | "CHECK_OUT";
+type Action = "CHECK_IN" | "CHECK_OUT" | "RESUME";
 type Notice = { tone: "error" | "done"; message: string; retry?: Action };
 
 const IST_MS = 5.5 * 3600_000;
@@ -125,7 +127,9 @@ export default function EmployeeCheckIn({ employeeCode, firstName }: { employeeC
   const workMode = status?.workMode;
   const canPickPlace = (workMode === "WFH" || workMode === "FIELD") && !status?.checkedIn;
   const needPhotoToCheckOut = Boolean(status?.checkOutPhotoRequired);
-  const showCamera = !isDone && (!isWorking || needPhotoToCheckOut);
+  // Checked out earlier today and allowed to reopen the day once ("Resume work").
+  const canResume = Boolean(isDone && status?.canResume);
+  const showCamera = canResume || (!isDone && (!isWorking || needPhotoToCheckOut));
 
   // While checked in, keep the screen awake: a phone that locks suspends the browser tab and location stops, so
   // this is the one thing the page can do to cut the gaps (supported on current iPhone Safari and Chrome). The
@@ -164,7 +168,7 @@ export default function EmployeeCheckIn({ employeeCode, firstName }: { employeeC
     setNotice(null);
     setDistance(null);
     const photo = cameraRef.current?.capture() || undefined;
-    if ((action === "CHECK_IN" || needPhotoToCheckOut) && !photo) {
+    if ((action === "CHECK_IN" || action === "RESUME" || needPhotoToCheckOut) && !photo) {
       fail("The camera isn't ready. Allow camera access in the browser, then try again.", action);
       return;
     }
@@ -207,7 +211,15 @@ export default function EmployeeCheckIn({ employeeCode, firstName }: { employeeC
         fail(data.error ?? `Something went wrong (error ${res.status}). Please try again.`, action);
         return;
       }
-      if (action === "CHECK_IN") {
+      if (action === "RESUME") {
+        startTracking(data.id, data.trackingToken);
+        setTracking(true);
+        setNotice({
+          tone: "done",
+          message:
+            "Welcome back. The time since you checked out is recorded as a break. Location tracking has started again: keep this tab open, the screen awake and location on.",
+        });
+      } else if (action === "CHECK_IN") {
         startTracking(data.id, data.trackingToken);
         setTracking(true);
         setNotice({
@@ -338,7 +350,7 @@ export default function EmployeeCheckIn({ employeeCode, firstName }: { employeeC
 
       <div style={{ flex: "1 1 340px", minWidth: 0, padding: 24, margin: 16, borderRadius: 12, background: "var(--mp-bg)", border: "1px solid var(--mp-border)", display: "flex", flexDirection: "column", gap: 16 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span className="label">{isDone ? "Day summary" : isWorking ? (needPhotoToCheckOut ? "Check out" : "Live") : "Check in"}</span>
+          <span className="label">{canResume ? "Check in again" : isDone ? "Day summary" : isWorking ? (needPhotoToCheckOut ? "Check out" : "Live") : "Check in"}</span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--mp-text2)" }}>
             <ShieldCheck size={14} /> Face and location verified
           </span>
@@ -422,7 +434,21 @@ export default function EmployeeCheckIn({ employeeCode, firstName }: { employeeC
           </div>
         )}
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {canResume && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <p className="sub" style={{ margin: 0 }}>
+              You checked out earlier today. You can check in again: the time away is recorded as a break, and today&apos;s first
+              check-in time stays as it was.
+            </p>
+            <button type="button" className="btn btn-primary" onClick={() => void run("RESUME")} disabled={busy || !cameraReady}>
+              <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                {busy ? <Loader2 size={18} className="animate-spin" /> : <LogIn size={18} />}
+                {busy ? "Processing…" : "Check in again"}
+              </span>
+            </button>
+          </div>
+        )}
+        <div style={{ display: canResume ? "none" : "flex", flexDirection: "column", gap: 8 }}>
           <button type="button" className="btn btn-primary" onClick={() => void run("CHECK_IN")} disabled={busy || isWorking || isDone || !cameraReady}>
             <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
               {busy ? <Loader2 size={18} className="animate-spin" /> : <LogIn size={18} />}

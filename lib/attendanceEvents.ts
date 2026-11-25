@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
-export type AttendanceEventKind = "AUTO_CHECKOUT_WARNING" | "AUTO_CHECKOUT" | "MANUAL_ENTRY" | "PUSH_SENT";
+export type AttendanceEventKind = "AUTO_CHECKOUT_WARNING" | "AUTO_CHECKOUT" | "MANUAL_ENTRY" | "PUSH_SENT" | "WORK_RESUMED";
 
 // The table only exists once its migration has been applied. If it's missing, stop trying for a while instead
 // of failing (and logging an error) on every check-in, push and cron run.

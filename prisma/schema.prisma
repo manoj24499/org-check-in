@@ -738,6 +738,8 @@ model Attendance {
   // resolved either way (return to range, or converted into a real pause).
   pauseWarningAt   DateTime?
   pauses           AttendancePause[]
+  // Set once the employee used "Resume work" to reopen this day after checking out (at most one per day).
+  resumes AttendanceResume[]
   fieldVisits      FieldVisit[]
   timedPermissions TimedPermission[]
   workSegments     WorkSegment[]
@@ -969,6 +971,33 @@ model FieldVisit {
 // A paused interval within one CHECK_IN session — resumedAt null means still
 // paused. Kept as its own table (not new AttendanceType values) since several
 // places assume exactly one CHECK_IN + one CHECK_OUT per employee per day.
+// "Resume work": an employee who checked out earlier today (a split day, or a check-out pressed too soon) reopens the
+// same session. The CHECK_OUT row is removed (a day can only hold one) and everything it held is kept here, so
+// nothing is lost: when and how they checked out, and the face check and location of the resume itself.
+// `attendanceId` is unique, which is what limits it to once per day.
+model AttendanceResume {
+  id           String     @id @default(cuid())
+  attendanceId String
+  attendance   Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  userId       String
+  // The check-out that was reopened.
+  checkOutAt         DateTime
+  checkOutPhoto      Bytes?
+  checkOutOdometerKm Float?
+  checkOutFaceStatus FaceVerifyStatus @default(NOT_CHECKED)
+  // The resume itself.
+  resumedAt        DateTime
+  resumePhoto      Bytes?
+  faceVerifyStatus FaceVerifyStatus @default(NOT_CHECKED)
+  faceSimilarity   Float?
+  latitude         Float?
+  longitude        Float?
+  createdAt        DateTime         @default(now())
+
+  @@index([userId, resumedAt])
+  @@index([attendanceId])
+}
+
 model AttendancePause {
   id           String     @id @default(cuid())
   attendanceId String
@@ -983,6 +1012,10 @@ model AttendancePause {
   // Null == the ordinary geofence-departure auto-pause.
   timedPermissionId String?          @unique
   timedPermission   TimedPermission? @relation(fields: [timedPermissionId], references: [id])
+
+  // True for the gap between a check-out and the "Resume work" that reopened the same day (see AttendanceResume):
+  // time away that is not worked, whatever the geofence said. False for every ordinary auto-pause.
+  isBreak Boolean @default(false)
 
   // Replaces a plain attendanceId-only index — every location ping and
   // kiosk status poll for a checked-in employee looks up "the currently

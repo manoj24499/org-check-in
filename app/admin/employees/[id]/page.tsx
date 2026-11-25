@@ -57,7 +57,7 @@ export default async function EmployeeDetailPage({
           recordedOffline: true,
           offlineOutsideArea: true,
           offlineTimeVerified: true,
-          pauses: { select: { pausedAt: true, resumedAt: true, timedPermissionId: true } },
+          pauses: { select: { pausedAt: true, resumedAt: true, timedPermissionId: true, isBreak: true } },
           // Office / Home / Transit (HYBRID) or Office / Field (FIELD) timeline —
           // empty for everyone else. Transit is excluded from worked hours.
           workSegments: {
@@ -99,7 +99,7 @@ export default async function EmployeeDetailPage({
     pauses: r.pauses.map((p) => ({
       pausedAt: p.pausedAt.toISOString(),
       resumedAt: p.resumedAt?.toISOString() ?? null,
-      reason: p.timedPermissionId ? ("permission" as const) : ("geofence" as const),
+      reason: p.isBreak ? ("break" as const) : p.timedPermissionId ? ("permission" as const) : ("geofence" as const),
     })),
     segments: r.workSegments.map((s) => ({
       mode: s.mode,
