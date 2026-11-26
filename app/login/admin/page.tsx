@@ -15,7 +15,6 @@ export default async function AdminLoginPage({
         eyebrow="Admin sign-in"
         heading="Admin login"
         subtext="Restricted to workspace administrators."
-        backHref="/login"
       />
     </AuthSplit>
   );

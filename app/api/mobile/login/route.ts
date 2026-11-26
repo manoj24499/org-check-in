@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { verifyPin, backfillPinLookupHash } from "@/lib/credentials";
 import { getClientIp, isRateLimited, isPinGuessLimited } from "@/lib/rateLimit";
+import { recordPinFailure } from "@/lib/pinFailures";
 import { resolveOrgBySlug } from "@/lib/organization";
 import { signAccessToken, issueRefreshToken } from "@/lib/mobileAuth";
 import { checkDevice, DEVICE_MISMATCH_CODE } from "@/lib/deviceBinding";
@@ -59,6 +60,13 @@ async function handlePost(req: NextRequest) {
   // against one specific account are capped no matter which entry point or
   // how many source IPs an attacker uses.
   if (await isPinGuessLimited(org.id, parsed.data.employeeCode)) {
+    const target = await prisma.user.findFirst({
+      where: { organizationId: org.id, employeeCode: parsed.data.employeeCode, role: "EMPLOYEE" },
+      select: { id: true },
+    });
+    if (target) {
+      recordPinFailure({ organizationId: org.id, userId: target.id, employeeCode: parsed.data.employeeCode, source: "MOBILE", outcome: "LOCKED", ipAddress: getClientIp(req) });
+    }
     return NextResponse.json(
       { error: "Too many attempts for this employee code. Please wait a few minutes and try again." },
       { status: 429 },
@@ -74,6 +82,10 @@ async function handlePost(req: NextRequest) {
     (await verifyPin(parsed.data.pin, user.pinHash));
 
   if (!user || !valid) {
+    // Only a wrong PIN for a real, active employee is worth an alert (not an unknown code or a deactivated account).
+    if (user && user.role === "EMPLOYEE" && user.active && user.pinHash) {
+      recordPinFailure({ organizationId: org.id, userId: user.id, employeeCode: parsed.data.employeeCode, source: "MOBILE", outcome: "WRONG_PIN", ipAddress: getClientIp(req) });
+    }
     return NextResponse.json({ error: "Invalid employee code or PIN." }, { status: 401 });
   }
 

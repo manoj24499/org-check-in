@@ -92,27 +92,65 @@
 .mp .row-hover { transition: background 0.2s ease; }
 .mp .row-hover:hover { background: var(--mp-muted); }
 
-/* Sidebar: icons only, grows on hover or keyboard focus. */
-.mp .side-wrap { position: sticky; top: 0; width: 76px; flex: none; height: 100vh; min-height: 640px; z-index: 20; }
+/* Sidebar: always open on desktop; a slim header plus a bottom tab bar on phones. */
+.mp .side-wrap { position: sticky; top: 0; width: 272px; flex: none; height: 100vh; min-height: 640px; z-index: 20; }
 .mp .side {
-  position: absolute; left: 0; top: 0; bottom: 0; width: 76px; overflow: hidden; box-sizing: border-box;
-  padding: 28px 14px; background: var(--mp-surface); border-right: 1px solid var(--mp-border);
-  display: flex; flex-direction: column; gap: 28px;
-  transition: width 0.35s cubic-bezier(0.2, 0.7, 0.2, 1), box-shadow 0.35s ease;
+  position: absolute; inset: 0; box-sizing: border-box; overflow-y: auto;
+  padding: 24px 16px; background: rgba(255, 255, 255, 0.82); backdrop-filter: blur(10px); border-right: 1px solid var(--mp-border);
+  display: flex; flex-direction: column; gap: 20px;
 }
-.mp .side:hover, .mp .side:focus-within { width: 252px; box-shadow: 0 0 40px rgba(26, 21, 18, 0.14); }
-.mp .lbl { opacity: 0; white-space: nowrap; transition: opacity 0.15s ease; pointer-events: none; }
-.mp .side:hover .lbl, .mp .side:focus-within .lbl { opacity: 1; transition-delay: 0.12s; pointer-events: auto; }
-.mp .side-link { position: relative; display: flex; align-items: center; gap: 16px; min-height: 44px; padding: 0 12px; border-radius: 8px; color: var(--mp-text); transition: background 0.2s ease; font-family: inherit; font-size: 15px; background: none; border: none; width: 100%; text-align: left; cursor: pointer; }
+.mp .side-brand { display: flex; align-items: center; gap: 10px; padding: 0 8px; height: 32px; flex-shrink: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
+.mp .side-profile { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 12px; background: var(--mp-primary-muted); border: 1px solid var(--mp-border); flex-shrink: 0; }
+.mp .side-avatar { width: 44px; height: 44px; flex-shrink: 0; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-weight: 700; background: #fff; color: var(--mp-primary-dark); box-shadow: 0 0 0 2px var(--mp-primary); }
+.mp .side-nav { display: flex; flex-direction: column; gap: 4px; flex-grow: 1; }
+.mp .side-foot { display: flex; flex-direction: column; gap: 4px; padding-top: 12px; border-top: 1px solid var(--mp-border); }
+.mp .side-heading { padding: 0 12px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mp-text3); }
+.mp .lbl { white-space: nowrap; }
+.mp .lbl-short { display: none; }
+.mp .side-link { position: relative; display: flex; align-items: center; gap: 14px; min-height: 44px; padding: 0 12px; border-radius: 10px; color: var(--mp-text); transition: background 0.2s ease, color 0.2s ease; font-family: inherit; font-size: 15px; background: none; border: none; width: 100%; text-align: left; cursor: pointer; }
 .mp .side-link:hover { background: var(--mp-muted); text-decoration: none; }
 .mp .side-on { background: var(--mp-primary-muted); color: var(--mp-primary-dark); font-weight: 600; }
+.mp .side-on::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 0 3px 3px 0; background: var(--mp-primary); }
+
+/* Sidebar icons: a tile that lights up when active and plays a small animation on hover or focus. */
+.mp .ico { width: 36px; height: 36px; flex-shrink: 0; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; background: var(--mp-muted); color: var(--mp-text2); transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease; }
+.mp .ico svg { transform-origin: center; }
+.mp .side-link:hover .ico, .mp .side-link:focus-visible .ico { background: var(--mp-primary-muted); color: var(--mp-primary-dark); }
+.mp .side-on .ico { background: var(--mp-primary); color: #fff; box-shadow: 0 4px 10px rgba(239, 108, 0, 0.35); }
+.mp .side-link:active .ico { transform: scale(0.9); }
+.mp .side-link:hover .ico-hop svg, .mp .side-link:focus-visible .ico-hop svg { animation: ico-hop 0.55s ease; }
+.mp .side-link:hover .ico-tick svg, .mp .side-link:focus-visible .ico-tick svg { animation: ico-tick 0.7s ease; }
+.mp .side-link:hover .ico-flip svg, .mp .side-link:focus-visible .ico-flip svg { animation: ico-flip 0.6s ease; }
+.mp .side-link:hover .ico-spin svg, .mp .side-link:focus-visible .ico-spin svg { animation: ico-spin 0.7s ease; }
+.mp .side-link:hover .ico-turn svg, .mp .side-link:focus-visible .ico-turn svg { animation: ico-turn 0.6s ease; }
+.mp .side-link:hover .ico-nudge svg, .mp .side-link:focus-visible .ico-nudge svg { animation: ico-nudge 0.6s ease; }
+@keyframes ico-hop { 0%, 100% { transform: translateY(0); } 35% { transform: translateY(-5px); } 65% { transform: translateY(1px); } }
+@keyframes ico-tick { 0% { transform: rotate(0); } 25% { transform: rotate(-18deg); } 55% { transform: rotate(14deg); } 100% { transform: rotate(0); } }
+@keyframes ico-flip { 0% { transform: rotateX(0); } 100% { transform: rotateX(360deg); } }
+@keyframes ico-spin { 0% { transform: rotate(0); } 100% { transform: rotate(360deg); } }
+@keyframes ico-turn { 0% { transform: rotate(0); } 60% { transform: rotate(100deg); } 100% { transform: rotate(0); } }
+@keyframes ico-nudge { 0%, 100% { transform: translateX(0); } 40% { transform: translateX(5px); } 70% { transform: translateX(-1px); } }
 
 @media (max-width: 900px) {
   .mp .side-wrap { position: static; width: 100%; height: auto; min-height: 0; }
-  .mp .side { position: static; width: 100%; flex-direction: row; flex-wrap: wrap; align-items: center; padding: 12px 16px; gap: 12px; }
-  .mp .side nav { flex-direction: row !important; flex-wrap: wrap; flex: 1; }
-  .mp .lbl { opacity: 1; pointer-events: auto; }
-  .mp .side-extra { display: none !important; }
+  .mp .side { position: static; flex-direction: row; align-items: center; gap: 12px; padding: 10px 16px; overflow: visible; border-right: none; border-bottom: 1px solid var(--mp-border); }
+  .mp .side-profile { flex: 1; min-width: 0; padding: 6px 10px; margin-left: auto; }
+  .mp .side-avatar { width: 32px; height: 32px; font-size: 13px; }
+  .mp .side-heading { display: none; }
+  .mp .side-foot { flex-direction: row; padding: 0; border: none; gap: 0; }
+  .mp .side-foot .side-link { width: 44px; padding: 0; justify-content: center; }
+  .mp .side-foot .lbl { display: none; }
+  .mp .side-nav {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; flex-direction: row; justify-content: space-around; gap: 0;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); background: rgba(255, 255, 255, 0.96); backdrop-filter: blur(10px); border-top: 1px solid var(--mp-border);
+  }
+  .mp .side-nav .ico { width: 32px; height: 32px; }
+  .mp .side-foot .ico { background: transparent; }
+  .mp .side-nav .side-link { flex: 1; flex-direction: column; justify-content: center; gap: 2px; min-height: 52px; padding: 4px 2px; font-size: 11px; text-align: center; }
+  .mp .side-nav .lbl { display: none; }
+  .mp .side-nav .lbl-short { display: block; }
+  .mp .side-on::before { display: none; }
+  .mp .mp-main { padding-bottom: 96px !important; }
 }
 @media (prefers-reduced-motion: reduce) {
   .mp *, .mp *::before, .mp *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition: none !important; }

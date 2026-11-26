@@ -28,11 +28,11 @@ export default auth((req) => {
   const isEmployeeRoute = nextUrl.pathname.startsWith("/my-page");
 
   if (isAdminRoute && role !== "ADMIN") {
-    return NextResponse.redirect(new URL("/login", nextUrl));
+    return NextResponse.redirect(new URL("/login/admin", nextUrl));
   }
 
   if (isEmployeeRoute && role !== "EMPLOYEE") {
-    return NextResponse.redirect(new URL("/login", nextUrl));
+    return NextResponse.redirect(new URL("/login/employee", nextUrl));
   }
 
   return NextResponse.next();

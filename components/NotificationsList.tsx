@@ -13,6 +13,7 @@ const KIND: Record<NotificationKind, { icon: typeof Bell; chip: string; tone: To
   OUTSIDE_AREA: { icon: MapPin, chip: "bg-amber-500/15 text-amber-600", tone: "amber", label: "Outside area" },
   TRACKING_STOPPED: { icon: MapPinOff, chip: "bg-red-500/10 text-red-600", tone: "red", label: "Tracking" },
   PHONE_STILL: { icon: MapPinOff, chip: "bg-amber-500/15 text-amber-600", tone: "amber", label: "Phone still" },
+  PIN_FAILURES: { icon: ShieldAlert, chip: "bg-red-500/10 text-red-600", tone: "red", label: "Wrong PINs" },
   NEW_PHONE: { icon: Smartphone, chip: "bg-amber-500/15 text-amber-600", tone: "amber", label: "New phone" },
   SUPPORT: { icon: LifeBuoy, chip: "bg-sky-500/10 text-sky-600", tone: "indigo", label: "Support" },
   MEETING: { icon: Users, chip: "bg-indigo-500/10 text-indigo-600", tone: "indigo", label: "Meeting" },

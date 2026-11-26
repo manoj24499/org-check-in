@@ -52,7 +52,9 @@ export default function ChangePinButton({ variant = "pill" }: { variant?: "pill"
       {variant === "side" ? (
         // My Page sidebar: same look as the other menu links (the label fades in when the sidebar opens).
         <button type="button" onClick={() => setOpen(true)} className="side-link">
-          <KeyRound size={20} strokeWidth={1.8} style={{ flexShrink: 0 }} aria-hidden />
+          <span className="ico ico-turn">
+            <KeyRound size={19} strokeWidth={1.9} aria-hidden />
+          </span>
           <span className="lbl">Change PIN</span>
         </button>
       ) : (

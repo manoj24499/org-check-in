@@ -1,0 +1,39 @@
+/* Admin preloader ("Opening admin console"): a radar sweep and live bars while the dashboard opens. */
+@keyframes ap-sweep { to { transform: rotate(360deg); } }
+@keyframes ap-bars { 0%, 100% { transform: scaleY(0.25); } 50% { transform: scaleY(1); } }
+@keyframes ap-ping { 0% { transform: scale(0.6); opacity: 0.6; } 100% { transform: scale(1.6); opacity: 0; } }
+@keyframes ap-fill { 0% { width: 4%; } 60% { width: 78%; } 100% { width: 96%; } }
+@keyframes ap-msg { 0% { opacity: 0; transform: translateY(8px); } 6%, 30% { opacity: 1; transform: translateY(0); } 36%, 100% { opacity: 0; transform: translateY(-8px); } }
+@keyframes ap-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+/* Quick loads should not flash the screen: it fades in only after a short wait. */
+@keyframes ap-in { from { opacity: 0; } to { opacity: 1; } }
+
+.ap-root {
+  position: fixed; inset: 0; z-index: 200; box-sizing: border-box; overflow: hidden;
+  background: #0e1419; color: #e8eef2; font-family: var(--font-inter), system-ui, sans-serif;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 40px; padding: 48px 16px;
+  animation: ap-in 0.25s ease;
+}
+.ap-brand { position: absolute; top: 32px; left: 40px; display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 20px; letter-spacing: 0.02em; }
+.ap-dot { width: 12px; height: 12px; border-radius: 3px; background: #2dd4bf; }
+.ap-tag { margin-left: 6px; padding: 3px 8px; border: 1px solid #2f3e49; border-radius: 6px; font-family: var(--font-inter), system-ui, sans-serif; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; color: #9fb1bd; }
+.ap-radar { position: relative; width: 220px; height: 220px; flex: none; }
+.ap-ping { position: absolute; inset: 30px; border-radius: 50%; border: 2px solid #2dd4bf; animation: ap-ping 2.8s ease-out infinite; }
+.ap-radar svg { position: absolute; inset: 0; }
+.ap-sweep { animation: ap-sweep 2.8s linear infinite; transform-origin: 110px 110px; }
+.ap-bars { position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: center; gap: 7px; padding-bottom: 78px; box-sizing: border-box; }
+.ap-bar { width: 9px; height: 64px; border-radius: 2px; background: #2dd4bf; transform-origin: bottom; animation: ap-bars 1.4s ease-in-out infinite; }
+.ap-text { display: flex; flex-direction: column; align-items: center; gap: 14px; max-width: 100%; }
+.ap-title { margin: 0; font-size: 36px; font-weight: 600; letter-spacing: -0.01em; text-align: center; }
+.ap-msgs { position: relative; height: 24px; width: 380px; max-width: 100%; font-size: 16px; color: #9fb1bd; }
+.ap-m { position: absolute; left: 0; right: 0; text-align: center; opacity: 0; animation: ap-msg 6s infinite; }
+.ap-track { width: 280px; max-width: 100%; height: 6px; border-radius: 3px; background: #1f2b34; overflow: hidden; }
+.ap-pfill { height: 100%; border-radius: 3px; background: #2dd4bf; animation: ap-fill 6s ease-in-out infinite; }
+.ap-foot { position: absolute; bottom: 28px; left: 16px; right: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; color: #8396a3; }
+.ap-live { width: 8px; height: 8px; border-radius: 50%; background: #2dd4bf; animation: ap-blink 1.2s infinite; }
+@media (max-width: 480px) { .ap-brand { left: 16px; top: 20px; } .ap-title { font-size: 28px; } .ap-root { gap: 32px; } }
+@media (prefers-reduced-motion: reduce) {
+  .ap-sweep, .ap-bar, .ap-ping, .ap-pfill, .ap-m, .ap-live, .ap-root { animation: none; }
+  .ap-m:first-child { opacity: 1; }
+  .ap-pfill { width: 60%; }
+}

@@ -4,6 +4,7 @@ import { checkFaceVerifyHealth, happenedWithin } from "@/lib/faceVerify";
 import { istDateKey, startOfISTDay } from "@/lib/istTime";
 import { findSilentFieldWorkers, type SilentFieldWorker } from "@/lib/trackingWatch";
 import { findStationaryFieldWorkers } from "@/lib/stationaryWatch";
+import { PIN_ALERT_MIN, PIN_ALERT_WINDOW_MS } from "@/lib/pinFailures";
 
 // The alerts an admin sees on the dashboard, gathered in one place for the Notifications page and the
 // sidebar badge. They are worked out from live data each time; the only thing stored is which ones an
@@ -16,6 +17,7 @@ export type NotificationKind =
   | "TRACKING_STOPPED"
   | "PHONE_STILL"
   | "NEW_PHONE"
+  | "PIN_FAILURES"
   | "MEETING"
   | "SUPPORT"
   | "FACE_SERVICE"
@@ -35,7 +37,7 @@ export interface AdminNotification {
   permission?: { id: string; startTime: string; endTime: string };
 }
 
-const KEY_PATTERN = /^(tracking|face|facesvc|outside|still|phone|meeting|support):[A-Za-z0-9:_.\-]{1,100}$/;
+const KEY_PATTERN = /^(tracking|face|facesvc|outside|still|phone|pin|meeting|support):[A-Za-z0-9:_.\-]{1,100}$/;
 /** Only these keys can be dismissed through the API. */
 export function isDismissibleKey(key: string): boolean {
   return KEY_PATTERN.test(key);
@@ -61,6 +63,11 @@ export function stillKey(attendanceId: string): string {
 /** One attempt to sign in from a phone that isn't the registered one. A new attempt gets a new key. */
 export function newPhoneKey(userId: string, attemptedAt: Date): string {
   return `phone:${userId}:${minute(attemptedAt)}`;
+}
+
+/** One employee's run of wrong PINs. A new hour of guessing gets a new key and alerts again. */
+export function pinFailuresKey(userId: string, latest: Date): string {
+  return `pin:${userId}:${latest.toISOString().slice(0, 13)}`;
 }
 
 /** One check-in that went through without a face check. */
@@ -100,7 +107,8 @@ export async function getAdminNotifications(
   const settings = await getSettings(organizationId);
   const outsideMs = settings.outsideAlertMinutes * 60_000;
 
-  const [dismissed, permissions, silent, missed, faceStatus, unavailableToday, outside, still, newPhones, meetings, supportTickets] = await Promise.all([
+  const pinSince = new Date(now.getTime() - PIN_ALERT_WINDOW_MS);
+  const [dismissed, permissions, silent, missed, faceStatus, unavailableToday, outside, still, newPhones, meetings, supportTickets, webPinFails] = await Promise.all([
     options.includeDismissed ? Promise.resolve(new Set<string>()) : getDismissedKeys(organizationId),
     prisma.timedPermission.findMany({
       where: { approvalStatus: "PENDING", attendance: { user: { organizationId } } },
@@ -154,6 +162,12 @@ export async function getAdminNotifications(
       orderBy: { createdAt: "desc" },
       take: 100,
       select: { id: true, message: true, hasPhoto: true, createdAt: true, user: { select: { id: true, name: true, employeeCode: true } } },
+    }),
+    // Wrong PINs typed at the web, phone and kiosk sign-in in the last half hour.
+    prisma.pinFailure.findMany({
+      where: { organizationId, createdAt: { gte: pinSince } },
+      select: { userId: true, source: true, outcome: true, ipAddress: true, createdAt: true },
+      take: 2000,
     }),
   ]);
 
@@ -266,6 +280,49 @@ export async function getAdminNotifications(
     });
   }
 
+  // Repeated wrong PINs: one alert per employee once they pass the threshold, across web, phone and kiosk.
+  const pinByUser = new Map<string, { web: number; phone: number; kiosk: number; ips: Set<string>; locked: boolean; latest: Date }>();
+  const bump = (userId: string, kind: "web" | "phone" | "kiosk", ip: string | null, at: Date, locked: boolean) => {
+    const a = pinByUser.get(userId) ?? { web: 0, phone: 0, kiosk: 0, ips: new Set<string>(), locked: false, latest: at };
+    a[kind] += 1;
+    if (ip) a.ips.add(ip);
+    if (locked) a.locked = true;
+    if (at > a.latest) a.latest = at;
+    pinByUser.set(userId, a);
+  };
+  for (const f of webPinFails) {
+    bump(f.userId, f.source === "MOBILE" ? "phone" : f.source === "KIOSK" ? "kiosk" : "web", f.ipAddress, f.createdAt, f.outcome === "LOCKED");
+  }
+  const flagged = [...pinByUser.entries()].filter(([, a]) => a.web + a.phone + a.kiosk >= PIN_ALERT_MIN);
+  if (flagged.length > 0) {
+    const people = await prisma.user.findMany({
+      where: { id: { in: flagged.map(([id]) => id) }, organizationId },
+      select: { id: true, name: true, employeeCode: true },
+    });
+    const byId = new Map(people.map((p) => [p.id, p]));
+    for (const [userId, a] of flagged) {
+      const person = byId.get(userId);
+      if (!person) continue;
+      const key = pinFailuresKey(userId, a.latest);
+      if (dismissed.has(key)) continue;
+      const total = a.web + a.phone + a.kiosk;
+      const where = [a.web ? `${a.web} on the website` : "", a.phone ? `${a.phone} on the phone app` : "", a.kiosk ? `${a.kiosk} at a kiosk` : ""]
+        .filter(Boolean)
+        .join(", ");
+      out.push({
+        key,
+        kind: "PIN_FAILURES",
+        title: "Repeated wrong PIN attempts",
+        message: `${total} wrong PIN attempts in the last ${Math.round(PIN_ALERT_WINDOW_MS / 60000)} minutes (${where}${a.ips.size > 1 ? `, from ${a.ips.size} different networks` : ""}). ${
+          a.locked ? "Their sign-in is temporarily locked. " : ""
+        }If this wasn't ${person.name}, regenerate their PIN from their profile.`,
+        occurredAt: a.latest.toISOString(),
+        employee: person,
+        dismissible: true,
+      });
+    }
+  }
+
   const recentlyMissed = happenedWithin(unavailableToday._max.timestamp?.toISOString() ?? null, 30 * 60 * 1000);
   const serviceKey = faceServiceKey(now);
   if ((faceStatus !== "ok" || (unavailableToday._count > 0 && recentlyMissed)) && !dismissed.has(serviceKey)) {
@@ -296,6 +353,6 @@ export async function getAdminNotifications(
     });
   }
 
-  const rank: Record<NotificationKind, number> = { PERMISSION_REQUEST: 0, SUPPORT: 1, OUTSIDE_AREA: 2, TRACKING_STOPPED: 3, NEW_PHONE: 4, PHONE_STILL: 5, MEETING: 6, FACE_SERVICE: 7, FACE_MISSED: 8 };
+  const rank: Record<NotificationKind, number> = { PERMISSION_REQUEST: 0, PIN_FAILURES: 0.5, SUPPORT: 1, OUTSIDE_AREA: 2, TRACKING_STOPPED: 3, NEW_PHONE: 4, PHONE_STILL: 5, MEETING: 6, FACE_SERVICE: 7, FACE_MISSED: 8 };
   return out.sort((a, b) => rank[a.kind] - rank[b.kind] || b.occurredAt.localeCompare(a.occurredAt));
 }

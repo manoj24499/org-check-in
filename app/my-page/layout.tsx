@@ -36,6 +36,7 @@ export default async function MyPageLayout({ children }: { children: React.React
         </div>
         <MyPageSidebar name={name} initials={initials} employeeCode={session?.user?.employeeCode ?? ""} />
         <main
+          className="mp-main"
           style={{
             flex: "1 1 640px",
             minWidth: 0,

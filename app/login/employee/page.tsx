@@ -3,10 +3,9 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import AuthSplit, { EMPLOYEE_PANEL } from "@/components/AuthSplit";
 import { ErrorNote, PasswordField, SubmitButton, TextField } from "@/components/AuthFields";
+import { showSignInPreloader } from "@/lib/signInPreloader";
 
 export default function EmployeeLoginPage() {
   const [loading, setLoading] = useState(false);
@@ -35,6 +34,7 @@ export default function EmployeeLoginPage() {
       // Stay busy until the portal opens (see components/AdminSignInForm.tsx); the timeout is a safety net.
       setRedirecting(true);
       sessionStorage.setItem("tab_auth", "true");
+      showSignInPreloader("employee");
       router.push("/my-page");
       router.refresh();
       setTimeout(() => {
@@ -46,14 +46,6 @@ export default function EmployeeLoginPage() {
 
   return (
     <AuthSplit panel={EMPLOYEE_PANEL}>
-      <Link
-        href="/login"
-        className="mb-6 inline-flex items-center gap-1.5 self-start text-[13px] text-muted-2 transition-colors hover:text-foreground"
-      >
-        <ArrowLeft className="h-[15px] w-[15px]" />
-        Back
-      </Link>
-
       <span className="text-[11px] font-medium tracking-[0.16em] uppercase text-primary-dark">Employee portal</span>
       <h1 className="mt-2 text-[30px] font-medium leading-tight tracking-[-0.03em] text-foreground">Sign in</h1>
       <p className="mt-2 text-sm text-muted-2">Use your organization code, employee ID and PIN.</p>
