@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { ErrorNote, PasswordField, SubmitButton, TextField } from "@/components/AuthFields";
+import { showSignInPreloader } from "@/lib/signInPreloader";
 
 /**
  * The one admin email + password sign-in, shared by /signin (the customer
@@ -57,6 +58,7 @@ export default function AdminSignInForm({
       // in case the navigation never completes.
       setRedirecting(true);
       sessionStorage.setItem("tab_auth", "true");
+      showSignInPreloader("admin");
       router.push(callbackUrl);
       router.refresh();
       setTimeout(() => {

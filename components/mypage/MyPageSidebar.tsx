@@ -88,7 +88,7 @@ export default function MyPageSidebar({ name, initials, employeeCode }: { name: 
         <div className="side-foot">
           <span className="side-heading">Account</span>
           <ChangePinButton variant="side" />
-          <button type="button" className="side-link" onClick={() => signOut({ callbackUrl: "/login" })}>
+          <button type="button" className="side-link" onClick={() => signOut({ callbackUrl: "/login/employee" })}>
             <span className="ico ico-nudge">
               <LogOut size={19} strokeWidth={1.9} aria-hidden />
             </span>

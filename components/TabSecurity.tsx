@@ -9,7 +9,8 @@ export default function TabSecurity() {
     const hasLoginFlag = sessionStorage.getItem("tab_auth");
     if (!hasLoginFlag) {
       // If it doesn't, force signout to clear cookie and redirect to login
-      signOut({ callbackUrl: "/login" });
+      // Back to the sign-in page for the area this tab was in.
+      signOut({ callbackUrl: window.location.pathname.startsWith("/admin") ? "/login/admin" : "/login/employee" });
     }
   }, []);
 

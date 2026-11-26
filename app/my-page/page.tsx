@@ -134,7 +134,7 @@ export default async function MyPage() {
       };
     })
     .sort((a, b) => a.inDays - b.inDays || a.name.localeCompare(b.name))
-    .slice(0, 5);
+    .slice(0, 3);
 
   const chrono = [...records].reverse();
   const firstName = (session.user.name ?? "").trim().split(/\s+/)[0] || "there";

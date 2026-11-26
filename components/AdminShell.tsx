@@ -313,7 +313,7 @@ export default function AdminShell({
         </Link>
         <button
           type="button"
-          onClick={() => signOut({ callbackUrl: "/login" })}
+          onClick={() => signOut({ callbackUrl: "/login/admin" })}
           title="Sign out"
           aria-label="Sign out"
           className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-2 transition-colors hover:bg-black/[0.05] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${fadeClass(rail)}`}

@@ -1,3 +1,4 @@
+import SignInPreloaderHost from "@/components/SignInPreloaderHost";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
@@ -31,6 +32,7 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <LocationTrackerBoot />
+        <SignInPreloaderHost />
         {children}
       </body>
     </html>
