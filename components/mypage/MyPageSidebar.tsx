@@ -1,66 +1,99 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { signOut } from "next-auth/react";
-import { CalendarDays, Clock, Home, LogOut, Palmtree } from "lucide-react";
+import { CalendarDays, ChartPie, Clock, Home, LogOut } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import ChangePinButton from "@/components/ChangePinButton";
 
 const LINKS = [
-  { href: "#today", label: "My Page", Icon: Home },
-  { href: "#workspace", label: "Calendar & activity", Icon: CalendarDays },
-  { href: "#leave", label: "Leave & permissions", Icon: Palmtree },
-  { href: "#insights", label: "Hours & overtime", Icon: Clock },
+  { id: "today", label: "Today", anim: "hop", Icon: Home },
+  { id: "insights", label: "Hours & overtime", short: "Hours", anim: "tick", Icon: Clock },
+  { id: "workspace", label: "Calendar & activity", short: "Calendar", anim: "flip", Icon: CalendarDays },
+  { id: "leave", label: "Leave balances", short: "Leave", anim: "spin", Icon: ChartPie },
 ] as const;
 
 export default function MyPageSidebar({ name, initials, employeeCode }: { name: string; initials: string; employeeCode: string }) {
+  const [active, setActive] = useState<string>(LINKS[0].id);
+  // While a click is scrolling the page, the scroll watcher must not move the highlight (it would flicker through
+  // every section on the way).
+  const locked = useRef(false);
+
+  // Highlights the section nearest the top of the screen while the page scrolls.
+  useEffect(() => {
+    const els = LINKS.map((l) => document.getElementById(l.id)).filter((e): e is HTMLElement => Boolean(e));
+    if (els.length === 0 || typeof IntersectionObserver === "undefined") return;
+    const visible = new Map<string, number>();
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) visible.set(e.target.id, e.boundingClientRect.top);
+          else visible.delete(e.target.id);
+        }
+        if (visible.size === 0 || locked.current) return;
+        const top = [...visible.entries()].sort((a, b) => Math.abs(a[1]) - Math.abs(b[1]))[0]![0];
+        setActive(top);
+      },
+      { rootMargin: "-10% 0px -55% 0px", threshold: [0, 0.2] },
+    );
+    els.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, []);
+
+  // A button that scrolls, not an `#anchor` link: nothing here should ever navigate or reload the page.
+  function go(id: string) {
+    setActive(id);
+    locked.current = true;
+    setTimeout(() => {
+      locked.current = false;
+    }, 1000);
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   return (
     <div className="side-wrap">
       <aside className="side" aria-label="Sidebar">
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 6px", flexShrink: 0, height: 32 }}>
-          <span style={{ flexShrink: 0, display: "grid", placeItems: "center", width: 32 }}>
-            <Logo variant="static" size={20} className="text-foreground" />
-          </span>
-          <span className="lbl" style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em" }}>
-            Inzivo
-          </span>
+        <div className="side-brand">
+          <Logo variant="static" size={22} className="text-foreground" />
+          <span>Inzivo</span>
         </div>
 
-        <nav aria-label="Primary" style={{ display: "flex", flexDirection: "column", gap: 4, flexGrow: 1 }}>
-          {LINKS.map(({ href, label, Icon }, i) => (
-            // A button that scrolls, not an `#anchor` link: nothing here should ever navigate or reload the page.
+        <div className="side-profile">
+          <span className="side-avatar">{initials}</span>
+          <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+            <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+            <span className="sub">{employeeCode}</span>
+          </div>
+        </div>
+
+        <nav className="side-nav" aria-label="Primary">
+          <span className="side-heading">Menu</span>
+          {LINKS.map((l) => (
             <button
-              key={href}
+              key={l.id}
               type="button"
-              className={`side-link${i === 0 ? " side-on" : ""}`}
-              onClick={() => document.getElementById(href.slice(1))?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              className={`side-link${active === l.id ? " side-on" : ""}`}
+              aria-current={active === l.id ? "true" : undefined}
+              onClick={() => go(l.id)}
             >
-              <Icon size={20} strokeWidth={1.8} style={{ flexShrink: 0 }} aria-hidden />
-              <span className="lbl">{label}</span>
+              <span className={`ico ico-${l.anim}`}>
+                <l.Icon size={19} strokeWidth={1.9} aria-hidden />
+              </span>
+              <span className="lbl">{l.label}</span>
+              <span className="lbl-short">{"short" in l ? l.short : l.label}</span>
             </button>
           ))}
         </nav>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <div className="side-foot">
+          <span className="side-heading">Account</span>
           <ChangePinButton variant="side" />
           <button type="button" className="side-link" onClick={() => signOut({ callbackUrl: "/login" })}>
-            <LogOut size={20} strokeWidth={1.8} style={{ flexShrink: 0 }} aria-hidden />
+            <span className="ico ico-nudge">
+              <LogOut size={19} strokeWidth={1.9} aria-hidden />
+            </span>
             <span className="lbl">Sign out</span>
           </button>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          <span
-            style={{
-              width: 44, height: 44, borderRadius: 999, background: "var(--mp-muted)", border: "1px solid var(--mp-border)",
-              display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, flexShrink: 0,
-            }}
-          >
-            {initials}
-          </span>
-          <div className="lbl" style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-            <span style={{ fontWeight: 600 }}>{name}</span>
-            <span className="sub">{employeeCode}</span>
-          </div>
         </div>
       </aside>
     </div>

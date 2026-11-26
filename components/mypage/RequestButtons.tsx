@@ -12,9 +12,11 @@ function istToday(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
 }
 
+const TITLE = { leave: "Request leave", permission: "Request permission", overtime: "Request overtime" } as const;
+
 export default function RequestButtons({ leaveOptions }: { leaveOptions: LeaveOption[] }) {
   const router = useRouter();
-  const [open, setOpen] = useState<null | "leave" | "permission">(null);
+  const [open, setOpen] = useState<null | "leave" | "permission" | "overtime">(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState<string | null>(null);
@@ -45,6 +47,15 @@ export default function RequestButtons({ leaveOptions }: { leaveOptions: LeaveOp
             reason: String(f.get("reason") ?? "").trim() || undefined,
           }),
         });
+      } else if (open === "overtime") {
+        res = await fetch("/api/mobile/me/overtime", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            estimatedEndAt: new Date(`${istToday()}T${String(f.get("until"))}:00+05:30`).toISOString(),
+            reason: String(f.get("reason") ?? "").trim(),
+          }),
+        });
       } else {
         const day = istToday();
         res = await fetch("/api/mobile/me/timed-permission", {
@@ -62,7 +73,13 @@ export default function RequestButtons({ leaveOptions }: { leaveOptions: LeaveOp
         setBusy(false);
         return;
       }
-      setSent(open === "leave" ? "Leave request sent. You'll see it under Requests once it's reviewed." : "Permission request sent.");
+      setSent(
+        open === "leave"
+          ? "Leave request sent. You'll see it under Requests once it's reviewed."
+          : open === "overtime"
+            ? "Overtime noted. Check out when you finish and add a short work summary."
+            : "Permission request sent.",
+      );
       close();
       router.refresh();
       setTimeout(() => setSent(null), 6000);
@@ -76,15 +93,18 @@ export default function RequestButtons({ leaveOptions }: { leaveOptions: LeaveOp
 
   return (
     <>
-      <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 8, minWidth: 220 }}>
+      <div style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
         <button type="button" className="btn btn-outline" onClick={() => setOpen("leave")}>
           Request Leave
         </button>
         <button type="button" className="btn" style={{ border: "none", background: "var(--mp-muted)", color: "var(--mp-text)" }} onClick={() => setOpen("permission")}>
           Request Permission
         </button>
+        <button type="button" className="btn" style={{ border: "none", background: "var(--mp-muted)", color: "var(--mp-text)" }} onClick={() => setOpen("overtime")}>
+          Request Overtime
+        </button>
         {sent && (
-          <p role="status" style={{ margin: 0, fontSize: 13, color: "var(--mp-success)", maxWidth: 240 }}>
+          <p role="status" style={{ margin: 0, fontSize: 13, color: "var(--mp-success)", flexBasis: "100%" }}>
             {sent}
           </p>
         )}
@@ -93,8 +113,8 @@ export default function RequestButtons({ leaveOptions }: { leaveOptions: LeaveOp
       {open &&
         createPortal(
           <div className="mp mp-modal" style={{ minHeight: 0, background: "rgba(26,21,18,0.55)" }} onMouseDown={(e) => e.target === e.currentTarget && !busy && close()}>
-            <form className="mp-dialog" onSubmit={submit} aria-label={open === "leave" ? "Request leave" : "Request permission"}>
-              <h2>{open === "leave" ? "Request leave" : "Request permission"}</h2>
+            <form className="mp-dialog" onSubmit={submit} aria-label={TITLE[open]}>
+              <h2>{TITLE[open]}</h2>
               {open === "leave" ? (
                 <>
                   <label>
@@ -120,6 +140,20 @@ export default function RequestButtons({ leaveOptions }: { leaveOptions: LeaveOp
                   <label>
                     Reason (optional)
                     <textarea name="reason" maxLength={500} placeholder="A line for your manager" />
+                  </label>
+                </>
+              ) : open === "overtime" ? (
+                <>
+                  <p style={{ margin: 0, color: "#6f6259", fontSize: 14 }}>
+                    Working past your shift today? Tell us when you expect to finish. You need to be checked in, and you&apos;ll get a reminder before that time.
+                  </p>
+                  <label>
+                    Expected finish (today)
+                    <input name="until" type="time" required />
+                  </label>
+                  <label>
+                    Reason
+                    <textarea name="reason" maxLength={300} required placeholder="What are you working on?" />
                   </label>
                 </>
               ) : (

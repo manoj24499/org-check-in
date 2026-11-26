@@ -2,10 +2,22 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { Building2, Home, Info, Loader2, LogIn, LogOut, MapPin, RefreshCw, ShieldCheck } from "lucide-react";
 import CameraCapture, { type CameraCaptureHandle } from "./CameraCapture";
 import { isTrackingActive, resumeTrackingIfActive, startTracking, stopTracking } from "@/lib/locationTracker";
 import { haversineDistanceMeters } from "@/lib/geofence";
+
+// Leaflet needs the browser, so the map loads on the client only.
+const LiveMap = dynamic(() => import("./mypage/LiveMap"), {
+  ssr: false,
+  loading: () => <div style={{ position: "absolute", inset: 0, background: "var(--mp-muted)" }} />,
+});
+
+const FACE: React.CSSProperties = {
+  position: "absolute", inset: 0, overflow: "hidden", borderRadius: 12, border: "1px solid var(--mp-border)", background: "var(--mp-muted)",
+  backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden",
+};
 
 type WorkMode = "OFFICE" | "WFH" | "FIELD" | "HYBRID";
 
@@ -72,7 +84,7 @@ const clockLabel = (min: number) => {
  * checked here, by the same server rules as the kiosk and the phone app. Location tracking runs from this tab
  * after a check-in.
  */
-export default function EmployeeCheckIn({ employeeCode, firstName }: { employeeCode: string; firstName: string }) {
+export default function EmployeeCheckIn({ employeeCode, firstName, requests, footer }: { employeeCode: string; firstName: string; requests?: React.ReactNode; footer?: React.ReactNode }) {
   const router = useRouter();
   const cameraRef = useRef<CameraCaptureHandle>(null);
   const [status, setStatus] = useState<Status | null>(null);
@@ -84,6 +96,8 @@ export default function EmployeeCheckIn({ employeeCode, firstName }: { employeeC
   const [tracking, setTracking] = useState(false);
   const [now, setNow] = useState<number | null>(null);
   const [distance, setDistance] = useState<{ meters: number; within: boolean } | null>(null);
+  // The card flips from the live map to the camera when a photo is needed.
+  const [flipped, setFlipped] = useState(false);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -129,7 +143,25 @@ export default function EmployeeCheckIn({ employeeCode, firstName }: { employeeC
   const needPhotoToCheckOut = Boolean(status?.checkOutPhotoRequired);
   // Checked out earlier today and allowed to reopen the day once ("Resume work").
   const canResume = Boolean(isDone && status?.canResume);
-  const showCamera = canResume || (!isDone && (!isWorking || needPhotoToCheckOut));
+  const showDone = isDone && !canResume;
+  // The office is drawn on the map only for people who are checked against it.
+  const mapOffice = office && (workMode === "OFFICE" || workMode === "HYBRID" || (canPickPlace && today === "OFFICE")) ? office : null;
+
+  // The first press turns the card to the camera; the next press takes the photo and sends it.
+  function press(action: Action) {
+    const photoNeeded = action !== "CHECK_OUT" || needPhotoToCheckOut;
+    if (photoNeeded && !flipped) {
+      setNotice(null);
+      setDistance(null);
+      setFlipped(true);
+      return;
+    }
+    void run(action);
+  }
+  function backToMap() {
+    setFlipped(false);
+    setCameraReady(false);
+  }
 
   // While checked in, keep the screen awake: a phone that locks suspends the browser tab and location stops, so
   // this is the one thing the page can do to cut the gaps (supported on current iPhone Safari and Chrome). The
@@ -232,6 +264,7 @@ export default function EmployeeCheckIn({ employeeCode, firstName }: { employeeC
         setTracking(false);
         setNotice({ tone: "done", message: "You're checked out. See you tomorrow!" });
       }
+      backToMap();
       await loadStatus();
       router.refresh();
     } catch {
@@ -304,6 +337,7 @@ export default function EmployeeCheckIn({ employeeCode, firstName }: { employeeC
             worked today · <strong style={{ color: "var(--mp-text)", fontWeight: 600 }}>{isWorking ? `${pct}%` : "–"}</strong> of a {Math.round(targetHours * 10) / 10}h shift
             {" · "}time outside your area is excluded
           </div>
+          {requests && <div style={{ marginTop: 20 }}>{requests}</div>}
         </div>
 
         <div>
@@ -346,11 +380,12 @@ export default function EmployeeCheckIn({ employeeCode, firstName }: { employeeC
             )}
           </div>
         </div>
+        {footer}
       </div>
 
       <div style={{ flex: "1 1 340px", minWidth: 0, padding: 24, margin: 16, borderRadius: 12, background: "var(--mp-bg)", border: "1px solid var(--mp-border)", display: "flex", flexDirection: "column", gap: 16 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span className="label">{canResume ? "Check in again" : isDone ? "Day summary" : isWorking ? (needPhotoToCheckOut ? "Check out" : "Live") : "Check in"}</span>
+          <span className="label">{flipped ? "Take your photo" : canResume ? "Check in again" : isDone ? "Day summary" : isWorking ? (needPhotoToCheckOut ? "Check out" : "Live") : "Check in"}</span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--mp-text2)" }}>
             <ShieldCheck size={14} /> Face and location verified
           </span>
@@ -375,51 +410,33 @@ export default function EmployeeCheckIn({ employeeCode, firstName }: { employeeC
           </div>
         )}
 
-        {showCamera ? (
-          <div style={{ position: "relative", aspectRatio: "4 / 3", overflow: "hidden", borderRadius: 12, border: "1px solid var(--mp-border)", background: "var(--mp-muted)" }}>
-            <CameraCapture ref={cameraRef} onReadyChange={setCameraReady} />
-            <div style={{ position: "absolute", left: 10, bottom: 10, display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 10px", borderRadius: 999, background: "rgba(255,255,255,0.92)", border: "1px solid var(--mp-border)", fontSize: 12 }}>
-              <span className={cameraReady ? undefined : "live"} style={{ width: 6, height: 6, borderRadius: 999, background: cameraReady ? "var(--mp-success)" : "var(--mp-text3)" }} />
-              {cameraReady ? "Camera ready" : "Preparing camera…"}
+        <div style={{ perspective: 1200 }}>
+          <div
+            style={{
+              position: "relative", aspectRatio: "4 / 3", transformStyle: "preserve-3d",
+              transition: "transform .7s cubic-bezier(.4,.2,.2,1)", transform: flipped ? "rotateY(180deg)" : "none",
+            }}
+          >
+            <div style={{ ...FACE, visibility: flipped ? "hidden" : "visible", transition: "visibility 0s linear .35s" }}>
+              {showDone ? (
+                <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: 16, textAlign: "center" }}>
+                  <svg width="64" height="64" viewBox="0 0 72 72" aria-hidden="true"><circle cx="36" cy="36" r="32" fill="none" stroke="#2e6f52" strokeWidth="3" /><path d="M22 37 L32 47 L51 26" fill="none" stroke="#2e6f52" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  <span style={{ fontWeight: 600 }}>Good work today, {firstName}</span>
+                  <span className="sub">You&apos;ve completed today&apos;s attendance.</span>
+                </div>
+              ) : (
+                <LiveMap office={mapOffice} active={!flipped} />
+              )}
+            </div>
+            <div style={{ ...FACE, transform: "rotateY(180deg)", visibility: flipped ? "visible" : "hidden", transition: "visibility 0s linear .35s" }}>
+              {flipped && <CameraCapture ref={cameraRef} onReadyChange={setCameraReady} />}
+              <div style={{ position: "absolute", left: 10, bottom: 10, display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 10px", borderRadius: 999, background: "rgba(255,255,255,0.92)", border: "1px solid var(--mp-border)", fontSize: 12 }}>
+                <span className={cameraReady ? undefined : "live"} style={{ width: 6, height: 6, borderRadius: 999, background: cameraReady ? "var(--mp-success)" : "var(--mp-text3)" }} />
+                {cameraReady ? "Camera ready" : "Preparing camera…"}
+              </div>
             </div>
           </div>
-        ) : (
-          <div style={{ position: "relative", height: 232, borderRadius: 12, background: "var(--mp-muted)", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            {isDone ? (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: 16, textAlign: "center" }}>
-                <svg width="64" height="64" viewBox="0 0 72 72" aria-hidden="true"><circle cx="36" cy="36" r="32" fill="none" stroke="#2e6f52" strokeWidth="3" /><path d="M22 37 L32 47 L51 26" fill="none" stroke="#2e6f52" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                <span style={{ fontWeight: 600 }}>Good work today, {firstName}</span>
-                <span className="sub">You&apos;ve completed today&apos;s attendance.</span>
-              </div>
-            ) : (
-              <>
-                <svg width="100%" height="232" viewBox="0 0 320 232" preserveAspectRatio="xMidYMid slice" aria-hidden="true" style={{ position: "absolute", inset: 0 }}>
-                  <rect x="30" y="20" width="50" height="34" rx="4" fill="rgba(26,21,18,0.05)" />
-                  <rect x="236" y="150" width="60" height="44" rx="4" fill="rgba(26,21,18,0.05)" />
-                  <rect x="18" y="160" width="70" height="40" rx="4" fill="rgba(26,21,18,0.05)" />
-                  <rect x="240" y="26" width="52" height="40" rx="4" fill="rgba(26,21,18,0.05)" />
-                  <path d="M-10 160 L330 108" stroke="rgba(26,21,18,0.09)" strokeWidth="12" strokeLinecap="round" fill="none" />
-                  <path d="M96 -10 L128 244" stroke="rgba(26,21,18,0.07)" strokeWidth="8" strokeLinecap="round" fill="none" />
-                  <path d="M-10 52 L330 84" stroke="rgba(26,21,18,0.06)" strokeWidth="5" strokeLinecap="round" fill="none" />
-                  <circle cx="168" cy="118" r="66" fill="rgba(239,108,0,0.07)" />
-                  <circle className="dashed" cx="168" cy="118" r="66" fill="none" stroke="#ef6c00" strokeWidth="1.5" strokeDasharray="5 5" />
-                  <rect x="158" y="108" width="20" height="20" rx="4" fill="#1a1512" />
-                  <rect x="164" y="114" width="8" height="8" rx="1" fill="#fff" />
-                  {isWorking && (
-                    <g>
-                      <animateMotion dur="16s" repeatCount="indefinite" path="M208 92 C 228 112, 216 146, 190 150 C 160 156, 134 134, 146 100 C 156 76, 192 74, 208 92 Z" />
-                      <circle className="ping" r="9" fill="#ef6c00" />
-                      <circle r="6" fill="#ef6c00" stroke="#fff" strokeWidth="2" />
-                    </g>
-                  )}
-                </svg>
-                <span style={{ position: "absolute", left: 14, bottom: 8, fontSize: 13, color: "var(--mp-text2)" }}>
-                  {tracking ? "Your location is being tracked" : isWorking ? "No photo needed to check out" : "Location is checked when you check in"}
-                </span>
-              </>
-            )}
-          </div>
-        )}
+        </div>
 
         {canPickPlace && (
           <div role="group" aria-label="Working from" className="toggle">
@@ -434,32 +451,40 @@ export default function EmployeeCheckIn({ employeeCode, firstName }: { employeeC
           </div>
         )}
 
-        {canResume && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {canResume && !flipped && (
             <p className="sub" style={{ margin: 0 }}>
               You checked out earlier today. You can check in again: the time away is recorded as a break, and today&apos;s first
               check-in time stays as it was.
             </p>
-            <button type="button" className="btn btn-primary" onClick={() => void run("RESUME")} disabled={busy || !cameraReady}>
+          )}
+          {canResume ? (
+            <button type="button" className="btn btn-primary" onClick={() => press("RESUME")} disabled={busy || (flipped && !cameraReady)}>
               <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
                 {busy ? <Loader2 size={18} className="animate-spin" /> : <LogIn size={18} />}
-                {busy ? "Processing…" : "Check in again"}
+                {busy ? "Processing…" : flipped ? "Take photo & check in" : "Check in again"}
               </span>
             </button>
-          </div>
-        )}
-        <div style={{ display: canResume ? "none" : "flex", flexDirection: "column", gap: 8 }}>
-          <button type="button" className="btn btn-primary" onClick={() => void run("CHECK_IN")} disabled={busy || isWorking || isDone || !cameraReady}>
-            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-              {busy ? <Loader2 size={18} className="animate-spin" /> : <LogIn size={18} />}
-              {busy ? "Processing…" : "Check in"}
-            </span>
-          </button>
-          <button type="button" className="btn btn-outline" onClick={() => void run("CHECK_OUT")} disabled={busy || !isWorking || (needPhotoToCheckOut && !cameraReady)}>
-            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-              <LogOut size={18} /> Check out
-            </span>
-          </button>
+          ) : (
+            <>
+              <button type="button" className="btn btn-primary" onClick={() => press("CHECK_IN")} disabled={busy || isWorking || isDone || (flipped && !cameraReady)}>
+                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                  {busy ? <Loader2 size={18} className="animate-spin" /> : <LogIn size={18} />}
+                  {busy ? "Processing…" : flipped && !isWorking ? "Take photo & check in" : "Check in"}
+                </span>
+              </button>
+              <button type="button" className="btn btn-outline" onClick={() => press("CHECK_OUT")} disabled={busy || !isWorking || (flipped && !cameraReady)}>
+                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                  <LogOut size={18} /> {flipped && isWorking ? "Take photo & check out" : "Check out"}
+                </span>
+              </button>
+            </>
+          )}
+          {flipped && !busy && (
+            <button type="button" className="btn" style={{ border: "none", background: "transparent", color: "var(--mp-text2)" }} onClick={backToMap}>
+              Back to map
+            </button>
+          )}
         </div>
 
         {distance && (

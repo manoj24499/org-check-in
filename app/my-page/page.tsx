@@ -2,6 +2,8 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import EmployeeCheckIn from "@/components/EmployeeCheckIn";
 import RequestButtons from "@/components/mypage/RequestButtons";
+import DobPrompt from "@/components/mypage/DobPrompt";
+import UpcomingBirthdays, { type Birthday } from "@/components/mypage/UpcomingBirthdays";
 import { InsightsRow, LeavePanel, type InsightsData, type Tone, type UpNext } from "@/components/mypage/MyPageCards";
 import MyPageTabs, { type ActivityItem, type CalCell, type RequestItem } from "@/components/mypage/MyPageTabs";
 import { computeWorkedMs } from "@/lib/attendanceHours";
@@ -72,7 +74,7 @@ export default async function MyPage() {
         workSegments: { select: { mode: true, heading: true, startedAt: true, endedAt: true } },
       },
     }),
-    safe("user", prisma.user.findUnique({ where: { id: userId }, select: { workMode: true, name: true } }), null),
+    safe("user", prisma.user.findUnique({ where: { id: userId }, select: { workMode: true, name: true, dateOfBirth: true } }), null),
     safe("calendar days", getCalendarSpecialDays(userId, orgId), {}),
     safe("leave balances", getLeaveBalances(userId, orgId), []),
     safe("leave requests", prisma.timeOffRequest.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 8 }), []),
@@ -98,6 +100,41 @@ export default async function MyPage() {
     ),
     safe("manual entries", prisma.manualEntryRequest.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 5 }), []),
   ]);
+
+  // Upcoming birthdays across the organization (day and month only; the year never leaves the database).
+  const birthdayRows = await safe(
+    "birthdays",
+    prisma.user.findMany({
+      where: { organizationId: orgId, active: true, role: "EMPLOYEE", dateOfBirth: { not: null } },
+      select: { id: true, name: true, dateOfBirth: true },
+    }),
+    [],
+  );
+  const todayDate = keyToDate(todayKey);
+  const birthdays: Birthday[] = birthdayRows
+    .map((u) => {
+      const dob = u.dateOfBirth!;
+      const m = dob.getUTCMonth();
+      const d = dob.getUTCDate();
+      const next = (year: number) => {
+        // 29 Feb falls on 28 Feb in years without one.
+        const leap = new Date(Date.UTC(year, 1, 29)).getUTCMonth() === 1;
+        return new Date(Date.UTC(year, m, m === 1 && d === 29 && !leap ? 28 : d));
+      };
+      let when = next(todayDate.getUTCFullYear());
+      if (when.getTime() < todayDate.getTime()) when = next(todayDate.getUTCFullYear() + 1);
+      const parts = u.name.split(/\s+/).filter(Boolean);
+      return {
+        id: u.id,
+        name: u.name,
+        initials: parts.slice(0, 2).map((p) => p[0]!.toUpperCase()).join("") || "?",
+        dateLabel: fmtDateOnly(when),
+        inDays: Math.round((when.getTime() - todayDate.getTime()) / DAY_MS),
+        isYou: u.id === userId,
+      };
+    })
+    .sort((a, b) => a.inDays - b.inDays || a.name.localeCompare(b.name))
+    .slice(0, 5);
 
   const chrono = [...records].reverse();
   const firstName = (session.user.name ?? "").trim().split(/\s+/)[0] || "there";
@@ -290,12 +327,16 @@ export default async function MyPage() {
             </div>
           </div>
         </div>
-        <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 12 }}>
-          <RequestButtons leaveOptions={balances.map((b) => ({ type: b.type, label: LEAVE_LABEL[b.type] ?? b.type, remaining: b.remaining }))} />
-        </div>
       </div>
 
-      <EmployeeCheckIn employeeCode={session.user.employeeCode} firstName={firstName} />
+      <EmployeeCheckIn
+        employeeCode={session.user.employeeCode}
+        firstName={firstName}
+        footer={<UpcomingBirthdays items={birthdays} />}
+        requests={<RequestButtons leaveOptions={balances.map((b) => ({ type: b.type, label: LEAVE_LABEL[b.type] ?? b.type, remaining: b.remaining }))} />}
+      />
+
+      {me && !me.dateOfBirth && <DobPrompt />}
 
       <InsightsRow d={insights} />
 
