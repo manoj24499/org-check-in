@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { backfillPinLookupHash } from "@/lib/credentials";
 import { prisma } from "@/lib/prisma";
 import { getClientIp, isRateLimited, isPinGuessLimited } from "@/lib/rateLimit";
+import { recordPinFailure } from "@/lib/pinFailures";
 import { resolveOrgBySlug } from "@/lib/organization";
 import { authConfig } from "./auth.config";
 
@@ -95,7 +96,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // for a deactivated account (!user.active below), which this app
         // has never distinguished from a wrong PIN either.
         if (!org || org.status === "SUSPENDED") return null;
-        if (await isPinGuessLimited(org.id, employeeCode)) return null;
+        if (await isPinGuessLimited(org.id, employeeCode)) {
+          // Locked out for too many guesses: still worth telling the admin, if this is a real employee.
+          const target = await prisma.user.findFirst({ where: { organizationId: org.id, employeeCode, role: "EMPLOYEE" }, select: { id: true } });
+          if (target) recordPinFailure({ organizationId: org.id, userId: target.id, employeeCode, source: "WEB", outcome: "LOCKED", ipAddress: getClientIp(request) });
+          return null;
+        }
 
         const user = await prisma.user.findFirst({ where: { organizationId: org.id, employeeCode } });
         if (!user || user.role !== "EMPLOYEE" || !user.pinHash || !user.active || !user.organizationId) {
@@ -103,7 +109,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
 
         const valid = await bcrypt.compare(pin, user.pinHash);
-        if (!valid) return null;
+        if (!valid) {
+          recordPinFailure({ organizationId: user.organizationId, userId: user.id, employeeCode, source: "WEB", outcome: "WRONG_PIN", ipAddress: getClientIp(request) });
+          return null;
+        }
         if (!user.pinLookupHash) backfillPinLookupHash(user.id, user.organizationId, pin);
 
         return {

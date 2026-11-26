@@ -1393,6 +1393,25 @@ model ManualEntryRequest {
 // out-of-area locations and duplicate tries. Written by /api/kiosk/scan after the response is decided and
 // never allowed to affect it. Never holds the PIN or the photo. No relations on purpose, so rows outlive
 // a deleted employee. Read by the separate monitoring site (checkin-monitor).
+// One wrong PIN typed at the web, phone or kiosk sign-in for a real employee, kept briefly so the admin can be warned
+// when someone keeps guessing (see lib/pinFailures.ts and the PIN_FAILURES alert). No relations on purpose, like
+// RateLimitBucket: rows are pruned after 14 days.
+model PinFailure {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+  organizationId String
+  userId         String
+  employeeCode   String
+  // WEB (My Page sign-in) | MOBILE (phone app sign-in) | KIOSK (shared screen)
+  source         String
+  // WRONG_PIN | LOCKED (refused because too many guesses were already made)
+  outcome        String
+  ipAddress      String?
+
+  @@index([organizationId, createdAt])
+  @@index([userId, createdAt])
+}
+
 model CheckInAttempt {
   id             String   @id @default(cuid())
   createdAt      DateTime @default(now())

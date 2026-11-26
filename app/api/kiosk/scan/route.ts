@@ -10,6 +10,7 @@ import { getSettings } from "@/lib/settings";
 import { resolveOrgBySlug } from "@/lib/organization";
 import { requireMobileUser } from "@/lib/mobileAuth";
 import { requireWebEmployee } from "@/lib/webEmployee";
+import { recordPinFailure } from "@/lib/pinFailures";
 import { newTrackingToken } from "@/lib/trackingToken";
 import { OFFLINE_FUTURE_SLACK_MS, OFFLINE_MAX_AGE_MS } from "@/lib/offlineCheckIn";
 import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
@@ -496,6 +497,17 @@ async function handlePost(req: NextRequest, ctx: AttemptContext) {
       : null;
 
   if (!user || user.role !== "EMPLOYEE" || !user.active) {
+    // A wrong PIN against a real, active employee (at the kiosk or the phone) counts towards the admin's repeated-PIN alert.
+    if (!webAuth && candidate && candidate.role === "EMPLOYEE" && candidate.active && candidate.pinHash && candidate.organizationId && parsed.data.pin) {
+      recordPinFailure({
+        organizationId: candidate.organizationId,
+        userId: candidate.id,
+        employeeCode: candidate.employeeCode,
+        source: mobileAuth ? "MOBILE" : "KIOSK",
+        outcome: "WRONG_PIN",
+        ipAddress: getClientIp(req),
+      });
+    }
     return NextResponse.json(
       { error: "Not recognized. Please check your employee code and PIN and try again." },
       { status: 401 }

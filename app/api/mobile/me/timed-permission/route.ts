@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireMobileUser } from "@/lib/mobileAuth";
 import { requireEmployee } from "@/lib/webEmployee";
+import { limitEmployeeAction } from "@/lib/actionLimit";
 import { startOfISTDay } from "@/lib/istTime";
 import { findActiveCheckIn } from "@/lib/activeSession";
 
@@ -19,6 +20,8 @@ const bodySchema = z.object({
 export async function POST(req: NextRequest) {
   const auth = await requireEmployee(req);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const limited = await limitEmployeeAction(auth.sub, "permission", 15);
+  if (limited) return limited;
 
   const json = await req.json().catch(() => null);
   const parsed = bodySchema.safeParse(json);

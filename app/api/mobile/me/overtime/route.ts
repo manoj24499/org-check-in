@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireEmployee } from "@/lib/webEmployee";
+import { limitEmployeeAction } from "@/lib/actionLimit";
 import { findActiveCheckIn } from "@/lib/activeSession";
 
 const bodySchema = z.object({
@@ -22,6 +23,8 @@ const bodySchema = z.object({
 export async function POST(req: NextRequest) {
   const auth = await requireEmployee(req);
   if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const limited = await limitEmployeeAction(auth.sub, "overtime", 10);
+  if (limited) return limited;
 
   const json = await req.json().catch(() => null);
   const parsed = bodySchema.safeParse(json);
