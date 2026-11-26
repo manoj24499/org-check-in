@@ -5,37 +5,20 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Cake, Loader2 } from "lucide-react";
 
-const KEY = "dob_prompt_later";
-
 /**
- * Asks for the date of birth when the employee hasn't given one. It opens on every sign-in until it is answered;
- * "Not now" hides it for this browser tab only.
+ * Asks for the date of birth when the employee hasn't given one. It can't be dismissed: it stays over My Page until a
+ * valid date is saved, then goes away for good.
  */
 export default function DobPrompt() {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
+  // The popup is drawn on the page body, which only exists in the browser.
+  const [mounted, setMounted] = useState(false);
   useEffect(() => {
-    let later = false;
-    try {
-      later = sessionStorage.getItem(KEY) === "1";
-    } catch {
-      // Private mode: ask again, which is harmless.
-    }
-    const t = setTimeout(() => setOpen(!later), 600);
+    const t = setTimeout(() => setMounted(true), 0);
     return () => clearTimeout(t);
   }, []);
-
-  function notNow() {
-    try {
-      sessionStorage.setItem(KEY, "1");
-    } catch {
-      // Ignored.
-    }
-    setOpen(false);
-  }
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -55,7 +38,6 @@ export default function DobPrompt() {
         setBusy(false);
         return;
       }
-      setOpen(false);
       router.refresh();
     } catch {
       setError("Network error. Please try again.");
@@ -63,7 +45,7 @@ export default function DobPrompt() {
     }
   }
 
-  if (!open) return null;
+  if (!mounted) return null;
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
 
   return createPortal(
@@ -74,7 +56,7 @@ export default function DobPrompt() {
         </span>
         <h2>When&apos;s your birthday?</h2>
         <p style={{ margin: 0, color: "#6f6259", fontSize: 14 }}>
-          Add your date of birth once. Teammates will see only the day and month in the upcoming birthdays list, never the year.
+          Please add your date of birth to continue. Teammates will see only the day and month in the upcoming birthdays list, never the year.
         </p>
         <label>
           Date of birth
@@ -86,9 +68,6 @@ export default function DobPrompt() {
           </div>
         )}
         <div style={{ display: "flex", gap: 8 }}>
-          <button type="button" className="btn" style={{ flex: 1, border: "1px solid rgba(26,21,18,0.15)", background: "#fff", color: "#1a1512" }} onClick={notNow} disabled={busy}>
-            Not now
-          </button>
           <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={busy}>
             <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
               {busy && <Loader2 size={16} className="animate-spin" />}

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireEmployee } from "@/lib/webEmployee";
+import { requireEmployee, SESSION_CHANGED_MESSAGE } from "@/lib/webEmployee";
 import { istDateKey, parseDateOnlyKey } from "@/lib/istTime";
 
 const bodySchema = z.object({ dateOfBirth: z.string() });
@@ -12,7 +12,7 @@ const bodySchema = z.object({ dateOfBirth: z.string() });
  */
 export async function POST(req: NextRequest) {
   const auth = await requireEmployee(req);
-  if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!auth) return NextResponse.json({ error: SESSION_CHANGED_MESSAGE }, { status: 401 });
 
   const parsed = bodySchema.safeParse(await req.json().catch(() => null));
   const dob = parsed.success ? parseDateOnlyKey(parsed.data.dateOfBirth) : null;

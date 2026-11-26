@@ -9,12 +9,15 @@ import { DEFAULT_GEOFENCE_RADIUS_METERS, HYBRID_DEFAULT_HOME_RADIUS_METERS } fro
 import { decodePhoto, MAX_PHOTO_BYTES } from "@/lib/photoUpload";
 import { embedFace } from "@/lib/faceVerify";
 import { PayloadTooLargeError, readJsonWithLimit } from "@/lib/readJsonBody";
+import { istDateKey, parseDateOnlyKey } from "@/lib/istTime";
 
 const actionSchema = z.object({
   action: z.enum([
     "regenerate-pin",
     "generate-reset-code",
     "set-active",
+    // Set, correct or clear the employee's date of birth (they can only give it once themselves).
+    "set-date-of-birth",
     "update-wfh-location",
     "update-hybrid-location",
     "clear-wfh-location",
@@ -27,6 +30,8 @@ const actionSchema = z.object({
     "reset-device",
   ]),
   active: z.boolean().optional(),
+  // "YYYY-MM-DD" for "set-date-of-birth"; null clears it.
+  dateOfBirth: z.string().nullable().optional(),
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
   radiusMeters: z.number().min(1).max(100_000).optional(),
@@ -131,6 +136,21 @@ export async function PATCH(
       data: { pinResetHash: await hashPin(resetCode), pinResetExpiresAt: expiresAt, pinResetAttempts: 0 },
     });
     return NextResponse.json({ resetCode, expiresAt });
+  }
+
+  if (parsed.data.action === "set-date-of-birth") {
+    const raw = parsed.data.dateOfBirth;
+    if (raw === undefined) return NextResponse.json({ error: "Date of birth is required." }, { status: 400 });
+    let dob: Date | null = null;
+    if (raw !== null) {
+      dob = parseDateOnlyKey(raw);
+      const age = dob ? (parseDateOnlyKey(istDateKey())!.getTime() - dob.getTime()) / (365.25 * 24 * 3600_000) : 0;
+      if (!dob || age < 14 || age > 100) {
+        return NextResponse.json({ error: "Enter a valid date of birth." }, { status: 400 });
+      }
+    }
+    await prisma.user.update({ where: { id }, data: { dateOfBirth: dob } });
+    return NextResponse.json({ ok: true });
   }
 
   if (parsed.data.action === "set-active") {

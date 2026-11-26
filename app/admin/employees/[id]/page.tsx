@@ -7,6 +7,7 @@ import EmployeeActions from "@/components/EmployeeActions";
 import AttendanceCalendar from "@/components/AttendanceCalendar";
 import ManualEntryButton from "@/components/ManualEntryButton";
 import ShiftScheduleEditor from "@/components/ShiftScheduleEditor";
+import EmployeeDobEditor from "@/components/EmployeeDobEditor";
 import { RecentActivityList } from "@/components/RecentActivityList";
 import { ArrowLeft, AlertTriangle } from "lucide-react";
 import { Avatar, CARD, Page, Pill } from "@/components/admin/ui";
@@ -199,6 +200,14 @@ export default async function EmployeeDetailPage({
               pendingAt: employee.pendingDeviceAt?.toISOString() ?? null,
             }}
           />
+        </div>
+
+        <div className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_12px_32px_-20px_rgba(16,24,40,0.14)]">
+          <h2 className="mb-1 text-[16px] font-semibold tracking-[-0.01em] text-slate-900">Date of birth</h2>
+          <p className="mb-4 text-sm text-slate-500">
+            Shown to teammates as day and month only, in the upcoming birthdays list on My Page.
+          </p>
+          <EmployeeDobEditor employeeId={employee.id} value={employee.dateOfBirth ? employee.dateOfBirth.toISOString().slice(0, 10) : null} />
         </div>
 
         <div className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_12px_32px_-20px_rgba(16,24,40,0.14)]">
