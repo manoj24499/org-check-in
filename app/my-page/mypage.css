@@ -177,3 +177,32 @@
 .mp-dialog input, .mp-dialog select, .mp-dialog textarea { min-height: 46px; padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(26, 21, 18, 0.2); background: #fbf9f7; font-family: inherit; font-size: 15px; color: #1a1512; text-transform: none; letter-spacing: 0; font-weight: 400; }
 .mp-dialog textarea { min-height: 84px; resize: vertical; }
 .mp-dialog input:focus, .mp-dialog select:focus, .mp-dialog textarea:focus { outline: 2px solid rgba(239, 108, 0, 0.45); outline-offset: 1px; border-color: #ef6c00; }
+
+/* Notifications: the bell on the greeting card and the side panel it opens. */
+.mp .mp-bell { position: relative; width: 48px; height: 48px; border-radius: 999px; border: 1px solid var(--mp-border); background: #fff; color: var(--mp-text); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease; }
+.mp .mp-bell:hover { background: var(--mp-primary-muted); color: var(--mp-primary-dark); box-shadow: 0 6px 16px rgba(26, 21, 18, 0.12); }
+.mp .mp-bell:active { transform: scale(0.94); }
+.mp .mp-bell:hover svg { animation: mp-ring 0.7s ease; transform-origin: 50% 10%; }
+@keyframes mp-ring { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(16deg); } 45% { transform: rotate(-14deg); } 70% { transform: rotate(8deg); } }
+.mp .mp-bell-badge { position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; padding: 0 5px; box-sizing: border-box; border-radius: 999px; background: var(--mp-primary); color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; border: 2px solid #fff; }
+.mp-ncard { position: relative; overflow: hidden; background: #fff; border: 1px solid var(--mp-border); border-radius: 14px; margin-bottom: 8px; transition: box-shadow 0.2s ease, border-color 0.2s ease; }
+.mp-ncard:hover { box-shadow: 0 8px 20px rgba(26, 21, 18, 0.09); }
+.mp-ncard.unread { background: #fffaf4; border-color: rgba(239, 108, 0, 0.28); }
+.mp-ncard.unread::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--mp-primary); }
+.mp-notif-head { width: 100%; display: flex; align-items: center; gap: 14px; padding: 14px 16px; background: none; border: none; cursor: pointer; font-family: inherit; font-size: 15px; color: inherit; }
+.mp-ntime { flex-shrink: 0; padding: 3px 10px; border-radius: 999px; background: var(--mp-muted); font-size: 12px; font-weight: 600; color: var(--mp-text2); }
+.mp-nbody { padding: 4px 16px 16px 70px; display: flex; flex-direction: column; gap: 14px; animation: mp-pop-in 0.18s ease; }
+.mp-ngrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px 20px; padding: 14px 16px; background: var(--mp-bg); border: 1px solid var(--mp-border); border-radius: 12px; }
+.mp-nk { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mp-text3); }
+.mp-nv { margin-top: 2px; font-size: 15px; font-weight: 600; }
+.mp-npill { display: inline-block; margin-top: 2px; padding: 3px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+.mp-link { background: none; border: none; padding: 4px 6px; border-radius: 6px; font-family: inherit; font-size: 14px; font-weight: 600; color: var(--mp-primary-dark); cursor: pointer; }
+.mp-link:hover { text-decoration: underline; }
+.mp-iconbtn { width: 36px; height: 36px; border-radius: 999px; border: none; background: var(--mp-muted); color: var(--mp-text); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.mp-iconbtn:hover { background: var(--mp-primary-muted); }
+
+/* The dropdown under the bell: drawn on the page body, placed from the bell's position. */
+.mp.mp-pop-wrap { position: fixed; inset: 0; z-index: 60; min-height: 0; background: rgba(26, 21, 18, 0.45); backdrop-filter: blur(2px); animation: mp-dim-in 0.18s ease; }
+@keyframes mp-dim-in { from { opacity: 0; } to { opacity: 1; } }
+.mp-pop { position: fixed; width: min(560px, calc(100vw - 24px)); background: #fff; color: #1a1512; border: 1px solid var(--mp-border); border-radius: 14px; box-shadow: 0 24px 60px rgba(26, 21, 18, 0.28); animation: mp-pop-in 0.18s ease; }
+@keyframes mp-pop-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }

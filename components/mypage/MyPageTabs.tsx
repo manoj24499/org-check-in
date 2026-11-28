@@ -1,11 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { TONE_STYLE, type Tone } from "./MyPageCards";
 
 export type CalCell = { n: string; tag: string; kind: "present" | "late" | "leave" | "holiday" | "today" | "off" | "none" | "blank" };
 export type ActivityItem = { when: string; title: string; detail: string; badge: string; tone: Tone };
-export type RequestItem = { letter: string; title: string; sub: string; status: string; tone: Tone };
+export type RequestKind = "leave" | "permission" | "overtime" | "manual";
+export type RequestItem = {
+  id: string;
+  kind: RequestKind;
+  /** True while it is still pending, i.e. the employee can withdraw it. */
+  canCancel: boolean;
+  letter: string;
+  title: string;
+  sub: string;
+  status: string;
+  tone: Tone;
+};
+
+const CANCEL_PATH: Record<RequestKind, string> = {
+  leave: "leave-requests",
+  permission: "timed-permission",
+  overtime: "overtime",
+  manual: "manual-entry-requests",
+};
 
 export type TabsData = {
   monthLabel: string;
@@ -31,6 +50,40 @@ const CELL: Record<CalCell["kind"], { bg: string; color: string; border: string 
 
 export default function MyPageTabs({ data }: { data: TabsData }) {
   const [tab, setTab] = useState(0);
+  const router = useRouter();
+  // Cancelling asks once more ("Yes, cancel") so a stray click can't withdraw a request.
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+
+  async function cancelRequest(r: RequestItem) {
+    setBusyId(r.id);
+    setCancelError(null);
+    try {
+      // A leave request is marked cancelled (it stays in the history); the others are simply withdrawn.
+      const res = await fetch(`/api/mobile/me/${CANCEL_PATH[r.kind]}/${r.id}`, { method: r.kind === "leave" ? "PATCH" : "DELETE" });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setCancelError(data.error ?? `Something went wrong (error ${res.status}). Please try again.`);
+      } else {
+        setConfirmId(null);
+        router.refresh();
+      }
+    } catch {
+      setCancelError("Network error. Please try again.");
+    }
+    setBusyId(null);
+  }
+
+  // The notifications panel asks for a tab (e.g. Requests) before scrolling here.
+  useEffect(() => {
+    const onTab = (e: Event) => {
+      const n = (e as CustomEvent<number>).detail;
+      if (n === 0 || n === 1 || n === 2) setTab(n);
+    };
+    window.addEventListener("mp-tab", onTab);
+    return () => window.removeEventListener("mp-tab", onTab);
+  }, []);
 
   return (
     <section id="workspace" className="card nohover rise" style={{ animationDelay: ".3s", flex: "999 1 560px", minWidth: 0, padding: 24, display: "flex", flexDirection: "column", gap: 24 }}>
@@ -99,14 +152,35 @@ export default function MyPageTabs({ data }: { data: TabsData }) {
       {tab === 2 && (
         <div className="tabin" style={{ display: "flex", flexDirection: "column" }}>
           {data.requests.length === 0 && <p className="sub" style={{ margin: 0 }}>No requests yet. Leave, permission, overtime and manual-entry requests appear here with their status.</p>}
-          {data.requests.map((r, i) => (
-            <div key={i} className="row-hover" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 16, padding: 16, borderRadius: 8 }}>
+          {cancelError && (
+            <div role="alert" style={{ marginBottom: 12, padding: "10px 14px", borderRadius: 8, background: "var(--mp-danger-muted)", color: "var(--mp-danger)", fontSize: 14 }}>
+              {cancelError}
+            </div>
+          )}
+          {data.requests.map((r) => (
+            <div key={r.id} className="row-hover" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 16, padding: 16, borderRadius: 8 }}>
               <span style={{ width: 44, height: 44, borderRadius: 999, background: "var(--mp-primary-muted)", color: "var(--mp-primary-dark)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, flexShrink: 0 }}>{r.letter}</span>
               <div style={{ flex: "1 1 200px", minWidth: 0, display: "flex", flexDirection: "column" }}>
                 <span style={{ fontWeight: 600 }}>{r.title}</span>
                 <span className="sub">{r.sub}</span>
               </div>
               <span style={{ padding: "2px 14px", borderRadius: 999, fontSize: 13, fontWeight: 600, background: TONE_STYLE[r.tone].bg, color: TONE_STYLE[r.tone].color }}>{r.status}</span>
+              {r.canCancel &&
+                (confirmId === r.id ? (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexBasis: "100%", justifyContent: "flex-end", flexWrap: "wrap" }}>
+                    <span className="sub" style={{ fontSize: 13 }}>{r.status === "Approved" ? "Already approved. Cancel it anyway?" : "Cancel this request?"}</span>
+                    <button type="button" className="btn btn-primary" style={{ minHeight: 34, padding: "0 14px", fontSize: 13 }} disabled={busyId === r.id} onClick={() => void cancelRequest(r)}>
+                      {busyId === r.id ? "Cancelling…" : "Yes, cancel"}
+                    </button>
+                    <button type="button" className="mp-link" disabled={busyId === r.id} onClick={() => { setConfirmId(null); setCancelError(null); }}>
+                      Keep it
+                    </button>
+                  </span>
+                ) : (
+                  <button type="button" className="btn btn-outline" style={{ minHeight: 34, padding: "0 14px", fontSize: 13 }} onClick={() => { setConfirmId(r.id); setCancelError(null); }}>
+                    Cancel
+                  </button>
+                ))}
             </div>
           ))}
         </div>

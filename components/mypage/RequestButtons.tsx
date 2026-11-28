@@ -21,6 +21,23 @@ export default function RequestButtons({ leaveOptions }: { leaveOptions: LeaveOp
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState<string | null>(null);
   const [leaveType, setLeaveType] = useState<LeaveOption["type"]>(leaveOptions[0]?.type ?? "CASUAL");
+  // The leave dates are controlled so the end date follows the start date (it can never be before it).
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
+  function openDialog(kind: "leave" | "permission" | "overtime") {
+    const day = istToday();
+    setStartDate(day);
+    setEndDate(day);
+    setOpen(kind);
+  }
+
+  function changeStart(value: string) {
+    setStartDate(value);
+    // Moving the start date carries the end date with it, so a one-day leave is just one date to pick; the end
+    // date can still be set later for a longer leave.
+    setEndDate(value);
+  }
 
   function close() {
     setOpen(null);
@@ -94,13 +111,13 @@ export default function RequestButtons({ leaveOptions }: { leaveOptions: LeaveOp
   return (
     <>
       <div style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-        <button type="button" className="btn btn-outline" onClick={() => setOpen("leave")}>
+        <button type="button" className="btn btn-outline" onClick={() => openDialog("leave")}>
           Request Leave
         </button>
-        <button type="button" className="btn" style={{ border: "none", background: "var(--mp-muted)", color: "var(--mp-text)" }} onClick={() => setOpen("permission")}>
+        <button type="button" className="btn" style={{ border: "none", background: "var(--mp-muted)", color: "var(--mp-text)" }} onClick={() => openDialog("permission")}>
           Request Permission
         </button>
-        <button type="button" className="btn" style={{ border: "none", background: "var(--mp-muted)", color: "var(--mp-text)" }} onClick={() => setOpen("overtime")}>
+        <button type="button" className="btn" style={{ border: "none", background: "var(--mp-muted)", color: "var(--mp-text)" }} onClick={() => openDialog("overtime")}>
           Request Overtime
         </button>
         {sent && (
@@ -130,11 +147,11 @@ export default function RequestButtons({ leaveOptions }: { leaveOptions: LeaveOp
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                     <label>
                       From
-                      <input name="start" type="date" min={today} defaultValue={today} required />
+                      <input name="start" type="date" min={today} value={startDate} onChange={(e) => changeStart(e.target.value)} required />
                     </label>
                     <label>
                       To
-                      <input name="end" type="date" min={today} defaultValue={today} required />
+                      <input name="end" type="date" min={startDate || today} value={endDate} onChange={(e) => setEndDate(e.target.value)} required />
                     </label>
                   </div>
                   <label>

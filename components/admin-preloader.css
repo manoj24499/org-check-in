@@ -1,39 +1,42 @@
-/* Admin preloader ("Opening admin console"): a radar sweep and live bars while the dashboard opens. */
-@keyframes ap-sweep { to { transform: rotate(360deg); } }
-@keyframes ap-bars { 0%, 100% { transform: scaleY(0.25); } 50% { transform: scaleY(1); } }
-@keyframes ap-ping { 0% { transform: scale(0.6); opacity: 0.6; } 100% { transform: scale(1.6); opacity: 0; } }
-@keyframes ap-fill { 0% { width: 4%; } 60% { width: 78%; } 100% { width: 96%; } }
+/* Admin preloader ("Opening admin console"): the Inzivo Z-gate builds itself on a light, warm dotted background. */
+@keyframes ap-top { 0% { transform: translateX(-120%); } 22%, 84% { transform: translateX(0); opacity: 1; } 94%, 100% { transform: translateX(0); opacity: 0; } }
+@keyframes ap-bot { 0%, 8% { transform: translateX(120%); } 30%, 84% { transform: translateX(0); opacity: 1; } 94%, 100% { transform: translateX(0); opacity: 0; } }
+@keyframes ap-diag { 0%, 22% { clip-path: inset(0 0 100% 0); opacity: 1; } 52%, 84% { clip-path: inset(0 0 0 0); opacity: 1; } 94%, 100% { clip-path: inset(0 0 0 0); opacity: 0; } }
+@keyframes ap-shine { 0%, 54% { transform: translateX(-160%) skewX(-20deg); opacity: 0; } 58% { opacity: 0.9; } 74%, 100% { transform: translateX(260%) skewX(-20deg); opacity: 0; } }
+@keyframes ap-ripple { 0% { transform: scale(0.55); opacity: 0.55; } 100% { transform: scale(1.5); opacity: 0; } }
+@keyframes ap-lift { 0%, 50% { transform: translateY(0); } 58% { transform: translateY(-6px); } 68%, 100% { transform: translateY(0); } }
 @keyframes ap-msg { 0% { opacity: 0; transform: translateY(8px); } 6%, 30% { opacity: 1; transform: translateY(0); } 36%, 100% { opacity: 0; transform: translateY(-8px); } }
-@keyframes ap-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
-/* Quick loads should not flash the screen: it fades in only after a short wait. */
+@keyframes ap-line { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
+@keyframes ap-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
 @keyframes ap-in { from { opacity: 0; } to { opacity: 1; } }
 
 .ap-root {
   position: fixed; inset: 0; z-index: 200; box-sizing: border-box; overflow: hidden;
-  background: #0e1419; color: #e8eef2; font-family: var(--font-inter), system-ui, sans-serif;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 40px; padding: 48px 16px;
+  background-color: #f6f4ee; background-image: radial-gradient(#e0d8c8 1.2px, transparent 1.2px); background-size: 28px 28px;
+  color: #1a1512; font-family: var(--font-inter), system-ui, sans-serif;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 56px; padding: 48px 16px;
   animation: ap-in 0.25s ease;
 }
-.ap-brand { position: absolute; top: 32px; left: 40px; display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 20px; letter-spacing: 0.02em; }
-.ap-dot { width: 12px; height: 12px; border-radius: 3px; background: #2dd4bf; }
-.ap-tag { margin-left: 6px; padding: 3px 8px; border: 1px solid #2f3e49; border-radius: 6px; font-family: var(--font-inter), system-ui, sans-serif; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; color: #9fb1bd; }
-.ap-radar { position: relative; width: 220px; height: 220px; flex: none; }
-.ap-ping { position: absolute; inset: 30px; border-radius: 50%; border: 2px solid #2dd4bf; animation: ap-ping 2.8s ease-out infinite; }
-.ap-radar svg { position: absolute; inset: 0; }
-.ap-sweep { animation: ap-sweep 2.8s linear infinite; transform-origin: 110px 110px; }
-.ap-bars { position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: center; gap: 7px; padding-bottom: 78px; box-sizing: border-box; }
-.ap-bar { width: 9px; height: 64px; border-radius: 2px; background: #2dd4bf; transform-origin: bottom; animation: ap-bars 1.4s ease-in-out infinite; }
-.ap-text { display: flex; flex-direction: column; align-items: center; gap: 14px; max-width: 100%; }
-.ap-title { margin: 0; font-size: 36px; font-weight: 600; letter-spacing: -0.01em; text-align: center; }
-.ap-msgs { position: relative; height: 24px; width: 380px; max-width: 100%; font-size: 16px; color: #9fb1bd; }
+.ap-tag { position: absolute; top: 32px; left: 40px; padding: 4px 10px; border: 1px solid #cfc6b8; border-radius: 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.14em; color: #6b6258; background: rgba(255, 255, 255, 0.6); }
+.ap-mark { position: relative; width: 240px; height: 240px; flex: none; display: flex; align-items: center; justify-content: center; }
+.ap-rp { position: absolute; inset: 0; border-radius: 50%; border: 2px solid #ef6c00; opacity: 0; animation: ap-ripple 3.6s ease-out infinite; }
+.ap-lg { animation: ap-lift 3.6s ease-in-out infinite; overflow: hidden; }
+.ap-lt { animation: ap-top 3.6s cubic-bezier(0.7, 0, 0.2, 1) infinite; }
+.ap-lb { animation: ap-bot 3.6s cubic-bezier(0.7, 0, 0.2, 1) infinite; }
+.ap-ld { animation: ap-diag 3.6s cubic-bezier(0.7, 0, 0.2, 1) infinite; }
+.ap-sh { animation: ap-shine 3.6s ease-in-out infinite; }
+.ap-text { display: flex; flex-direction: column; align-items: center; gap: 16px; max-width: 100%; }
+.ap-title { margin: 0; font-size: 32px; font-weight: 600; letter-spacing: -0.01em; text-align: center; }
+.ap-msgs { position: relative; height: 24px; width: 400px; max-width: 100%; font-size: 16px; color: #5e564d; }
 .ap-m { position: absolute; left: 0; right: 0; text-align: center; opacity: 0; animation: ap-msg 6s infinite; }
-.ap-track { width: 280px; max-width: 100%; height: 6px; border-radius: 3px; background: #1f2b34; overflow: hidden; }
-.ap-pfill { height: 100%; border-radius: 3px; background: #2dd4bf; animation: ap-fill 6s ease-in-out infinite; }
-.ap-foot { position: absolute; bottom: 28px; left: 16px; right: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; color: #8396a3; }
-.ap-live { width: 8px; height: 8px; border-radius: 50%; background: #2dd4bf; animation: ap-blink 1.2s infinite; }
-@media (max-width: 480px) { .ap-brand { left: 16px; top: 20px; } .ap-title { font-size: 28px; } .ap-root { gap: 32px; } }
+.ap-track { width: 220px; height: 3px; border-radius: 2px; background: #e8e2d4; overflow: hidden; }
+.ap-bar { width: 40%; height: 100%; border-radius: 2px; background: #ef6c00; animation: ap-line 1.6s ease-in-out infinite; }
+.ap-foot { position: absolute; bottom: 28px; left: 16px; right: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; color: #6b6258; }
+.ap-live { width: 8px; height: 8px; border-radius: 50%; background: #ef6c00; animation: ap-blink 1.2s infinite; }
+@media (max-width: 480px) { .ap-tag { left: 16px; top: 20px; } .ap-mark { width: 200px; height: 200px; } .ap-mark svg { width: 160px; height: 160px; } .ap-title { font-size: 26px; } .ap-root { gap: 40px; } }
 @media (prefers-reduced-motion: reduce) {
-  .ap-sweep, .ap-bar, .ap-ping, .ap-pfill, .ap-m, .ap-live, .ap-root { animation: none; }
+  .ap-rp, .ap-lg, .ap-lt, .ap-lb, .ap-ld, .ap-sh, .ap-m, .ap-bar, .ap-live, .ap-root { animation: none; }
+  .ap-rp, .ap-sh { display: none; }
   .ap-m:first-child { opacity: 1; }
-  .ap-pfill { width: 60%; }
+  .ap-bar { transform: none; width: 60%; }
 }

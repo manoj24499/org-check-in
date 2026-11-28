@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import EmployeeCheckIn from "@/components/EmployeeCheckIn";
 import RequestButtons from "@/components/mypage/RequestButtons";
 import DobPrompt from "@/components/mypage/DobPrompt";
+import NotificationsBell, { type NotifItem } from "@/components/mypage/NotificationsBell";
 import UpcomingBirthdays, { type Birthday } from "@/components/mypage/UpcomingBirthdays";
 import { InsightsRow, LeavePanel, type InsightsData, type Tone, type UpNext } from "@/components/mypage/MyPageCards";
 import MyPageTabs, { type ActivityItem, type CalCell, type RequestItem } from "@/components/mypage/MyPageTabs";
@@ -69,7 +70,7 @@ export default async function MyPage() {
       orderBy: { timestamp: "desc" },
       take: 1000,
       select: {
-        id: true, type: true, method: true, timestamp: true, lateMinutes: true,
+        id: true, type: true, method: true, timestamp: true, lateMinutes: true, leaveType: true,
         pauses: { select: { pausedAt: true, resumedAt: true, timedPermissionId: true } },
         workSegments: { select: { mode: true, heading: true, startedAt: true, endedAt: true } },
       },
@@ -84,7 +85,7 @@ export default async function MyPage() {
         where: { attendance: { userId } },
         orderBy: { createdAt: "desc" },
         take: 8,
-        select: { startTime: true, endTime: true, approvalStatus: true, createdAt: true },
+        select: { id: true, startTime: true, endTime: true, approvalStatus: true, createdAt: true },
       }),
       [],
     ),
@@ -94,7 +95,7 @@ export default async function MyPage() {
         where: { attendance: { userId } },
         orderBy: { createdAt: "desc" },
         take: 8,
-        select: { estimatedEndAt: true, reason: true, status: true, createdAt: true },
+        select: { id: true, estimatedEndAt: true, reason: true, status: true, createdAt: true, submittedAt: true },
       }),
       [],
     ),
@@ -233,30 +234,137 @@ export default async function MyPage() {
   type Req = RequestItem & { at: number };
   const requests: Req[] = [
     ...leaveReqs.map<Req>((r) => ({
-      letter: "L", at: r.createdAt.getTime(),
+      letter: "L", at: r.createdAt.getTime(), id: r.id, kind: "leave", canCancel: r.status === "PENDING" || (r.status === "APPROVED" && !r.markedByAdmin && r.startDate.getTime() >= keyToDate(todayKey).getTime()),
       title: `${LEAVE_LABEL[r.type] ?? r.type} leave · ${fmtDateOnly(r.startDate)}${r.days > 1 ? `–${fmtDateOnly(r.endDate)}` : ""}`,
       sub: `${r.days} day${r.days === 1 ? "" : "s"} · requested ${fmtDay(r.createdAt)}`,
       status: statusTone(r.status).label, tone: statusTone(r.status).tone,
     })),
     ...permissions.map<Req>((p) => ({
-      letter: "P", at: p.createdAt.getTime(),
+      letter: "P", at: p.createdAt.getTime(), id: p.id, kind: "permission", canCancel: p.approvalStatus === "PENDING" || (p.approvalStatus === "APPROVED" && p.startTime.getTime() > now.getTime()),
       title: `Timed permission · ${fmtDay(p.startTime)} ${fmtTime(p.startTime)}–${fmtTime(p.endTime)}`,
       sub: `${fmtDur(p.endTime.getTime() - p.startTime.getTime())} · requested ${fmtDay(p.createdAt)}`,
       status: statusTone(p.approvalStatus).label, tone: statusTone(p.approvalStatus).tone,
     })),
     ...overtime.map<Req>((o) => ({
-      letter: "O", at: o.createdAt.getTime(),
+      letter: "O", at: o.createdAt.getTime(), id: o.id, kind: "overtime", canCancel: (o.status === "PENDING" || o.status === "APPROVED") && !o.submittedAt,
       title: `Overtime · until ${fmtTime(o.estimatedEndAt)}`,
       sub: o.reason.length > 60 ? `${o.reason.slice(0, 60)}…` : o.reason,
       status: statusTone(o.status).label, tone: statusTone(o.status).tone,
     })),
     ...manual.map<Req>((m) => ({
-      letter: "M", at: m.createdAt.getTime(),
+      letter: "M", at: m.createdAt.getTime(), id: m.id, kind: "manual", canCancel: m.status === "PENDING",
       title: `Manual entry · ${m.date}`,
       sub: m.reason.length > 60 ? `${m.reason.slice(0, 60)}…` : m.reason,
       status: statusTone(m.status).label, tone: statusTone(m.status).tone,
     })),
   ].sort((a, b) => b.at - a.at).slice(0, 10);
+
+  // ---- notifications: the same ones the phone app shows, worked out from the data above ----
+  const notifications: NotifItem[] = [];
+  const sameDayIST = (d: Date) => istDateKey(d) === todayKey;
+  const decision = (s: string) =>
+    s === "APPROVED"
+      ? { word: "approved", label: "Approved", tone: "good" as const, icon: "check" as const }
+      : s === "REJECTED"
+        ? { word: "declined", label: "Declined", tone: "bad" as const, icon: "close" as const }
+        : { word: "pending", label: "Awaiting approval", tone: "warn" as const, icon: "clock" as const };
+  const monthAgo = now.getTime() - 30 * DAY_MS;
+  for (const r of leaveReqs) {
+    if (r.status === "CANCELLED") continue;
+    if (r.status !== "PENDING" && r.endDate.getTime() < monthAgo) continue;
+    const d = decision(r.status);
+    const label = LEAVE_LABEL[r.type] ?? r.type;
+    const range = r.days > 1 ? `${fmtDateOnly(r.startDate)} – ${fmtDateOnly(r.endDate)}` : fmtDateOnly(r.startDate);
+    const bal = balances.find((b) => b.type === r.type);
+    notifications.push({
+      id: `leave:${r.id}:${r.status}`,
+      group: r.status === "PENDING" ? "Today" : "Earlier",
+      kind: "approvals",
+      tone: d.tone,
+      icon: d.icon,
+      title: r.status === "PENDING" ? "Leave request pending" : `Leave ${d.word}`,
+      time: fmtDateOnly(r.startDate),
+      summary: `${label} · ${range} · ${r.days} ${r.days === 1 ? "day" : "days"}`,
+      details: [
+        { k: "Type", v: `${label} leave` },
+        { k: "Dates", v: range },
+        { k: "Days", v: String(r.days) },
+        ...(r.status === "APPROVED" && bal ? [{ k: "Balance now", v: `${bal.remaining} / ${bal.quota} days`, tone: "good" as const }] : []),
+        ...(r.status === "REJECTED" && r.reviewNote ? [{ k: "Note from admin", v: r.reviewNote }] : []),
+        { k: "Status", v: d.label, tone: d.tone },
+      ],
+      cta: "View in Requests",
+      target: "requests",
+      sortAt: r.startDate.getTime() + (r.status === "PENDING" ? 1e13 : 0),
+    });
+  }
+  for (const o of overtime) {
+    const d = decision(o.status);
+    notifications.push({
+      id: `overtime:${o.id}:${o.status}`,
+      group: o.status === "PENDING" || sameDayIST(o.estimatedEndAt) ? "Today" : "Earlier",
+      kind: "approvals",
+      tone: d.tone,
+      icon: d.icon,
+      title: o.status === "PENDING" ? "Overtime request pending" : o.status === "REJECTED" ? "Overtime request declined" : "Overtime approved",
+      time: fmtDay(o.estimatedEndAt),
+      summary: `Until ${fmtTime(o.estimatedEndAt)}${o.reason ? ` · ${o.reason}` : ""}`,
+      details: [
+        { k: "Requested until", v: `${fmtDay(o.estimatedEndAt)} · ${fmtTime(o.estimatedEndAt)}` },
+        ...(o.reason ? [{ k: "Reason", v: o.reason }] : []),
+        { k: "Decision", v: o.status === "PENDING" ? "Awaiting review" : d.label, tone: d.tone },
+      ],
+      cta: "View in Requests",
+      target: "requests",
+      sortAt: o.estimatedEndAt.getTime(),
+    });
+  }
+  for (const p of permissions) {
+    const d = decision(p.approvalStatus);
+    notifications.push({
+      id: `permission:${p.id}:${p.approvalStatus}`,
+      group: p.approvalStatus === "PENDING" || sameDayIST(p.startTime) ? "Today" : "Earlier",
+      kind: "approvals",
+      tone: d.tone,
+      icon: d.icon,
+      title: p.approvalStatus === "PENDING" ? "Permission request pending" : `Permission ${d.word}`,
+      time: fmtDay(p.startTime),
+      summary: `${fmtTime(p.startTime)} – ${fmtTime(p.endTime)} · ${fmtDur(p.endTime.getTime() - p.startTime.getTime())}`,
+      details: [
+        { k: "Date", v: fmtDay(p.startTime) },
+        { k: "Time", v: `${fmtTime(p.startTime)} – ${fmtTime(p.endTime)}` },
+        { k: "Status", v: d.label, tone: d.tone },
+      ],
+      cta: "View in Requests",
+      target: "requests",
+      sortAt: p.startTime.getTime(),
+    });
+  }
+  for (const r of records) {
+    if (r.type !== "CHECK_IN" || now.getTime() - r.timestamp.getTime() > 7 * DAY_MS) continue;
+    const half = r.leaveType === "HALF_DAY";
+    if (!half && !(r.lateMinutes && r.lateMinutes > 0)) continue;
+    const tone = half ? ("bad" as const) : ("warn" as const);
+    notifications.push({
+      id: `late:${r.id}`,
+      group: sameDayIST(r.timestamp) ? "Today" : "Earlier",
+      kind: "alerts",
+      tone,
+      icon: "clock",
+      title: half ? "Late arrival: half day" : "Late arrival recorded",
+      time: sameDayIST(r.timestamp) ? fmtTime(r.timestamp) : fmtDay(r.timestamp),
+      summary: `Checked in at ${fmtTime(r.timestamp)}${r.lateMinutes ? ` · ${r.lateMinutes} min late` : ""}`,
+      details: [
+        { k: "Date", v: fmtDay(r.timestamp) },
+        { k: "Checked in", v: fmtTime(r.timestamp) },
+        ...(r.lateMinutes ? [{ k: "Late by", v: `${r.lateMinutes} min`, tone }] : []),
+        { k: "Counted as", v: half ? "Half day" : "Permission", tone },
+      ],
+      cta: "See history",
+      target: "activity",
+      sortAt: r.timestamp.getTime(),
+    });
+  }
 
   // ---- up next: upcoming holidays, approved leave, pending leave ----
   const upcoming: (UpNext & { key: string })[] = [];
@@ -327,6 +435,9 @@ export default async function MyPage() {
             </div>
           </div>
         </div>
+        <div style={{ position: "relative", alignSelf: "flex-start" }}>
+          <NotificationsBell items={notifications} userId={userId} />
+        </div>
       </div>
 
       <EmployeeCheckIn
@@ -347,7 +458,7 @@ export default async function MyPage() {
             counts: { present: onTimeDays, late: lateDays, leave: leaveInMonth },
             cells,
             activity,
-            requests: requests.map((r) => ({ letter: r.letter, title: r.title, sub: r.sub, status: r.status, tone: r.tone })),
+            requests: requests.map((r) => ({ id: r.id, kind: r.kind, canCancel: r.canCancel, letter: r.letter, title: r.title, sub: r.sub, status: r.status, tone: r.tone })),
           }}
         />
         <aside style={{ flex: "1 1 320px", minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
