@@ -33,6 +33,9 @@ type Status = {
   shiftEndTime?: string | null;
   canResume?: boolean;
   resumeUsed?: boolean;
+  // The open work segment (FIELD and HYBRID only). For FIELD the server switches it between FIELD and OFFICE
+  // from the location pings this tab sends while checked in (3 readings in a row inside / outside the office).
+  segment?: { mode: string | null; startedAt: string | null } | null;
 };
 
 type Office = { name: string; latitude: number; longitude: number; radiusMeters: number } | null;
@@ -100,6 +103,9 @@ export default function EmployeeCheckIn({ employeeCode, firstName, requests, foo
   const [flipped, setFlipped] = useState(false);
   // The photo the person took with the shutter button (a data URL); sent when they confirm.
   const [shot, setShot] = useState<string | null>(null);
+  // Field workers, before check-in: Office / Field is picked from where they are, until they tap the toggle.
+  const [autoPlace, setAutoPlace] = useState(true);
+  const [atOffice, setAtOffice] = useState<boolean | null>(null);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -146,8 +152,39 @@ export default function EmployeeCheckIn({ employeeCode, firstName, requests, foo
   // Checked out earlier today and allowed to reopen the day once ("Resume work").
   const canResume = Boolean(isDone && status?.canResume);
   const showDone = isDone && !canResume;
-  // The office is drawn on the map only for people who are checked against it.
-  const mapOffice = office && (workMode === "OFFICE" || workMode === "HYBRID" || (canPickPlace && today === "OFFICE")) ? office : null;
+  // The office is drawn on the map for people who are checked against it, and always for field workers (so they
+  // can see when they reach it).
+  const mapOffice = office && (workMode === "OFFICE" || workMode === "HYBRID" || workMode === "FIELD" || (canPickPlace && today === "OFFICE")) ? office : null;
+  // Field worker, checked in: where the server has them right now.
+  const fieldNow = workMode === "FIELD" && isWorking ? (status?.segment?.mode === "OFFICE" ? "OFFICE" : "FIELD") : null;
+
+  // Field worker, not checked in yet: watch the location and pick Office inside the office area, Field outside it.
+  // Stops once they choose by hand.
+  const autoPick = workMode === "FIELD" && canPickPlace && Boolean(office);
+  useEffect(() => {
+    if (!autoPick || !office || !navigator.geolocation) return;
+    const id = navigator.geolocation.watchPosition(
+      (p) => {
+        const meters = haversineDistanceMeters(p.coords.latitude, p.coords.longitude, office.latitude, office.longitude);
+        setAtOffice(meters <= office.radiusMeters);
+      },
+      () => setAtOffice(null),
+      { enableHighAccuracy: true, maximumAge: 15_000, timeout: 20_000 },
+    );
+    return () => navigator.geolocation.clearWatch(id);
+  }, [autoPick, office]);
+  useEffect(() => {
+    if (!autoPick || !autoPlace || atOffice === null) return;
+    const t = setTimeout(() => setToday(atOffice ? "OFFICE" : "HOME"), 0);
+    return () => clearTimeout(t);
+  }, [autoPick, autoPlace, atOffice]);
+
+  // Field worker, checked in: refresh the status every 30 s so the Office / Field label follows the server's switch.
+  useEffect(() => {
+    if (workMode !== "FIELD" || !isWorking) return;
+    const id = setInterval(() => void loadStatus(), 30_000);
+    return () => clearInterval(id);
+  }, [workMode, isWorking, loadStatus]);
 
   // The first press turns the card to the camera; the next press takes the photo and sends it.
   function press(action: Action) {
@@ -489,13 +526,39 @@ export default function EmployeeCheckIn({ employeeCode, firstName, requests, foo
         {canPickPlace && (
           <div role="group" aria-label="Working from" className="toggle">
             {(["HOME", "OFFICE"] as const).map((v) => (
-              <button key={v} type="button" disabled={busy} className={today === v ? "on" : ""} onClick={() => setToday(v)}>
+              <button key={v} type="button" disabled={busy} className={today === v ? "on" : ""} onClick={() => { setAutoPlace(false); setToday(v); }}>
                 <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
                   {v === "OFFICE" ? <Building2 size={16} /> : workMode === "FIELD" ? <MapPin size={16} /> : <Home size={16} />}
                   {v === "OFFICE" ? "Office" : workMode === "FIELD" ? "Field" : "Home"}
                 </span>
               </button>
             ))}
+          </div>
+        )}
+        {autoPick && (
+          <p className="sub" style={{ margin: 0, fontSize: 13 }}>
+            {!autoPlace
+              ? "You picked this yourself."
+              : atOffice === null
+                ? "Finding your location to pick Office or Field…"
+                : atOffice
+                  ? "You're at the office, so Office is picked."
+                  : "You're away from the office, so Field is picked."}
+          </p>
+        )}
+
+        {fieldNow && (
+          <div
+            role="status"
+            style={{
+              display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 8, fontSize: 14, fontWeight: 600,
+              background: fieldNow === "OFFICE" ? "var(--mp-success-muted)" : "var(--mp-muted)",
+              color: fieldNow === "OFFICE" ? "var(--mp-success)" : "var(--mp-text)",
+            }}
+          >
+            {fieldNow === "OFFICE" ? <Building2 size={16} /> : <MapPin size={16} />}
+            {fieldNow === "OFFICE" ? "Office mode" : "Field mode"}
+            <span className="sub" style={{ fontWeight: 400, fontSize: 12, marginLeft: "auto" }}>switches when you reach or leave the office</span>
           </div>
         )}
 

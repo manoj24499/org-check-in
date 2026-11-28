@@ -3,7 +3,8 @@
 > Purpose of this file: anyone opening this folder should know **what this project does, what it is built with,
 > how every part works, and where to look when something breaks**.
 >
-> Last updated: 26 Nov 2026 (covers commits up to `1f683e0 multiple checkin added`). Companion mobile app docs: [`../checkin-native/DOCUMENTATION.md`](../checkin-native/DOCUMENTATION.md).
+> Last updated: 28 Nov 2026 (covers commits up to merge `350304c`, 26 Nov 2026). Companion mobile app docs: [`../checkin-native/DOCUMENTATION.md`](../checkin-native/DOCUMENTATION.md).
+> **What changed and when:** see [`changelog/CHANGELOG.md`](changelog/CHANGELOG.md) — one file, a section per date (newest at the bottom), with the commits and the sections updated here.
 > Read [§ 1](#1-note-on-older-docs) first.
 
 ---
@@ -121,6 +122,7 @@ org-check-in/
 ├─ next.config.ts       Security headers (CSP etc.), bcrypt external
 ├─ prisma.config.ts     Prisma 7 config (DATABASE_URL, seed command)
 ├─ HYBRID_API_CONTRACT.md, README.md, design-system/, reports/
+├─ changelog/CHANGELOG.md  All changes in one file, a section per date (newest at the bottom) — check it first when something "suddenly" broke
 ├─ .claude/launch.json  Claude Code preview config only: runs `npm run dev` on port 3000 (name "checkin-app-dev")
 └─ Claude outputs/      11 PNG screenshots of marketing/landing-page previews (preview-desktop-*.png, preview-features-*.png,
                         preview-geofence-map.png, fixed-who-its-for.png …). Saved by Claude Code sessions. Not used by the app;
@@ -274,7 +276,16 @@ Important details:
   **kept** (logged `[auth] session version check failed`). Sessions created before this feature have no `signedInAt` → treated as old.
 - **PIN rules**: min 6 digits (`MIN_PIN_LENGTH`), max 10, unique per org (`pinLookupHash`), bcrypt cost 12. New employees get `pinMustChange: true` → mobile login returns `PIN_CHANGE_REQUIRED` → app uses `set-initial-pin`.
 - **PIN reset**: admin generates a 6-digit code (24 h, 5 tries) → employee verifies in app → 10 min reset token → new PIN.
-- **Rate limits** (Postgres `RateLimitBucket`): PIN guesses 10 / 5 min and 30 / hour per org+employee code (shared kiosk/mobile/web); per-IP limits per route.
+- **Rate limits** (Postgres `RateLimitBucket`): PIN guesses 10 / 5 min and 30 / hour per org+employee code (shared kiosk/mobile/web); per-IP limits per route; per-employee request limits (§ 10.13).
+- **Wrong PINs are recorded** (since 26 Nov) in `PinFailure` for real, active employees — web sign-in, mobile login, kiosk/phone check-in — and alert the admin after 5 in 30 min (§ 10.12).
+- **Login pages per area** (since 26 Nov, `94cd8c2`): `middleware.ts` sends non-admins on `/admin/*` to **`/login/admin`** and
+  non-employees on `/my-page/*` to **`/login/employee`**. Sign-out and `TabSecurity` also return to the login page of that area.
+  `/login` (the "Who's signing in?" picker) still exists.
+- **Sign-in preloader**: after the password/PIN is accepted, a full-screen "Signing you in" / "Opening admin console"
+  screen covers the page for **at least 5 s** and until `/my-page` or `/admin…` has opened (hard stop 30 s).
+  `lib/signInPreloader.ts` (switch), `components/SignInPreloaderHost.tsx` (in `app/layout.tsx`), `AdminPreloader.tsx`, `EmployeePreloader.tsx`.
+- **My Page 401s**: `requireWebEmployee` logs `[webEmployee] refused: …` with the reason (no session, wrong role, missing
+  id/org/code); routes reply with `SESSION_CHANGED_MESSAGE` ("Your sign-in has changed or expired … Reload this page and sign in again.").
 
 ---
 
@@ -337,7 +348,7 @@ Logic: `lib/geofenceTarget.ts`, `lib/geofence.ts`, `lib/hybridSegments.ts`, `lib
 |---|---|---|
 | Leave (`TimeOffRequest`) | mobile `me/leave-requests` | APPROVED blocks check-in; balances from `AppSettings` quotas |
 | Timed permission | mobile `me/timed-permission` | **Does nothing until admin APPROVES**; then pauses during the window |
-| Overtime | mobile `me/overtime` | **Takes effect immediately** (extends reminder/auto-checkout target); status is record-only |
+| Overtime | mobile `me/overtime`, and My Page "Request Overtime" (since 26 Nov) | **Takes effect immediately** (extends reminder/auto-checkout target); status is record-only |
 | Meeting | mobile `me/meetings` | Outside shift only; extends auto-checkout target; no approval |
 | Manual entry | mobile `me/manual-entry-requests` (last 7 days) | APPROVED creates MANUAL attendance |
 | Support ticket | mobile `support` | Admin resolves → push |
@@ -402,12 +413,64 @@ Added in commit `b3510a9`. A signed-in employee on `/my-page` can check in / out
 but **only for the employee's own code** (another code → 400). Attempts are logged with `source: "WEB"`.
 `mobile/me/leave-requests` and `mobile/me/timed-permission` also accept the web session (`requireEmployee`), so My Page can create requests.
 
+**Field workers: automatic Office / Field (added 28 Nov 2026, `EmployeeCheckIn.tsx`, client only).**
+- **Before check-in:** the card watches the browser location (`watchPosition`) and picks **Office** when the reading
+  is inside the office radius (`distance ≤ radiusMeters`, strict — the 300 m accuracy tolerance of § 10.10 is *not*
+  used here) and **Field** otherwise. A line under the toggle says why ("You're at the office, so Office is picked."
+  / "You're away from the office, so Field is picked."). Tapping the toggle by hand stops the automatic pick for that
+  page load ("You picked this yourself."). The office circle is now always drawn on the map for FIELD employees.
+- **After check-in:** a badge shows **Office mode** / **Field mode** from `status.segment.mode`
+  (`GET /api/kiosk/status`), refreshed every 30 s. The switch itself is done by the server from the tab's tracking
+  pings: `evaluateWorkSegment` in `/api/kiosk/location` needs **3 readings in a row** inside / outside the office,
+  so the badge changes ~1–3 min after arriving / leaving (ping interval + 30 s refresh).
+- **If it doesn't switch:** tracking must be on (tab open, screen awake, location allowed); an office location must be
+  set for the org (`/admin/office-location`); with no office set nothing is auto-picked and the toggle works as
+  before. A laptop's rough Wi-Fi location can land outside a small radius → Field is picked; checking in as Field
+  still works and the server moves the session to Office once pings are inside.
+
 ### 10.10 Location accuracy tolerance (browser check-ins)
 `/api/kiosk/scan` now accepts an optional `accuracy` (metres). If accuracy ≤ **300 m** (`IMPRECISE_LOCATION_M`), a
 reading that *could* be inside (distance − accuracy ≤ radius) is accepted. If accuracy > 300 m and it might be inside,
 the user gets 409 "Your device could only locate you to within about N m… Turn on Wi-Fi and location services…"
 (`reasonCode` `LOCATION_IMPRECISE`). Old clients that don't send accuracy are held to the exact reading. The same
 300 m tolerance applies to anonymous `/api/kiosk/status` lookups (`?accuracy=`).
+
+### 10.11 Date of birth & upcoming birthdays (added 26 Nov, `0324fe7` / `9fbfed8`)
+- Column `User.dateOfBirth` (`DATE`). Shown to colleagues as **day and month only** — the year never leaves the server.
+- **My Page blocks until it is given:** `components/mypage/DobPrompt.tsx` is a popup with no close button (date input
+  1940-01-01 … today). It disappears for good once saved.
+- Save: `POST /api/mobile/me/date-of-birth` — mobile bearer or web session; age **14–100** (else 400 "That date of birth
+  doesn't look right. Please check it."); **only fills an empty value** (else 409 "Your date of birth is already saved.
+  Ask your admin to change it."); 10 per hour per employee. The mobile app does not call it.
+- Admin edits / clears it on `/admin/employees/[id]` ("Date of birth" card, `EmployeeDobEditor.tsx`) →
+  `PATCH /api/admin/employees/[id]` `{action: "set-date-of-birth", dateOfBirth: "YYYY-MM-DD" | null}` (age 14–100, else
+  400 "Enter a valid date of birth.").
+- "Upcoming birthdays" on My Page (`UpcomingBirthdays.tsx`, computed in `app/my-page/page.tsx`): active employees of the
+  org, next **3**, "Today" / "Tomorrow" / "in N days", own row = "You", 29 Feb shown on 28 Feb in non-leap years.
+
+### 10.12 Repeated wrong PIN alert (added 26 Nov, `ebbb669`)
+- `lib/pinFailures.ts` `recordPinFailure()` writes a `PinFailure` row (source `WEB` / `MOBILE` / `KIOSK`, outcome
+  `WRONG_PIN` or `LOCKED`, IP). It is **fire-and-forget**: never delays or changes the sign-in answer; a write error only
+  logs `[pinFailures] could not record:`. Rows older than **14 days** are deleted on about 1 in 50 writes.
+- Recorded only when the code belongs to a **real, active employee with a PIN** (unknown codes and deactivated accounts
+  are ignored). Places: `app/api/kiosk/scan` (not for web-session check-ins), `app/api/mobile/login`, `lib/auth.ts`
+  `employee-login`; `LOCKED` when the PIN-guess limit already refuses the attempt (login and web).
+- `lib/adminNotifications.ts` reads the last **30 min**; an employee with **≥ 5** failures gets one `PIN_FAILURES`
+  notification: "Repeated wrong PIN attempts — N wrong PIN attempts in the last 30 minutes (x on the website, y on the
+  phone app, z at a kiosk, from K different networks). Their sign-in is temporarily locked. If this wasn't <name>,
+  regenerate their PIN from their profile." Dismiss key `pin:<userId>:<UTC hour>` → guessing in a new hour alerts again.
+- Constants: `PIN_ALERT_MIN = 5`, `PIN_ALERT_WINDOW_MS = 30 min`.
+
+### 10.13 Per-employee request limits (added 26 Nov, `ebbb669`)
+`lib/actionLimit.ts` `limitEmployeeAction(userId, action, max, window = 1 h)` — bucket `emp-action:<action>:<userId>` in
+`RateLimitBucket`. Over the limit → **429 "Too many requests in a short time. Please wait a few minutes and try again."**
+| Route (POST) | Limit |
+|---|---|
+| `me/leave-requests` | 10 / hour |
+| `me/overtime` | 10 / hour |
+| `me/timed-permission` | 15 / hour |
+| `me/date-of-birth` | 10 / hour |
+Applies to the mobile app and My Page alike. To unblock someone, delete their `emp-action:*` rows.
 
 ---
 
@@ -491,7 +554,8 @@ check-out time + 60 s.
 | `me/leave-requests`, `me/leave-requests/[id]` | GET, POST, PATCH | leave (PATCH = cancel) |
 | `me/manual-entry-requests` | GET, POST | missed-day request |
 | `me/meetings`, `me/meetings/[id]` | GET, POST, DELETE | meetings outside shift |
-| `me/overtime` | GET, POST | overtime |
+| `me/overtime` | GET, POST | overtime (since 26 Nov also accepts the web My Page session) |
+| `me/date-of-birth` | POST | save own date of birth once (bearer or web session; § 10.11) — used only by My Page |
 | `me/timed-permission` | GET, POST | permission (today only) |
 | `me/work-segment` | GET, POST | FIELD/HYBRID segment switch (409 if a ping changed it simultaneously) |
 | `me/assigned-places`, `.../[id]/skip` | GET, POST | admin-assigned places / skip with reason |
@@ -508,8 +572,9 @@ check-out time + 60 s.
 | `me/profile-photo` POST | 10/min per user, same 413 limits; responses `Cache-Control: private, no-store` |
 | `me/attendance/[id]/photo`, `field-visits/[id]/photo` | cached privately 3600 s; 403 someone else's photo, 404 missing |
 | `me/meetings` POST | max 12 h long, start ≤ 12 h in the past, ≤ 14 days ahead; 400 inside the shift; 409 overlaps another meeting |
-| `me/overtime`, `me/timed-permission` POST | 409 not checked in; 409 a request is already active |
-| `me/leave-requests` POST | 409 already checked in on that day / overlapping request; 400 past date, all-holiday range, not enough balance. GET is bearer-only; POST also accepts the web My Page session (same split for `timed-permission`) |
+| `me/overtime`, `me/timed-permission` POST | 409 not checked in; 409 a request is already active; 429 after 10 / 15 per hour (§ 10.13) |
+| `me/date-of-birth` POST | 401 `SESSION_CHANGED_MESSAGE`; 400 invalid date or age outside 14–100; 409 already saved; 429 after 10 / hour |
+| `me/leave-requests` POST | 409 already checked in on that day / overlapping request; 400 past date, all-holiday range, not enough balance; 429 after 10 / hour. GET is bearer-only; POST also accepts the web My Page session (same split for `timed-permission`) |
 | `me/leave-requests/[id]` PATCH | 409 "Only a pending request can be cancelled." |
 | `field-visits` POST | 413 size limits; 422 if > 3 days old or > 2 min in the future; visit must be within 24 h of its check-in; 409 not on a Field check-in / assigned place no longer available |
 | `me/tracking-token` | 409 "You're not checked in right now." |
@@ -527,7 +592,7 @@ All under `app/api/admin/`, auth `requireAdmin()` → 401 if not admin; other-or
 | Kiosk devices | `kiosk-devices` (POST `{name}` → `{id, code, expiresInMinutes:15}`; 400 at 20 devices), `kiosk-devices/[id]` (DELETE → token revoked; 404) — see § 10.8 |
 | Admins / keys / settings | `admins` (GET/POST), `api-keys` (GET/POST), `api-keys/[id]` (DELETE = revoke), `billing-email` (PUT), `settings` (GET/PUT), `office-location` (GET/PUT) |
 | Sidebar & alerts | `badge-counts` (GET, cached 5 s / face health 15 s per instance, `?fresh` skips), `notifications` (DELETE = dismiss for **all admins**) |
-| Employees | `employees` (GET paged/search, POST create → returns PIN once), `employees/bulk` (POST ≤ 50, all-or-nothing), `employees/[id]` (GET, PATCH actions: `regenerate-pin`, `generate-reset-code`, `set-active`, `update-wfh-location`, `update-hybrid-location`, `clear-wfh-location`, `set-field-mode`, `set-face-verification`, `set-face-verification-exempt`, `approve-device`, `reset-device`), `employees/deleted/[id]/[kind]` (CSV archive) |
+| Employees | `employees` (GET paged/search, POST create → returns PIN once), `employees/bulk` (POST ≤ 50, all-or-nothing), `employees/[id]` (GET, PATCH actions: `regenerate-pin`, `generate-reset-code`, `set-active`, `set-date-of-birth` (since 26 Nov; `dateOfBirth` "YYYY-MM-DD" or null), `update-wfh-location`, `update-hybrid-location`, `clear-wfh-location`, `set-field-mode`, `set-face-verification`, `set-face-verification-exempt`, `approve-device`, `reset-device`), `employees/deleted/[id]/[kind]` (CSV archive) |
 | Employee detail | `[id]/attendance`, `[id]/assigned-places` (FIELD only; GET/PUT ≤ 40/day, push on new places), `[id]/field-visit-days`, `[id]/leave-today` (POST/DELETE, push), `[id]/manual-entry`, `[id]/profile-photo`, `[id]/reimbursement`, `[id]/shift-schedule`, `[id]/visited-places` (route, stops, geocoding) |
 | Attendance & exports | `attendance/[id]` (PATCH time only, same IST day), `attendance/export` (CSV), `leave-requests/export` (CSV), `field-workers/export` (Excel, ≤ 31 days, geocoding only ≤ 3 days) |
 | Request queues (push on decision) | `leave-requests` (+`[id]`), `overtime-requests/[id]` (+photo), `timed-permissions` (+`[id]`), `manual-entry-requests/[id]`, `support` (+`[id]`, +photo), `field-visits/[id]/photo` |
@@ -548,7 +613,8 @@ Errors: 400 zod, 403 trial limit, 409 duplicates/already-reviewed, 413 large pho
 | `attendance/[id]` PATCH | 400 "Only the time can be changed, not the day.", plus check-in/check-out order errors |
 | `field-workers/export` | 404 "No matching field workers."; 400 range > 31 days or start after end |
 | `places-nearby` | 400 when the map window is too large |
-| `notifications` DELETE | body `{key}` or `{keys}` (≤ 200); 400 for permission requests (they must be approved/rejected instead) |
+| `notifications` DELETE | body `{key}` or `{keys}` (≤ 200); 400 for permission requests (they must be approved/rejected instead). Dismissible key prefixes: `tracking`, `face`, `facesvc`, `outside`, `still`, `phone`, **`pin`** (since 26 Nov), `meeting`, `support` |
+| Notification kinds (`lib/adminNotifications.ts`) | Order: PERMISSION_REQUEST, **PIN_FAILURES** (new), SUPPORT, OUTSIDE_AREA, TRACKING_STOPPED, NEW_PHONE, PHONE_STILL, MEETING, FACE_SERVICE, FACE_MISSED |
 
 ---
 
@@ -623,17 +689,17 @@ webhook / `GET /api/plan-change/status` polling (`/plans/complete`, every 2.5 s)
 | Path | What |
 |---|---|
 | `/` | Landing (links to kiosk / login) |
-| `/login`, `/login/admin`, `/signin`, `/login/employee` | Login pickers & forms |
+| `/login`, `/login/admin`, `/signin`, `/login/employee` | Login picker ("Who's signing in?") & forms. Since 26 Nov middleware/sign-out go straight to `/login/admin` or `/login/employee`, and those two pages no longer have a "Back" link. After sign-in a full-screen preloader shows for ≥ 5 s (§ 8) |
 | `/auth/continue` | Continue after sign-in on marketing site (must be fresh, < 2 min) |
 | `/register` | Org signup |
 | `/activate`, `/forgot-password`, `/reset-password` | Account email flows |
 | `/plans`, `/plans/complete`, `/signup/dev-pay` | Plans & billing (dev-pay = fake checkout) |
 | `/kiosk`, `/kiosk/[orgSlug]`, `/kiosk/status/[id]` | Web kiosk (`KioskClient.tsx`): employee code → status lookup → camera selfie → PIN → scan. **Kiosk tracks location (60 s pings) only for WFH employees checking in from home.** Form auto-clears after 30 s idle |
-| `/my-page` | Employee portal (redesigned in `b3510a9`, styles in `app/my-page/mypage.css`): **check in / out / "Check in again" (resume) from the browser** (`EmployeeCheckIn`), attendance calendar & stats, leave/permission request buttons, sidebar & tabs (`components/mypage/*`) |
+| `/my-page` | Employee portal (redesigned in `b3510a9`, styles in `app/my-page/mypage.css`): **check in / out / "Check in again" (resume) from the browser** (`EmployeeCheckIn`), attendance calendar & stats, leave/permission request buttons, sidebar & tabs (`components/mypage/*`). **Since 26 Nov:** the check-in card shows a **live map** and flips to the camera when a photo is needed; **Request Overtime** button; request buttons and **Upcoming birthdays** sit inside the check-in card; a blocking **date-of-birth popup** until DOB is saved (§ 10.11); sidebar links Today / Hours & overtime / Calendar & activity / Leave balances |
 | `/admin/account` | Change own admin password (`ChangeAdminPasswordForm`) |
 | `/admin/kiosk-devices` | Create / remove paired kiosk PCs, shows the pairing code once (`KioskDevicesPanel`) |
 | `/admin/dashboard` | `DashboardWorkspace` tabs: **status** (current status table, mark leave, badges for face skipped / offline / outside, CSV export), **map** (everyone live), **calendar** (pick an employee). Since commit `f25b4b6` the separate "pending permissions", "missed face checks" and "silent field workers" cards and the face-service banner are **no longer shown** — those alerts are only in `/admin/notifications` |
-| `/admin/employees`, `/admin/employees/[id]`, `/admin/employees/deleted` | Employee management |
+| `/admin/employees`, `/admin/employees/[id]`, `/admin/employees/deleted` | Employee management (employee page has a "Date of birth" card since 26 Nov) |
 | `/admin/field-workers`, `/admin/location-history` | Field routes/visits/assign places; Hybrid/WFH route history |
 | `/admin/leave`, `/admin/leave-balances`, `/admin/permissions`, `/admin/overtime`, `/admin/meetings`, `/admin/manual-entries` | Requests |
 | `/admin/shifts`, `/admin/office-location`, `/admin/settings`, `/admin/notifications`, `/admin/support` | Config & inbox |
@@ -643,7 +709,7 @@ Errors in pages: `app/error.tsx` (logs `[app/error.tsx]`; in production shows **
 
 ## 15. Components
 
-All in `components/` (80 files). Paths below are relative to that folder.
+All in `components/` (88 files as of 26 Nov). Paths below are relative to that folder.
 
 ### 15.0 Patterns used everywhere (read first when debugging UI)
 - **Saving:** forms send JSON, then call `router.refresh()` (re-renders the server page with new data). Errors show the
@@ -667,7 +733,8 @@ All in `components/` (80 files). Paths below are relative to that folder.
 | `useSyncedState.ts` | state that resets when server props change | – | see 15.0 |
 | `AdminTour.tsx` | First-run guided tour of the sidebar | – | localStorage **`admin_tour_done`**; auto-starts 900 ms after first dashboard visit; Esc / → / ← keys; targets `[data-tour="nav-<href>"]` |
 | `AdminSignInForm.tsx` | Admin email/password form (`/signin`, `/login/admin`) | `signIn("admin-login")` | Sets sessionStorage **`tab_auth`**; 20 s safety timeout; one combined error message for bad password / not activated / trial ended — check server for the real cause |
-| `TabSecurity.tsx` | Signs out a tab with no `tab_auth` | `signOut()` | **Main cause of "random logout"**: new/duplicated tab or pasted URL. Every sign-in path must set `tab_auth` |
+| `TabSecurity.tsx` | Signs out a tab with no `tab_auth` | `signOut()` → `/login/admin` or `/login/employee` (by current path) | **Main cause of "random logout"**: new/duplicated tab or pasted URL. Every sign-in path must set `tab_auth` |
+| `SignInPreloaderHost.tsx` + `AdminPreloader.tsx` / `EmployeePreloader.tsx` (+ `admin-preloader.css`, `employee-preloader.css`) | Full-screen screen after a successful sign-in (added 26 Nov). Host is in `app/layout.tsx`; turned on by `showSignInPreloader()` from `AdminSignInForm` / employee login page (`lib/signInPreloader.ts`) | min **5 s**, fade 450 ms, hard stop 30 s | If a sign-in "hangs" on this screen for 30 s, the destination page never opened — check the redirect / server log |
 | `Providers.tsx` | NextAuth SessionProvider | – | – |
 | `AuthFields.tsx`, `AuthSplit.tsx`, `AuthShell.tsx` | Form fields; split sign-in layout; card layout for forgot/reset password | – | presentational |
 | `Logo.tsx` | Z-gate logo, static/animated | – | animation keyframes in `app/globals.css` |
@@ -696,6 +763,7 @@ All in `components/` (80 files). Paths below are relative to that folder.
 | `ManualEntryButton.tsx` | Admin manual entry (7 days back) | `POST …/{id}/manual-entry` | – |
 | `ManualEntriesWorkspace.tsx` | Employees' manual-entry requests | `PATCH /api/admin/manual-entry-requests/{id}` | – |
 | `ShiftScheduleEditor.tsx` | One employee's week (0 = Sunday) | `PUT …/{id}/shift-schedule` | – |
+| `EmployeeDobEditor.tsx` | Set / correct / clear date of birth on the employee page (added 26 Nov) | `PATCH …/{id}` `set-date-of-birth` | age 14–100 |
 | `EmployeePicker.tsx` / `MultiEmployeePicker.tsx` | Search & pick employees | – | client-side only |
 | `WfhLocationTable.tsx` | WFH / Hybrid home locations (+ 2nd home for WFH) | `PATCH …/{id}` actions | remove ignores failures |
 | `FieldLocationTable.tsx` | Field ("Anywhere") roster | `PATCH …/{id}` `set-field-mode` / `clear-wfh-location` | remove ignores failures |
@@ -727,7 +795,7 @@ check-out stays on its check-in day). Shows segments (TRANSIT not counted), paus
 | `OvertimeStatusPanel.tsx` / `OvertimeHistoryList.tsx` | `/admin/overtime` | `PATCH /api/admin/overtime-requests/{id}` (+ photo) |
 | `PermissionsWorkspace.tsx` | `/admin/permissions` | `PATCH /api/admin/timed-permissions/{id}` |
 | `SupportTicketList.tsx` | `/admin/support` | `PATCH /api/admin/support/{id}` `{status, adminNote}` (resolve pushes to employee), photo |
-| `NotificationsList.tsx` | `/admin/notifications` | `DELETE /api/admin/notifications` (hides for **all admins**); permission items approve/decline |
+| `NotificationsList.tsx` | `/admin/notifications` | `DELETE /api/admin/notifications` (hides for **all admins**); permission items approve/decline. Kind `PIN_FAILURES` shows as red "Wrong PINs" (since 26 Nov) |
 
 ### 15.7 Shifts
 | Component | API | Gotchas |
@@ -750,9 +818,13 @@ check-out stays on its check-in day). Shows segments (TRANSIT not counted), paus
 | Component | What | API & timing | Gotchas |
 |---|---|---|---|
 | `CameraCapture.tsx` | Front camera → JPEG (q 0.7) | `getUserMedia` | **needs HTTPS or localhost**; "This device doesn't support camera access." / "Camera access is required…" |
-| `EmployeeCheckIn.tsx` | My Page check in / out / **Check in again** (resume) | `GET /api/kiosk/status`, `GET /api/kiosk/office-location`, `POST /api/kiosk/scan` (`mode:"session"`, no PIN) | geolocation high accuracy 10 s then rough fallback; sends `accuracy`; starts/stops browser tracking (`lib/locationTracker`); keeps a screen **Wake Lock** while working — tracking stops if the tab closes or phone locks |
-| `mypage/RequestButtons.tsx` | Leave / permission requests from My Page | `POST /api/mobile/me/leave-requests`, `POST /api/mobile/me/timed-permission` (web session accepted) | dates in IST |
-| `mypage/MyPageSidebar.tsx`, `MyPageTabs.tsx`, `MyPageCards.tsx` | Sidebar (section links + change PIN), Calendar/Activity/Requests tabs (weeks start Monday), insight & leave cards | – | styles `app/my-page/mypage.css` (`--mp-*` vars) |
+| `EmployeeCheckIn.tsx` | My Page check in / out / **Check in again** (resume) | `GET /api/kiosk/status`, `GET /api/kiosk/office-location`, `POST /api/kiosk/scan` (`mode:"session"`, no PIN) | geolocation high accuracy 10 s then rough fallback; sends `accuracy`; starts/stops browser tracking (`lib/locationTracker`); keeps a screen **Wake Lock** while working — tracking stops if the tab closes or phone locks. FIELD: auto-picks Office / Field before check-in and shows an Office / Field mode badge after (status polled every 30 s) — § 10.9 |
+| `mypage/RequestButtons.tsx` | Leave / permission / **overtime** (since 26 Nov) requests from My Page; rendered inside the check-in card | `POST /api/mobile/me/leave-requests`, `…/timed-permission`, `…/overtime` (web session accepted) | dates in IST; overtime = "Expected finish (today)" time + reason (≤ 300); success "Overtime noted. Check out when you finish and add a short work summary."; 429 after the hourly limit (§ 10.13) |
+| `mypage/LiveMap.tsx` | Live map on the check-in card (added 26 Nov): own position + accuracy circle, office circle for OFFICE / HYBRID / WFH-picked-office | browser `watchPosition` (high accuracy, 20 s timeout) **only while the map side is showing**; OSM tiles via react-leaflet | pill texts "Finding your location…", "Live location · accurate to N m", "Allow location for this site to see where you are.", "Can't find your location yet. Turn on location services.", "This browser can't share your location."; no fix and no office → map of India |
+| `EmployeeCheckIn.tsx` card flip | When a photo is needed the card turns from map to camera; buttons become "Take photo & check in / check out"; "Back to map" turns it back | – | camera only starts on the camera side |
+| `mypage/DobPrompt.tsx` | Blocking "When's your birthday?" popup (added 26 Nov) | `POST /api/mobile/me/date-of-birth` | no close button; errors shown in the popup ("Network error. Please try again." / server message / "Something went wrong (error N)…") |
+| `mypage/UpcomingBirthdays.tsx` | Next 3 birthdays in the org (day + month) inside the check-in card | data from `app/my-page/page.tsx` | – |
+| `mypage/MyPageSidebar.tsx`, `MyPageTabs.tsx`, `MyPageCards.tsx` | Sidebar (Today / Hours & overtime / Calendar & activity / Leave balances, short labels when collapsed, change PIN, sign-out → `/login/employee`), Calendar/Activity/Requests tabs (weeks start Monday), insight & leave cards | – | styles `app/my-page/mypage.css` (`--mp-*` vars) |
 | `ChangePinButton.tsx` | Employee PIN change | `POST /api/my-page/change-pin` | signs out mobile sessions |
 
 ---
@@ -768,7 +840,8 @@ check-out stays on its check-in day). Shows segments (TRANSIT not counted), paus
 |---|---|
 | Kiosk | `KioskDevice` (org, name, `pairingCodeHash` + `pairingExpiresAt` until paired, `tokenHash` unique once paired, `pairedAt`, `lastUsedAt`; cascades on org delete) |
 | Resume | `AttendanceResume` (one row per "Resume work": the undone check-out's time/photo/odometer/face + the resume's photo/face/location; indexed by `attendanceId` and `(userId, resumedAt)`); `AttendancePause.isBreak` = gap between check-out and resume |
-| Tenant/users | `Organization` (slug, status, plan, trial), `User` (admins & employees; PIN/password hashes, `passwordChangedAt`, `tokenVersion`, device binding, work mode, home/home2, face flags, `active`/`deactivatedAt`), `UserToken` (activation/reset) |
+| Security | `PinFailure` (added 26 Nov: one wrong PIN for a real employee — org, user, code, `source` WEB/MOBILE/KIOSK, `outcome` WRONG_PIN/LOCKED, IP; no relations, pruned after 14 days; indexed by `(organizationId, createdAt)` and `(userId, createdAt)`) |
+| Tenant/users | `Organization` (slug, status, plan, trial), `User` (admins & employees; PIN/password hashes, `passwordChangedAt`, `dateOfBirth` (DATE, since 26 Nov), `tokenVersion`, device binding, work mode, home/home2, face flags, `active`/`deactivatedAt`), `UserToken` (activation/reset) |
 | Auth infra | `RateLimitBucket`, `RefreshToken`, `PaymentEvent` |
 | Diagnostics | `CheckInAttempt` (every scan attempt), `AttendanceEvent` (auto-checkout, manual entry, push sent) |
 | Billing | `SignupCheckout`, `PlanChangeCheckout`, `OrganizationApiKey` |
@@ -784,10 +857,11 @@ check-out stays on its check-in day). Shows segments (TRANSIT not counted), paus
 `AssignedPlaceStatus` PENDING/VISITED/SKIPPED · `WorkSegmentStartMethod` CHECKIN/AUTO/MANUAL · billing statuses.
 
 ### Migrations
-46 migrations in `prisma/migrations/` from `20260902_init` to `20261126000000_multiple_resumes` (organizations, billing, partner API,
+48 migrations in `prisma/migrations/` from `20260902_init` to `20261128000000_pin_failures` (organizations, billing, partner API,
 offline check-in, tracking token, hybrid, check-in attempt log, attendance events, second home, device binding, meetings,
 then: `20261121000000_password_changed_at`, `20261123000000_kiosk_devices`, `20261125000000_attendance_resume`,
-`20261126000000_multiple_resumes` (drops the one-resume-per-day unique index)).
+`20261126000000_multiple_resumes` (drops the one-resume-per-day unique index), `20261127000000_user_date_of_birth`
+(adds `User.dateOfBirth`), `20261128000000_pin_failures` (creates `PinFailure`)). History with dates: [`changelog/CHANGELOG.md`](changelog/CHANGELOG.md).
 ⚠ **Apply new migrations to every database** (`npx prisma migrate deploy`) before deploying code that uses them.
 Note: two migrations share timestamp `20261021000000`.
 
@@ -809,7 +883,7 @@ Note: two migrations share timestamp `20261021000000`.
 | `autoCheckout.ts`, `shiftReminders.ts`, `trackingWatch.ts`, `stationaryWatch.ts`, `employeeCleanup.ts` | Background jobs |
 | `meetings.ts`, `offlineCheckIn.ts`, `pauseReplay.ts`, `manualEntry.ts`, `timeOff.ts`, `attendanceEvents.ts` | Attendance rules |
 | `geofence.ts`, `geofenceTarget.ts`, `hybridSegments.ts`, `locationClustering.ts`, `locationTracker.ts` (browser kiosk) | Location |
-| `adminNotifications.ts`, `adminCounts.ts` | Admin alerts (computed live) & badges |
+| `adminNotifications.ts`, `adminCounts.ts` | Admin alerts (computed live) & badges. Since 26 Nov includes `PIN_FAILURES` (reads `PinFailure`, last 30 min, up to 2000 rows) |
 | `pushNotifications.ts` | Expo push (never throws, logs `PUSH_SENT`) |
 | `geocoding.ts`, `placeSearch.ts`, `routing.ts`, `nearbyPlaces.ts`, `assignedPlaces.ts`, `placeOrder.ts`, `visitedPlaces.ts`, `mapLinks.ts` | Places & routing |
 | `photoUpload.ts`, `csv.ts`, `bulkEmployeeCsv.ts`, `pagination.ts`, `greeting.ts` | Misc |
@@ -818,7 +892,10 @@ Note: two migrations share timestamp `20261021000000`.
 | `kioskDevice.ts` | Kiosk pairing: 8-char codes (15 min), device tokens, `resolveKioskDevice(req, orgId)` via header `x-kiosk-device` |
 | `resumeLimit.ts` | `MAX_CHECKINS_PER_DAY = 6`, `MAX_RESUMES_PER_DAY = 5` |
 | `sessionVersion.ts` | `isAdminSessionStale` (password changed after sign-in; 30 s cache), `forgetPasswordChange` |
-| `webEmployee.ts` | `requireWebEmployee` (My Page session as employee proof), `requireEmployee` (mobile bearer or web session) |
+| `webEmployee.ts` | `requireWebEmployee` (My Page session as employee proof; logs `[webEmployee] refused: …`), `requireEmployee` (mobile bearer or web session), `SESSION_CHANGED_MESSAGE` |
+| `actionLimit.ts` | `limitEmployeeAction(userId, action, max, windowMs = 1 h)` → 429 response or null (§ 10.13). Added 26 Nov |
+| `pinFailures.ts` | `recordPinFailure()` (fire-and-forget), `PIN_ALERT_MIN = 5`, `PIN_ALERT_WINDOW_MS = 30 min`, keep 14 days (§ 10.12). Added 26 Nov |
+| `signInPreloader.ts` | Tiny shared on/off switch for the sign-in preloader (`showSignInPreloader`, `hideSignInPreloader`, subscribe/get). Added 26 Nov |
 
 ### 17a. Scripts (`scripts/`)
 
@@ -928,6 +1005,11 @@ The diagrams, feature overview and portfolio decks are older snapshots and may d
 | Activation link / password reset link | 72 h / 60 min | `api/register`, `api/password-reset/request` |
 | Paid checkout hold | 45 min | `api/signup/checkout`, `lib/billing/planChange.ts` |
 | Admin session version cache | 30 s | `lib/sessionVersion.ts` |
+| Wrong-PIN alert | ≥ 5 in 30 min; rows kept 14 days | `lib/pinFailures.ts` |
+| Employee request limits | leave 10 / h, overtime 10 / h, permission 15 / h, date of birth 10 / h | `lib/actionLimit.ts` + routes |
+| Date of birth age range | 14–100 years | `me/date-of-birth`, admin `set-date-of-birth` |
+| Sign-in preloader | min 5 s, fade 450 ms, max 30 s | `components/SignInPreloaderHost.tsx` |
+| Upcoming birthdays shown | 3 | `app/my-page/page.tsx` |
 
 ---
 
@@ -942,6 +1024,8 @@ Use these first when investigating a user complaint:
 | `AttendanceResume` | every "Resume work": which check-out was undone and when, face status of the resume |
 | `KioskDevice` | paired kiosks, `pairedAt`, `lastUsedAt` (is the kiosk still in use?) |
 | `CheckInAttempt.source` | `KIOSK`, `MOBILE` or **`WEB`** (My Page); new reason codes `RESUME_REJECTED`, `LOCATION_IMPRECISE` |
+| **`PinFailure`** | wrong PINs per employee (source WEB/MOBILE/KIOSK, WRONG_PIN/LOCKED, IP) for the last 14 days — "who is guessing this person's PIN, from where?" |
+| `RateLimitBucket` `emp-action:*` | per-employee request limits (§ 10.13) |
 | `LocationPing` | raw pings (`isTrail` for field samples) |
 | `AttendancePause`, `WorkSegment` | why time was paused / which segment |
 | `RateLimitBucket` | key like `scan:<ip>`, `pin-guess:<org>:<code>` — delete a row to unblock |
@@ -1000,6 +1084,16 @@ Request headers from the mobile app (`X-App-Version`, `X-App-Device`, `X-App-Pla
 | Payment done but org/plan not created | webhook failed / NEEDS_ATTENTION (amount mismatch) | `PaymentEvent.outcome`, `SignupCheckout`/`PlanChangeCheckout` status, webhook logs |
 | Error page shows "Reference: …" | production hides the message | search the digest in server logs |
 | "Too many connections" / `EMAXCONNSESSION` | session pooler limit (15) | set `DATABASE_POOL_URL` (transaction pooler) or lower `DB_POOL_MAX` |
+| **Whole admin console errors after deploying the 26 Nov code** | `PinFailure` table missing (migration not applied) — `app/admin/layout.tsx` loads notifications without a try/catch | run `npx prisma migrate deploy`; [`changelog/CHANGELOG.md`](changelog/CHANGELOG.md) (2026-11-26) |
+| Admin employee page / DOB save errors (column `dateOfBirth` does not exist) | `20261127000000_user_date_of_birth` not applied | `npx prisma migrate deploy` |
+| Employee can't use My Page — "When's your birthday?" popup won't close | by design until a DOB is saved | employee saves it, or admin sets it on the employee page (§ 10.11) |
+| "Your date of birth is already saved. Ask your admin to change it." | DOB can be given only once by the employee | admin → employee page → Date of birth |
+| "Too many requests in a short time. Please wait a few minutes and try again." | per-employee hourly request limit | § 10.13; `RateLimitBucket` `emp-action:<action>:<userId>` (delete to unblock) |
+| Admin sees "Repeated wrong PIN attempts" | ≥ 5 wrong PINs in 30 min for that employee | `PinFailure` rows (source, IP); regenerate the PIN if it wasn't them |
+| My Page actions return 401 "Your sign-in has changed or expired…" | another account signed in from another tab, or session expired | server log `[webEmployee] refused: …` |
+| Sign-in shows the preloader for 30 s, then nothing | destination page never opened (redirect or server error) | browser Network tab, server log; `components/SignInPreloaderHost.tsx` |
+| Sign-in "feels slow" (always ≥ 5 s) | the preloader's 5 s minimum | `MIN_MS` in `components/SignInPreloaderHost.tsx` |
+| My Page map grey / "Allow location for this site…" | tiles blocked, or location denied | `components/mypage/LiveMap.tsx`, browser site settings |
 
 ---
 
@@ -1024,3 +1118,11 @@ Request headers from the mobile app (`X-App-Version`, `X-App-Device`, `X-App-Pla
   `20261126000000_multiple_resumes` removed that limit (now up to 5 resumes, enforced in code).
 - The mobile app does not support "Resume work" yet (web My Page only).
 - Kiosk pairing codes are 8 characters / 15 min; the kiosk keeps its token in browser localStorage — clearing site data un-pairs it.
+- (26 Nov) `app/admin/layout.tsx` calls `getAdminNotifications()` with no try/catch — any failing alert query (e.g. a
+  missing table) takes down every admin page, not just the notifications.
+- (26 Nov) In `prisma/schema.prisma` the `PinFailure` model was inserted between the `CheckInAttempt` comment and the
+  `CheckInAttempt` model, so that comment now sits above `PinFailure`. The `pin_failures` migration comment says "web and
+  phone" but kiosk failures are recorded too.
+- (26 Nov) The DOB and PIN-failure migrations are dated 27 / 28 Nov although committed on 26 Nov (harmless).
+- (26 Nov) Date of birth is asked only on web My Page; the mobile app has no screen for it.
+- (26 Nov) The sign-in preloader adds a fixed minimum of 5 s to every web sign-in.
