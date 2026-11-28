@@ -98,6 +98,8 @@ export default function EmployeeCheckIn({ employeeCode, firstName, requests, foo
   const [distance, setDistance] = useState<{ meters: number; within: boolean } | null>(null);
   // The card flips from the live map to the camera when a photo is needed.
   const [flipped, setFlipped] = useState(false);
+  // The photo the person took with the shutter button (a data URL); sent when they confirm.
+  const [shot, setShot] = useState<string | null>(null);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -161,6 +163,16 @@ export default function EmployeeCheckIn({ employeeCode, firstName, requests, foo
   function backToMap() {
     setFlipped(false);
     setCameraReady(false);
+    setShot(null);
+  }
+  function takeShot() {
+    const url = cameraRef.current?.capture();
+    if (url) {
+      setNotice(null);
+      setShot(url);
+    } else {
+      fail("The camera isn't ready. Allow camera access in the browser, then try again.");
+    }
   }
 
   // While checked in, keep the screen awake: a phone that locks suspends the browser tab and location stops, so
@@ -199,7 +211,8 @@ export default function EmployeeCheckIn({ employeeCode, firstName, requests, foo
     if (busy) return;
     setNotice(null);
     setDistance(null);
-    const photo = cameraRef.current?.capture() || undefined;
+    // The photo already taken with the shutter button, else (a check-out that needs none) nothing to send.
+    const photo = shot ?? cameraRef.current?.capture() ?? undefined;
     if ((action === "CHECK_IN" || action === "RESUME" || needPhotoToCheckOut) && !photo) {
       fail("The camera isn't ready. Allow camera access in the browser, then try again.", action);
       return;
@@ -385,7 +398,7 @@ export default function EmployeeCheckIn({ employeeCode, firstName, requests, foo
 
       <div style={{ flex: "1 1 340px", minWidth: 0, padding: 24, margin: 16, borderRadius: 12, background: "var(--mp-bg)", border: "1px solid var(--mp-border)", display: "flex", flexDirection: "column", gap: 16 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span className="label">{flipped ? "Take your photo" : canResume ? "Check in again" : isDone ? "Day summary" : isWorking ? (needPhotoToCheckOut ? "Check out" : "Live") : "Check in"}</span>
+          <span className="label">{flipped ? (shot ? "Review your photo" : "Take your photo") : canResume ? "Check in again" : isDone ? "Day summary" : isWorking ? (needPhotoToCheckOut ? "Check out" : "Live") : "Check in"}</span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--mp-text2)" }}>
             <ShieldCheck size={14} /> Face and location verified
           </span>
@@ -430,10 +443,45 @@ export default function EmployeeCheckIn({ employeeCode, firstName, requests, foo
             </div>
             <div style={{ ...FACE, transform: "rotateY(180deg)", visibility: flipped ? "visible" : "hidden", transition: "visibility 0s linear .35s" }}>
               {flipped && <CameraCapture ref={cameraRef} onReadyChange={setCameraReady} />}
-              <div style={{ position: "absolute", left: 10, bottom: 10, display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 10px", borderRadius: 999, background: "rgba(255,255,255,0.92)", border: "1px solid var(--mp-border)", fontSize: 12 }}>
-                <span className={cameraReady ? undefined : "live"} style={{ width: 6, height: 6, borderRadius: 999, background: cameraReady ? "var(--mp-success)" : "var(--mp-text3)" }} />
-                {cameraReady ? "Camera ready" : "Preparing camera…"}
-              </div>
+              {shot && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={shot} alt="Your photo" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)" }} />
+              )}
+              {!shot && (
+                <div style={{ position: "absolute", left: 10, top: 10, display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 10px", borderRadius: 999, background: "rgba(255,255,255,0.92)", border: "1px solid var(--mp-border)", fontSize: 12 }}>
+                  <span className={cameraReady ? undefined : "live"} style={{ width: 6, height: 6, borderRadius: 999, background: cameraReady ? "var(--mp-success)" : "var(--mp-text3)" }} />
+                  {cameraReady ? "Camera ready" : "Preparing camera…"}
+                </div>
+              )}
+              {flipped && !shot && (
+                <button
+                  type="button"
+                  aria-label="Take photo"
+                  onClick={takeShot}
+                  disabled={!cameraReady || busy}
+                  style={{
+                    position: "absolute", left: "50%", bottom: 14, transform: "translateX(-50%)", width: 64, height: 64, borderRadius: 999,
+                    background: "rgba(255,255,255,0.25)", border: "4px solid #fff", padding: 0, cursor: cameraReady ? "pointer" : "not-allowed",
+                    display: "grid", placeItems: "center", opacity: cameraReady ? 1 : 0.5, boxShadow: "0 2px 10px rgba(0,0,0,0.35)",
+                  }}
+                >
+                  <span style={{ width: 44, height: 44, borderRadius: 999, background: "#fff" }} />
+                </button>
+              )}
+              {shot && (
+                <button
+                  type="button"
+                  onClick={() => setShot(null)}
+                  disabled={busy}
+                  style={{
+                    position: "absolute", left: "50%", bottom: 14, transform: "translateX(-50%)", display: "inline-flex", alignItems: "center", gap: 6,
+                    padding: "8px 16px", borderRadius: 999, background: "rgba(255,255,255,0.95)", border: "1px solid var(--mp-border)",
+                    fontSize: 14, fontWeight: 600, cursor: "pointer", color: "var(--mp-text)",
+                  }}
+                >
+                  <RefreshCw size={14} /> Retake
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -459,23 +507,23 @@ export default function EmployeeCheckIn({ employeeCode, firstName, requests, foo
             </p>
           )}
           {canResume ? (
-            <button type="button" className="btn btn-primary" onClick={() => press("RESUME")} disabled={busy || (flipped && !cameraReady)}>
+            <button type="button" className="btn btn-primary" onClick={() => press("RESUME")} disabled={busy || (flipped && !shot)}>
               <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
                 {busy ? <Loader2 size={18} className="animate-spin" /> : <LogIn size={18} />}
-                {busy ? "Processing…" : flipped ? "Take photo & check in" : "Check in again"}
+                {busy ? "Processing…" : "Check in again"}
               </span>
             </button>
           ) : (
             <>
-              <button type="button" className="btn btn-primary" onClick={() => press("CHECK_IN")} disabled={busy || isWorking || isDone || (flipped && !cameraReady)}>
+              <button type="button" className="btn btn-primary" onClick={() => press("CHECK_IN")} disabled={busy || isWorking || isDone || (flipped && !shot)}>
                 <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
                   {busy ? <Loader2 size={18} className="animate-spin" /> : <LogIn size={18} />}
-                  {busy ? "Processing…" : flipped && !isWorking ? "Take photo & check in" : "Check in"}
+                  {busy ? "Processing…" : "Check in"}
                 </span>
               </button>
-              <button type="button" className="btn btn-outline" onClick={() => press("CHECK_OUT")} disabled={busy || !isWorking || (flipped && !cameraReady)}>
+              <button type="button" className="btn btn-outline" onClick={() => press("CHECK_OUT")} disabled={busy || !isWorking || (flipped && !shot)}>
                 <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-                  <LogOut size={18} /> {flipped && isWorking ? "Take photo & check out" : "Check out"}
+                  <LogOut size={18} /> Check out
                 </span>
               </button>
             </>

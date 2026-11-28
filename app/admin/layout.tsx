@@ -8,6 +8,20 @@ import { getPendingCounts } from "@/lib/adminCounts";
 import { trialState } from "@/lib/trial";
 import TrialBanner from "@/components/TrialBanner";
 
+/**
+ * The shell's side data (organization name, badge counts, notifications) is nice to have on every admin page, but
+ * not worth losing the page over. If one of these queries fails (a busy database connection pool, a slow face-service
+ * check), the page still opens with that part empty instead of showing "Something went wrong"; the failure is logged.
+ */
+async function safe<T>(label: string, work: Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await work;
+  } catch (err) {
+    console.error(`[admin layout] ${label} failed:`, err instanceof Error ? err.message : err);
+    return fallback;
+  }
+}
+
 export default async function AdminLayout({
   children,
 }: {
@@ -23,11 +37,13 @@ export default async function AdminLayout({
   // (this layout wraps every admin page, so each extra step slowed every navigation).
   const ready = isAdmin && organizationId ? organizationId : null;
   const [orgRow, pending, notifications] = await Promise.all([
-    ready ? prisma.organization.findUnique({ where: { id: ready }, select: { name: true, isTrial: true, trialEndsAt: true, planTier: true } }) : null,
-    ready ? getPendingCounts(ready) : { leave: 0, overtime: 0, support: 0 },
+    ready
+      ? safe("organization", prisma.organization.findUnique({ where: { id: ready }, select: { name: true, isTrial: true, trialEndsAt: true, planTier: true } }), null)
+      : null,
+    ready ? safe("pending counts", getPendingCounts(ready), { leave: 0, overtime: 0, support: 0 }) : { leave: 0, overtime: 0, support: 0 },
     // Notifications waiting for the admin (the badge on the sidebar item). Alerts are shown on the
     // Notifications page only, not on the dashboard or as a banner.
-    ready ? getAdminNotifications(ready) : [],
+    ready ? safe("notifications", getAdminNotifications(ready), []) : [],
   ]);
   const orgName = orgRow?.name ?? null;
   const trial = orgRow ? trialState(orgRow) : null;

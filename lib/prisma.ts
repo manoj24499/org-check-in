@@ -55,5 +55,9 @@ const globalForPrisma = globalThis as unknown as {
 // Reuse global instance or instantiate a new client WITH the adapter attached
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 
-// Prevent multiple instances in development due to Next.js Fast Refresh / HMR
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+// Keep the client on globalThis in production too, not only in development. A built Next.js server loads its code
+// as several separate bundles (page rendering, API routes, ...), and a plain module-level `prisma` is created once
+// PER BUNDLE: each one then opened its own pool of connections, so one server was using two or three times the
+// connections it was meant to, against a database that allows 15 in total. globalThis is shared by all of them,
+// so there is now a single pool per process. (In development it also stops Fast Refresh from creating new ones.)
+globalForPrisma.prisma = prisma;
