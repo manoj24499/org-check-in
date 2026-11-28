@@ -185,18 +185,18 @@
 .mp .mp-bell:hover svg { animation: mp-ring 0.7s ease; transform-origin: 50% 10%; }
 @keyframes mp-ring { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(16deg); } 45% { transform: rotate(-14deg); } 70% { transform: rotate(8deg); } }
 .mp .mp-bell-badge { position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; padding: 0 5px; box-sizing: border-box; border-radius: 999px; background: var(--mp-primary); color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; border: 2px solid #fff; }
-.mp-ncard { position: relative; overflow: hidden; background: #fff; border: 1px solid var(--mp-border); border-radius: 14px; margin-bottom: 8px; transition: box-shadow 0.2s ease, border-color 0.2s ease; }
+.mp-ncard { position: relative; overflow: hidden; background: #fff; border: 1px solid var(--mp-border); border-radius: 12px; margin-bottom: 6px; transition: box-shadow 0.2s ease, border-color 0.2s ease; }
 .mp-ncard:hover { box-shadow: 0 8px 20px rgba(26, 21, 18, 0.09); }
 .mp-ncard.unread { background: #fffaf4; border-color: rgba(239, 108, 0, 0.28); }
 .mp-ncard.unread::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--mp-primary); }
-.mp-notif-head { width: 100%; display: flex; align-items: center; gap: 14px; padding: 14px 16px; background: none; border: none; cursor: pointer; font-family: inherit; font-size: 15px; color: inherit; }
-.mp-ntime { flex-shrink: 0; padding: 3px 10px; border-radius: 999px; background: var(--mp-muted); font-size: 12px; font-weight: 600; color: var(--mp-text2); }
-.mp-nbody { padding: 4px 16px 16px 70px; display: flex; flex-direction: column; gap: 14px; animation: mp-pop-in 0.18s ease; }
-.mp-ngrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px 20px; padding: 14px 16px; background: var(--mp-bg); border: 1px solid var(--mp-border); border-radius: 12px; }
-.mp-nk { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mp-text3); }
-.mp-nv { margin-top: 2px; font-size: 15px; font-weight: 600; }
-.mp-npill { display: inline-block; margin-top: 2px; padding: 3px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; }
-.mp-link { background: none; border: none; padding: 4px 6px; border-radius: 6px; font-family: inherit; font-size: 14px; font-weight: 600; color: var(--mp-primary-dark); cursor: pointer; }
+.mp-notif-head { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: none; border: none; cursor: pointer; font-family: inherit; font-size: 13px; color: inherit; }
+.mp-ntime { flex-shrink: 0; padding: 2px 8px; border-radius: 999px; background: var(--mp-muted); font-size: 11px; font-weight: 600; color: var(--mp-text2); }
+.mp-nbody { padding: 2px 12px 12px 56px; display: flex; flex-direction: column; gap: 10px; animation: mp-pop-in 0.18s ease; }
+.mp-ngrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px 14px; padding: 10px 12px; background: var(--mp-bg); border: 1px solid var(--mp-border); border-radius: 10px; }
+.mp-nk { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mp-text3); }
+.mp-nv { margin-top: 1px; font-size: 13px; font-weight: 600; }
+.mp-npill { display: inline-block; margin-top: 1px; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.mp-link { background: none; border: none; padding: 3px 5px; border-radius: 6px; font-family: inherit; font-size: 13px; font-weight: 600; color: var(--mp-primary-dark); cursor: pointer; }
 .mp-link:hover { text-decoration: underline; }
 .mp-iconbtn { width: 36px; height: 36px; border-radius: 999px; border: none; background: var(--mp-muted); color: var(--mp-text); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 .mp-iconbtn:hover { background: var(--mp-primary-muted); }
@@ -204,5 +204,9 @@
 /* The dropdown under the bell: drawn on the page body, placed from the bell's position. */
 .mp.mp-pop-wrap { position: fixed; inset: 0; z-index: 60; min-height: 0; background: rgba(26, 21, 18, 0.45); backdrop-filter: blur(2px); animation: mp-dim-in 0.18s ease; }
 @keyframes mp-dim-in { from { opacity: 0; } to { opacity: 1; } }
-.mp-pop { position: fixed; width: min(560px, calc(100vw - 24px)); background: #fff; color: #1a1512; border: 1px solid var(--mp-border); border-radius: 14px; box-shadow: 0 24px 60px rgba(26, 21, 18, 0.28); animation: mp-pop-in 0.18s ease; }
+.mp-pop { position: fixed; width: min(420px, calc(100vw - 24px)); background: #fff; color: #1a1512; border: 1px solid var(--mp-border); border-radius: 14px; box-shadow: 0 24px 60px rgba(26, 21, 18, 0.28); animation: mp-pop-in 0.18s ease; }
 @keyframes mp-pop-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+
+/* Smaller tabs inside the notifications dropdown. */
+.mp .mp-pop .tabs { padding: 3px; }
+.mp .mp-pop .tabs button { min-width: 0; min-height: 30px; padding: 0 14px; font-size: 13px; }

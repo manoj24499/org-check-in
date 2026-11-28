@@ -113,11 +113,11 @@ export default function NotificationsBell({ items, userId }: { items: NotifItem[
         createPortal(
           <div className="mp mp-pop-wrap" onMouseDown={(e) => e.target === e.currentTarget && close()}>
             <div className="mp-pop" role="dialog" aria-label="Notifications" style={{ top: pos.top, right: pos.right }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "18px 20px 10px" }}>
-                <span style={{ width: 38, height: 38, borderRadius: 11, background: "var(--mp-primary-muted)", color: "var(--mp-primary-dark)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Bell size={19} />
+              <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px 8px" }}>
+                <span style={{ width: 30, height: 30, borderRadius: 9, background: "var(--mp-primary-muted)", color: "var(--mp-primary-dark)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Bell size={16} />
                 </span>
-                <strong style={{ fontSize: 19, flex: 1 }}>Notifications</strong>
+                <strong style={{ fontSize: 16, flex: 1 }}>Notifications</strong>
                 {unread > 0 && (
                   <span className="chip" style={{ background: "var(--mp-primary)", color: "#fff" }}>
                     {unread} new
@@ -130,7 +130,7 @@ export default function NotificationsBell({ items, userId }: { items: NotifItem[
                 )}
               </div>
 
-              <div role="tablist" aria-label="Filter notifications" className="tabs" style={{ margin: "0 20px 12px", alignSelf: "flex-start" }}>
+              <div role="tablist" aria-label="Filter notifications" className="tabs" style={{ margin: "0 16px 8px", alignSelf: "flex-start" }}>
                 {FILTERS.map((f) => (
                   <button key={f.key} type="button" role="tab" aria-selected={filter === f.key} className={filter === f.key ? "on" : ""} onClick={() => setFilter(f.key)}>
                     {f.label}
@@ -138,7 +138,7 @@ export default function NotificationsBell({ items, userId }: { items: NotifItem[
                 ))}
               </div>
 
-              <div style={{ maxHeight: "min(520px, 62vh)", overflowY: "auto", padding: "0 14px 6px" }}>
+              <div style={{ maxHeight: "min(380px, 58vh)", overflowY: "auto", padding: "0 10px 4px" }}>
                 {groups.length === 0 && (
                   <p className="sub" style={{ margin: "16px 10px 20px", textAlign: "center" }}>
                     You&apos;re all caught up. Leave and overtime decisions and late arrivals will show up here.
@@ -146,7 +146,7 @@ export default function NotificationsBell({ items, userId }: { items: NotifItem[
                 )}
                 {groups.map(({ g, rows }) => (
                   <section key={g} aria-label={g} style={{ marginBottom: 6 }}>
-                    <div className="label" style={{ padding: "8px 4px 6px" }}>{g}</div>
+                    <div className="label" style={{ padding: "6px 4px 4px", fontSize: 11 }}>{g}</div>
                     {rows.map((n) => {
                       const Icon = ICON[n.icon];
                       const style = TONE_STYLE[TONE[n.tone]];
@@ -155,15 +155,15 @@ export default function NotificationsBell({ items, userId }: { items: NotifItem[
                       return (
                         <div key={n.id} className={`mp-ncard${isUnread ? " unread" : ""}`}>
                           <button type="button" className="mp-notif-head" onClick={() => toggle(n)} aria-expanded={isOpen}>
-                            <span style={{ width: 42, height: 42, borderRadius: 999, flexShrink: 0, background: style.bg, color: style.color, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                              <Icon size={19} strokeWidth={2.2} />
+                            <span style={{ width: 32, height: 32, borderRadius: 999, flexShrink: 0, background: style.bg, color: style.color, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                              <Icon size={15} strokeWidth={2.2} />
                             </span>
                             <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", textAlign: "left" }}>
-                              <span style={{ fontWeight: 700, fontSize: 15 }}>{n.title}</span>
-                              <span className="sub" style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.summary}</span>
+                              <span style={{ fontWeight: 700, fontSize: 13 }}>{n.title}</span>
+                              <span className="sub" style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.summary}</span>
                             </span>
                             <span className="mp-ntime">{n.time}</span>
-                            <ChevronDown size={16} aria-hidden style={{ flexShrink: 0, color: "var(--mp-text2)", transition: "transform .2s", transform: isOpen ? "rotate(180deg)" : "none" }} />
+                            <ChevronDown size={14} aria-hidden style={{ flexShrink: 0, color: "var(--mp-text2)", transition: "transform .2s", transform: isOpen ? "rotate(180deg)" : "none" }} />
                           </button>
                           {isOpen && (
                             <div className="mp-nbody">
@@ -180,7 +180,7 @@ export default function NotificationsBell({ items, userId }: { items: NotifItem[
                                 ))}
                               </div>
                               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                <button type="button" className="btn btn-primary" style={{ minHeight: 40, padding: "0 18px", fontSize: 14 }} onClick={() => go(n)}>
+                                <button type="button" className="btn btn-primary" style={{ minHeight: 32, padding: "0 14px", fontSize: 13 }} onClick={() => go(n)}>
                                   {n.cta}
                                 </button>
                                 <button type="button" className="mp-link" onClick={() => dismissNotifications([n.id])}>
@@ -197,7 +197,7 @@ export default function NotificationsBell({ items, userId }: { items: NotifItem[
               </div>
 
               {visible.length > 0 && (
-                <div style={{ padding: "8px 16px 12px", borderTop: "1px solid var(--mp-border)", marginTop: 6 }}>
+                <div style={{ padding: "6px 14px 10px", borderTop: "1px solid var(--mp-border)", marginTop: 6 }}>
                   <button type="button" className="mp-link" style={{ display: "inline-flex", alignItems: "center", gap: 6 }} onClick={() => dismissNotifications(visible.map((n) => n.id))}>
                     <Trash2 size={14} /> Clear all
                   </button>
